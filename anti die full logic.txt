@@ -1,0 +1,53 @@
+-- leaked at discord.gg/sourcehubs
+local Players = game:GetService("Players")
+
+local function godMode(player)
+    player.CharacterAdded:Connect(function(character)
+        local humanoid = character:WaitForChild("Humanoid")
+        
+        -- Method 1: Disable death state
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+        
+        -- Method 2: Instant heal on damage
+        humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+            if humanoid.Health < humanoid.MaxHealth then
+                humanoid.Health = humanoid.MaxHealth
+            end
+        end)
+        
+        -- Method 3: Catch and prevent Died event
+        local deathConnection
+        deathConnection = humanoid.Died:Connect(function()
+            deathConnection:Disconnect() -- Prevent infinite loops
+            task.wait(0.05)
+            if humanoid and humanoid.Parent then
+                humanoid.Health = humanoid.MaxHealth
+                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                -- Reconnect the death handler
+                deathConnection = humanoid.Died:Connect(function()
+                    task.wait(0.05)
+                    if humanoid and humanoid.Parent then
+                        humanoid.Health = humanoid.MaxHealth
+                        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                    end
+                end)
+            end
+        end)
+        
+        -- Method 4: Prevent character break
+        character:GetPropertyChangedSignal("BreakJoints"):Connect(function()
+            if character.BreakJoints then
+                character.BreakJoints = false
+            end
+        end)
+        
+        print(player.Name .. " is now invincible!")
+    end)
+end
+
+-- Apply to all players
+for _, player in ipairs(Players:GetPlayers()) do
+    godMode(player)
+end
+
+Players.PlayerAdded:Connect(godMode)

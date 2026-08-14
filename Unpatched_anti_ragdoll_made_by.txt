@@ -1,0 +1,100 @@
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LP = Players.LocalPlayer
+
+local antiRagdollEnabled = true  -- ✅ Always starts ON
+
+local antiRagdollConn = nil
+
+local function resetCharacter(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not hum or not root or hum.Health <= 0 then return end
+
+    pcall(function()
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+        
+        root.Velocity = Vector3.zero
+        root.RotVelocity = Vector3.zero
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        
+        hum.PlatformStand = false
+        hum.Sit = false
+        hum.AutoRotate = true
+        hum.JumpPower = hum.JumpPower > 0 and hum.JumpPower or 50
+        hum.WalkSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or 16
+        
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("Motor6D") then
+                obj.Enabled = true
+            elseif obj:IsA("Constraint") or obj:IsA("BallSocketConstraint") or obj:IsA("HingeConstraint") then
+                obj.Enabled = true
+            elseif obj:IsA("BasePart") then
+                obj.CanCollide = true
+                obj.AssemblyLinearVelocity = Vector3.zero
+                obj.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+        
+        workspace.CurrentCamera.CameraSubject = hum
+        
+        local PM = LP.PlayerScripts:FindFirstChild("PlayerModule")
+        if PM then
+            local CM = PM:FindFirstChild("ControlModule")
+            if CM then
+                local success, module = pcall(require, CM)
+                if success and module and module.Enable then
+                    module:Enable()
+                end
+            end
+        end
+    end)
+end
+
+local function startAntiRagdoll()
+    if antiRagdollConn then return end
+    
+    antiRagdollConn = RunService.Heartbeat:Connect(function()
+        if not antiRagdollEnabled then return end
+        
+        local char = LP.Character
+        if not char then return end
+        
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        
+        local state = hum:GetState()
+        
+        if state == Enum.HumanoidStateType.Physics or
+           state == Enum.HumanoidStateType.Ragdoll or
+           state == Enum.HumanoidStateType.FallingDown or
+           state == Enum.HumanoidStateType.Dead or
+           hum.PlatformStand == true or
+           hum.Sit == true then
+            
+            resetCharacter(char)
+        end
+    end)
+end
+
+local function stopAntiRagdoll()
+    if antiRagdollConn then
+        antiRagdollConn:Disconnect()
+        antiRagdollConn = nil
+    end
+end
+
+-- Auto restart on death/respawn
+LP.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    startAntiRagdoll()
+end)
+
+-- Start the system immediately
+startAntiRagdoll()
+
+print("✅ Anti-Ragdoll System Loaded & ENABLED")

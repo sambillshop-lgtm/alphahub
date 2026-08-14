@@ -1,0 +1,99 @@
+connections = connections or {}
+connections.FreezePlayer = connections.FreezePlayer or {}
+featureStates = featureStates or {}
+featureStates.FreezePlayer = featureStates.FreezePlayer or false
+local function walkfling(enabled)
+    local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
+    local LocalPlayer = Players.LocalPlayer
+    local walkflinging = false
+    if enabled then
+        featureStates.FreezePlayer = true
+        local function disablePlayerCollisions()
+            local conn = RunService.Stepped:Connect(function()
+                if not featureStates.FreezePlayer then
+                    conn:Disconnect()
+                    return
+                end
+                local myChar = LocalPlayer.Character
+                if myChar then
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= LocalPlayer and plr.Character then
+                            for _, part in ipairs(plr.Character:GetChildren()) do
+                                if part:IsA("BasePart") then
+                                    part.CanCollide = false
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+            table.insert(connections.FreezePlayer, conn)
+        end
+        local function stopWalkFling()
+            walkflinging = false
+        end
+        local function startWalkFling()
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local humanoid = character:FindFirstChildWhichIsA("Humanoid")
+            if humanoid then
+                local diedConn = humanoid.Died:Connect(function()
+                    stopWalkFling()
+                end)
+                table.insert(connections.FreezePlayer, diedConn)
+            end
+            walkflinging = true
+            local flingConn = coroutine.create(function()
+                repeat
+                    RunService.Heartbeat:Wait()
+                    if not featureStates.FreezePlayer then
+                        break
+                    end
+                    character = LocalPlayer.Character
+                    local root = character and character:FindFirstChild("HumanoidRootPart")
+                    local vel, movel = nil, 0.1
+                    while not (character and character.Parent and root and root.Parent) do
+                        RunService.Heartbeat:Wait()
+                        if not featureStates.FreezePlayer then
+                            break
+                        end
+                        character = LocalPlayer.Character
+                        root = character and character:FindFirstChild("HumanoidRootPart")
+                    end
+                    if not featureStates.FreezePlayer then
+                        break
+                    end
+                    vel = root.Velocity
+                    root.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+                    RunService.RenderStepped:Wait()
+                    if character and character.Parent and root and root.Parent then
+                        root.Velocity = vel
+                    end
+                    RunService.Stepped:Wait()
+                    if character and character.Parent and root and root.Parent then
+                        root.Velocity = vel + Vector3.new(0, movel, 0)
+                        movel = movel * -1
+                    end
+                until walkflinging == false or not featureStates.FreezePlayer
+            end)
+            coroutine.resume(flingConn)
+            table.insert(connections.FreezePlayer, flingConn)
+        end
+        disablePlayerCollisions()
+        startWalkFling()
+    else
+        featureStates.FreezePlayer = false
+        for _, conn in ipairs(connections.FreezePlayer) do
+            if conn then
+                if typeof(conn) == "RBXScriptConnection" then
+                    conn:Disconnect()
+                elseif typeof(conn) == "thread" then
+                    task.cancel(conn)
+                end
+            end
+        end
+        connections.FreezePlayer = {}
+        walkflinging = false
+    end
+end
+walkfling(true)

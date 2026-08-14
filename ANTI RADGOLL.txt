@@ -1,0 +1,113 @@
+--[[
+	undetected unpatched anti-ragdoll
+	https://discord.gg/rNvAU6cjVB
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local cached = {}
+
+local function cacheCharacter()
+    local char = player.Character
+    if not char then return false end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local root = char:FindFirstChild("HumanoidRootPart")
+
+    if not hum or not root then return false end
+
+    cached = {
+        character = char,
+        humanoid = hum,
+        root = root
+    }
+
+    camera.CameraSubject = hum
+
+    return true
+end
+
+local function isRagdolled()
+    local hum = cached.humanoid
+    if not hum then return false end
+
+    local state = hum:GetState()
+
+    if state == Enum.HumanoidStateType.Physics
+    or state == Enum.HumanoidStateType.Ragdoll
+    or state == Enum.HumanoidStateType.FallingDown then
+        return true
+    end
+
+    local endTime = player:GetAttribute("RagdollEndTime")
+    if endTime then
+        local now = workspace:GetServerTimeNow()
+        if (endTime - now) > 0 then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function removeRagdollConstraints()
+    for _, v in ipairs(cached.character:GetDescendants()) do
+        if v:IsA("BallSocketConstraint") or 
+           (v:IsA("Attachment") and v.Name:find("RagdollAttachment")) then
+            pcall(function()
+                v:Destroy()
+            end)
+        end
+    end
+end
+
+local function forceExitRagdoll()
+    local hum = cached.humanoid
+    local root = cached.root
+
+    if not hum or not root then return end
+
+    pcall(function()
+        player:SetAttribute("RagdollEndTime", workspace:GetServerTimeNow())
+    end)
+
+    if hum.Health > 0 then
+        hum:ChangeState(Enum.HumanoidStateType.Running)
+    end
+
+    root.Anchored = false
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+
+    root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, math.rad(root.Orientation.Y), 0)
+
+    if camera.CameraSubject ~= hum then
+        camera.CameraSubject = hum
+    end
+end
+
+local function start()
+    if not cacheCharacter() then return end
+
+    RunService.RenderStepped:Connect(function()
+        if not cached.humanoid or not cached.humanoid.Parent then return end
+
+        if isRagdolled() then
+            removeRagdollConstraints()
+            forceExitRagdoll()
+        end
+    end)
+end
+
+if player.Character then
+    start()
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    start()
+end)

@@ -1,0 +1,336 @@
+-- anime changer by RIP_DZ @5jr5 amir hub and dz hub on top
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
+local lp = Players.LocalPlayer
+
+local Animate = lp.Character and lp.Character:FindFirstChild("Animate")
+
+-- ========== INTERFACE STYLE DZ HUB ==========
+if CoreGui:FindFirstChild("HiddenUI") then
+    if CoreGui.HiddenUI:FindFirstChild("AnimationChanger") then
+        CoreGui.HiddenUI.AnimationChanger:Destroy()
+    end
+else
+    local f = Instance.new("Folder")
+    f.Name = "HiddenUI"
+    f.Parent = CoreGui
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "AnimationChanger"
+gui.ResetOnSpawn = false
+gui.Parent = CoreGui.HiddenUI
+
+local COL_BG = Color3.fromRGB(0, 0, 0)
+local COL_ROW = Color3.fromRGB(15, 15, 15)
+local COL_TOGGLE = Color3.fromRGB(30, 30, 30)
+local COL_BLUE = Color3.fromRGB(255, 255, 255)
+
+local STROKE_COLORS = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.15, Color3.fromRGB(0, 0, 0)),
+    ColorSequenceKeypoint.new(0.30, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.45, Color3.fromRGB(0, 0, 0)),
+    ColorSequenceKeypoint.new(0.60, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.75, Color3.fromRGB(0, 0, 0)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 255, 255))
+})
+
+local allStrokeGrads = {}
+
+local function addAnimatedStroke(parent, thickness)
+    local s = Instance.new("UIStroke")
+    s.Thickness = thickness or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Color = Color3.new(1, 1, 1)
+    s.Parent = parent
+
+    local g = Instance.new("UIGradient")
+    g.Color = STROKE_COLORS
+    g.Rotation = 45
+    g.Parent = s
+
+    table.insert(allStrokeGrads, g)
+    return s, g
+end
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 240, 0, 320)
+main.Position = UDim2.new(0.5, -120, 0.65, -160)
+main.BackgroundColor3 = COL_BG
+main.BackgroundTransparency = 0
+main.BorderSizePixel = 0
+main.ClipsDescendants = true
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 8)
+addAnimatedStroke(main, 2)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -35, 0, 18)
+title.Position = UDim2.new(0, 8, 0, 4)
+title.BackgroundTransparency = 1
+title.Text = "ANIM CHANGER"
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
+title.TextColor3 = Color3.new(1, 1, 1)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
+
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, -35, 0, 12)
+subtitle.Position = UDim2.new(0, 8, 0, 20)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "by RIP_DZ"
+subtitle.Font = Enum.Font.Gotham
+subtitle.TextSize = 8
+subtitle.TextColor3 = Color3.fromRGB(120, 120, 120)
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.Parent = main
+
+-- ========== BOUTON MINIMISER (FLÈCHE) ==========
+local minBtn = Instance.new("TextButton")
+minBtn.Size = UDim2.new(0, 20, 0, 20)
+minBtn.Position = UDim2.new(1, -26, 0, 6)
+minBtn.BackgroundColor3 = COL_TOGGLE
+minBtn.Text = "◄"
+minBtn.TextColor3 = Color3.new(1, 1, 1)
+minBtn.Font = Enum.Font.GothamBold
+minBtn.TextSize = 12
+minBtn.BorderSizePixel = 0
+minBtn.AutoButtonColor = false
+minBtn.Parent = main
+
+Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 5)
+addAnimatedStroke(minBtn, 1)
+
+local minimized = false
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    TweenService:Create(main, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+        Size = minimized and UDim2.new(0, 240, 0, 35) or UDim2.new(0, 240, 0, 320)
+    }):Play()
+    minBtn.Text = minimized and "►" or "◄"
+    
+    -- Cacher/afficher le contenu
+    tabFrame.Visible = not minimized
+    contentFrame.Visible = not minimized
+    subtitle.Visible = not minimized
+end)
+
+-- ========== ONGLETS ==========
+local tabFrame = Instance.new("Frame")
+tabFrame.Size = UDim2.new(1, 0, 0, 24)
+tabFrame.Position = UDim2.new(0, 0, 0, 38)
+tabFrame.BackgroundTransparency = 1
+tabFrame.Parent = main
+
+local tabs = {}
+local currentTab = "Normal"
+
+local function createTabButton(name, xPos)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.33, -2, 1, 0)
+    btn.Position = UDim2.new(xPos, 0, 0, 0)
+    btn.BackgroundColor3 = COL_ROW
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Text = name
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Parent = tabFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
+    return btn
+end
+
+local tabNormal = createTabButton("Normal", 0)
+local tabSpecial = createTabButton("Special", 0.33)
+local tabOther = createTabButton("Other", 0.67)
+
+-- ========== CONTENU DES ONGLETS ==========
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, 0, 1, -70)
+contentFrame.Position = UDim2.new(0, 0, 0, 68)
+contentFrame.BackgroundTransparency = 1
+contentFrame.ClipsDescendants = true
+contentFrame.Parent = main
+
+local function makeTabContent()
+    local frame = Instance.new("ScrollingFrame")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.BorderSizePixel = 0
+    frame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    frame.ScrollBarThickness = 2
+    frame.ScrollBarImageTransparency = 0.5
+    frame.ClipsDescendants = true
+    frame.Parent = contentFrame
+    return frame
+end
+
+local function makeAnimationButton(parent, yPos, labelText, anims)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -8, 0, 24)
+    btn.Position = UDim2.new(0, 4, 0, yPos)
+    btn.BackgroundColor3 = COL_ROW
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    btn.Text = ""
+    btn.Parent = parent
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 3)
+    addAnimatedStroke(btn, 0.8)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -8, 1, 0)
+    lbl.Position = UDim2.new(0, 4, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 11
+    lbl.TextColor3 = Color3.new(1, 1, 1)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = btn
+
+    local busy = false
+    btn.MouseButton1Click:Connect(function()
+        if busy or not Animate then return end
+        busy = true
+        local oldText = lbl.Text
+        lbl.Text = "✓"
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = COL_BLUE}):Play()
+        
+        for key, id in pairs(anims) do
+            local path = string.split(key, ".")
+            local current = Animate
+            for i = 1, #path do
+                current = current[path[i]]
+                if not current then break end
+            end
+            if current and current:IsA("Animation") then
+                current.AnimationId = "http://www.roblox.com/asset/?id=" .. id
+            end
+        end
+        if lp.Character and lp.Character:FindFirstChild("Humanoid") then
+            lp.Character.Humanoid.Jump = true
+        end
+        
+        task.delay(0.3, function()
+            lbl.Text = oldText
+            TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = COL_ROW}):Play()
+            busy = false
+        end)
+    end)
+    return btn
+end
+
+-- ========== ONGLET NORMAL ==========
+local normalTab = makeTabContent()
+
+local normalAnims = {
+    Ninja = {["idle.Animation1"]="656117400",["idle.Animation2"]="656118341",["walk.WalkAnim"]="656121766",["run.RunAnim"]="656118852",["jump.JumpAnim"]="656117878",["climb.ClimbAnim"]="656114359",["fall.FallAnim"]="656115606"},
+    Levitation = {["idle.Animation1"]="616006778",["idle.Animation2"]="616008087",["walk.WalkAnim"]="616013216",["run.RunAnim"]="616010382",["jump.JumpAnim"]="616008936",["climb.ClimbAnim"]="616003713",["fall.FallAnim"]="616005863"},
+    Werewolf = {["idle.Animation1"]="1083195517",["idle.Animation2"]="1083214717",["walk.WalkAnim"]="1083178339",["run.RunAnim"]="1083216690",["jump.JumpAnim"]="1083218792",["climb.ClimbAnim"]="1083182000",["fall.FallAnim"]="1083189019"},
+    Stylish = {["idle.Animation1"]="616136790",["idle.Animation2"]="616138447",["walk.WalkAnim"]="616146177",["run.RunAnim"]="616140816",["jump.JumpAnim"]="616139451",["climb.ClimbAnim"]="616133594",["fall.FallAnim"]="616134815"},
+    Robot = {["idle.Animation1"]="616088211",["idle.Animation2"]="616089559",["walk.WalkAnim"]="616095330",["run.RunAnim"]="616091570",["jump.JumpAnim"]="616090535",["climb.ClimbAnim"]="616086039",["fall.FallAnim"]="616087089"},
+    Bubbly = {["idle.Animation1"]="910004836",["idle.Animation2"]="910009958",["walk.WalkAnim"]="910034870",["run.RunAnim"]="910025107",["jump.JumpAnim"]="910016857",["fall.FallAnim"]="910001910",["swimidle.SwimIdle"]="910030921",["swim.Swim"]="910028158"},
+    Cartoony = {["idle.Animation1"]="742637544",["idle.Animation2"]="742638445",["walk.WalkAnim"]="742640026",["run.RunAnim"]="742638842",["jump.JumpAnim"]="742637942",["climb.ClimbAnim"]="742636889",["fall.FallAnim"]="742637151"},
+    SuperHero = {["idle.Animation1"]="616111295",["idle.Animation2"]="616113536",["walk.WalkAnim"]="616122287",["run.RunAnim"]="616117076",["jump.JumpAnim"]="616115533",["climb.ClimbAnim"]="616104706",["fall.FallAnim"]="616108001"},
+    Knight = {["idle.Animation1"]="657595757",["idle.Animation2"]="657568135",["walk.WalkAnim"]="657552124",["run.RunAnim"]="657564596",["jump.JumpAnim"]="658409194",["climb.ClimbAnim"]="658360781",["fall.FallAnim"]="657600338"},
+    Zombie = {["idle.Animation1"]="616158929",["idle.Animation2"]="616160636",["walk.WalkAnim"]="616168032",["run.RunAnim"]="616163682",["jump.JumpAnim"]="616161997",["climb.ClimbAnim"]="616156119",["fall.FallAnim"]="616157476"},
+    Elder = {["idle.Animation1"]="845397899",["idle.Animation2"]="845400520",["walk.WalkAnim"]="845403856",["run.RunAnim"]="845386501",["jump.JumpAnim"]="845398858",["climb.ClimbAnim"]="845392038",["fall.FallAnim"]="845396048"},
+    Astronaut = {["idle.Animation1"]="891621366",["idle.Animation2"]="891633237",["walk.WalkAnim"]="891667138",["run.RunAnim"]="891636393",["jump.JumpAnim"]="891627522",["climb.ClimbAnim"]="891609353",["fall.FallAnim"]="891617961"},
+    Adidas = {["idle.Animation1"]="18537376492",["idle.Animation2"]="18537371272",["walk.WalkAnim"]="18537392113",["run.RunAnim"]="18537384940",["jump.JumpAnim"]="18537380791",["climb.ClimbAnim"]="18537363391",["fall.FallAnim"]="18537367238",["swim.Swim"]="18537389531",["swimidle.SwimIdle"]="18537387180",["pose.StylishPose"]="18537374150"},
+    Toy = {["idle.Animation1"]="782841498",["idle.Animation2"]="782845736",["walk.WalkAnim"]="782843345",["run.RunAnim"]="782842708",["jump.JumpAnim"]="782847020",["climb.ClimbAnim"]="782843869",["fall.FallAnim"]="782846423"},
+    Pirate = {["idle.Animation1"]="750781874",["idle.Animation2"]="750782770",["walk.WalkAnim"]="750785693",["run.RunAnim"]="750783738",["jump.JumpAnim"]="750782230",["climb.ClimbAnim"]="750779899",["fall.FallAnim"]="750780242"},
+    Vampire = {["idle.Animation1"]="1083445855",["idle.Animation2"]="1083450166",["walk.WalkAnim"]="1083473930",["run.RunAnim"]="1083462077",["jump.JumpAnim"]="1083455352",["climb.ClimbAnim"]="1083439238",["fall.FallAnim"]="1083443587"},
+}
+
+local ny = 4
+for name, data in pairs(normalAnims) do
+    makeAnimationButton(normalTab, ny, name, data)
+    ny = ny + 28
+end
+normalTab.CanvasSize = UDim2.new(0, 0, 0, ny + 4)
+
+-- ========== ONGLET SPECIAL ==========
+local specialTab = makeTabContent()
+
+local specialAnims = {
+    Patrol = {["idle.Animation1"]="1149612882",["idle.Animation2"]="1150842221",["walk.WalkAnim"]="1151231493",["run.RunAnim"]="1150967949",["jump.JumpAnim"]="1148811837",["climb.ClimbAnim"]="1148811837",["fall.FallAnim"]="1148863382"},
+    Confident = {["idle.Animation1"]="1069977950",["idle.Animation2"]="1069987858",["walk.WalkAnim"]="1070017263",["run.RunAnim"]="1070001516",["jump.JumpAnim"]="1069984524",["climb.ClimbAnim"]="1069946257",["fall.FallAnim"]="1069973677"},
+    Popstar = {["idle.Animation1"]="1212900985",["idle.Animation2"]="1150842221",["walk.WalkAnim"]="1212980338",["run.RunAnim"]="1212980348",["jump.JumpAnim"]="1212954642",["climb.ClimbAnim"]="1213044953",["fall.FallAnim"]="1212900995"},
+    Sneaky = {["idle.Animation1"]="1132473842",["idle.Animation2"]="1132477671",["walk.WalkAnim"]="1132510133",["run.RunAnim"]="1132494274",["jump.JumpAnim"]="1132489853",["climb.ClimbAnim"]="1132461372",["fall.FallAnim"]="1132469004"},
+    Princess = {["idle.Animation1"]="941003647",["idle.Animation2"]="941013098",["walk.WalkAnim"]="941028902",["run.RunAnim"]="941015281",["jump.JumpAnim"]="941008832",["climb.ClimbAnim"]="940996062",["fall.FallAnim"]="941000007"},
+    Cowboy = {["idle.Animation1"]="1014390418",["idle.Animation2"]="1014398616",["walk.WalkAnim"]="1014421541",["run.RunAnim"]="1014401683",["jump.JumpAnim"]="1014394726",["climb.ClimbAnim"]="1014380606",["fall.FallAnim"]="1014384571"},
+    Ghost = {["idle.Animation1"]="616006778",["idle.Animation2"]="616008087",["walk.WalkAnim"]="616013216",["run.RunAnim"]="616013216",["jump.JumpAnim"]="616008936",["fall.FallAnim"]="616005863",["swimidle.SwimIdle"]="616012453",["swim.Swim"]="616011509"},
+}
+
+local sy = 4
+for name, data in pairs(specialAnims) do
+    makeAnimationButton(specialTab, sy, name, data)
+    sy = sy + 28
+end
+specialTab.CanvasSize = UDim2.new(0, 0, 0, sy + 4)
+
+-- ========== ONGLET OTHER ==========
+local otherTab = makeTabContent()
+
+local otherAnims = {
+    ["None"] = {["idle.Animation1"]="0",["idle.Animation2"]="0",["walk.WalkAnim"]="0",["run.RunAnim"]="0",["jump.JumpAnim"]="0",["fall.FallAnim"]="0",["swimidle.SwimIdle"]="0",["swim.Swim"]="0"},
+    ["Anthro"] = {["idle.Animation1"]="2510196951",["idle.Animation2"]="2510197257",["walk.WalkAnim"]="2510202577",["run.RunAnim"]="2510198475",["jump.JumpAnim"]="2510197830",["climb.ClimbAnim"]="2510192778",["fall.FallAnim"]="2510195892",["swim.Swim"]="10921264784",["swimidle.SwimIdle"]="10921265698"},
+}
+
+local oy = 4
+for name, data in pairs(otherAnims) do
+    makeAnimationButton(otherTab, oy, name, data)
+    oy = oy + 28
+end
+otherTab.CanvasSize = UDim2.new(0, 0, 0, oy + 4)
+
+-- ========== GESTION DES ONGLETS ==========
+local function switchTab(tabName)
+    currentTab = tabName
+    normalTab.Visible = (tabName == "Normal")
+    specialTab.Visible = (tabName == "Special")
+    otherTab.Visible = (tabName == "Other")
+    
+    tabNormal.BackgroundColor3 = (tabName == "Normal") and COL_BLUE or COL_ROW
+    tabSpecial.BackgroundColor3 = (tabName == "Special") and COL_BLUE or COL_ROW
+    tabOther.BackgroundColor3 = (tabName == "Other") and COL_BLUE or COL_ROW
+end
+
+tabNormal.MouseButton1Click:Connect(function() switchTab("Normal") end)
+tabSpecial.MouseButton1Click:Connect(function() switchTab("Special") end)
+tabOther.MouseButton1Click:Connect(function() switchTab("Other") end)
+
+-- ========== RACCOURCI CLAVIER ==========
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        gui.Enabled = not gui.Enabled
+    end
+end)
+
+-- ========== RECUPERER ANIMATE SI RESPAWN ==========
+lp.CharacterAdded:Connect(function(char)
+    task.wait(0.5)
+    Animate = char:FindFirstChild("Animate")
+end)
+
+-- ========== ANIMATION BORDURES ==========
+RunService.RenderStepped:Connect(function()
+    local offset = Vector2.new(math.sin(tick() * 1.5), 0)
+    for _, g in ipairs(allStrokeGrads) do
+        g.Offset = offset
+    end
+end)
+
+-- ========== INIT ==========
+switchTab("Normal")

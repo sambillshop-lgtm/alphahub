@@ -1,0 +1,820 @@
+-- leaked by https://discord.gg/eZ5RcpXZ7c join for more sources
+
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+
+local pos1 = Vector3.new(-352.98, -7, 74.30)
+local pos2 = Vector3.new(-352.98, -6.49, 45.76)
+local standing1 = Vector3.new(-336.36, -4.59, 99.51)
+local standing2 = Vector3.new(-334.81, -4.59, 18.90)
+
+local spot1_sequence = {
+    CFrame.new(-370.810913, -7.00000334, 41.2687263, 0.99984771, 1.22364419e-09, 0.0174523517, -6.54859778e-10, 1, -3.2596418e-08, -0.0174523517, 3.25800258e-08, 0.99984771),
+    CFrame.new(-336.355286, -5.10107088, 17.2327671, -0.999883354, -2.76150569e-08, 0.0152716246, -2.88224964e-08, 1, -7.88441525e-08, -0.0152716246, -7.9275118e-08, -0.999883354)
+}
+local spot2_sequence = {
+    CFrame.new(-354.782867, -7.00000334, 92.8209305, -0.999997616, -1.11891862e-09, -0.00218066527, -1.11958298e-09, 1, 3.03415071e-10, 0.00218066527, 3.05855785e-10, -0.999997616),
+    CFrame.new(-336.942902, -5.10106993, 99.3276443, 0.999914348, -3.63984611e-08, 0.0130875716, 3.67094941e-08, 1, -2.35254749e-08, -0.0130875716, 2.40038975e-08, 0.999914348)
+}
+
+if CoreGui:FindFirstChild("HexSemiTPGui") then
+    CoreGui["HexSemiTPGui"]:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HexSemiTPGui"
+screenGui.ResetOnSpawn = false
+-- CRITICAL: Global mode means ZIndex is absolute, not relative to parent
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+screenGui.Parent = CoreGui
+
+-- ==================== ESP ====================
+local function createESPBox(position, labelText)
+    local espFolder = Instance.new("Folder")
+    espFolder.Name = "ESPBox_" .. labelText
+    espFolder.Parent = workspace
+    local box = Instance.new("Part")
+    box.Size = Vector3.new(5, 0.5, 5)
+    box.Position = position
+    box.Anchored = true
+    box.CanCollide = false
+    box.Transparency = 0.5
+    box.Material = Enum.Material.Neon
+    box.Color = Color3.fromRGB(100, 60, 180)
+    box.Parent = espFolder
+    local selectionBox = Instance.new("SelectionBox")
+    selectionBox.Adornee = box
+    selectionBox.LineThickness = 0.05
+    selectionBox.Color3 = Color3.fromRGB(100, 60, 180)
+    selectionBox.Parent = box
+    local billboard = Instance.new("BillboardGui")
+    billboard.Adornee = box
+    billboard.Size = UDim2.new(0, 150, 0, 40)
+    billboard.StudsOffset = Vector3.new(0, 2, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = box
+    local textLabel = Instance.new("TextLabel")
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
+    textLabel.BackgroundTransparency = 1
+    textLabel.Text = labelText
+    textLabel.TextColor3 = Color3.fromRGB(220, 200, 255)
+    textLabel.TextSize = 16
+    textLabel.Font = Enum.Font.GothamBold
+    textLabel.TextStrokeTransparency = 0.4
+    textLabel.TextStrokeColor3 = Color3.fromRGB(60, 0, 120)
+    textLabel.Parent = billboard
+    return espFolder
+end
+
+createESPBox(pos1, "Teleport Here")
+createESPBox(pos2, "Teleport Here")
+createESPBox(standing1, "Standing 1")
+createESPBox(standing2, "Standing 2")
+createESPBox(Vector3.new(-349.325867, -7.00000238, 95.0031433), "Auto tp Right")
+createESPBox(Vector3.new(-349.560211, -7.00000238, 27.0543289), "Auto tp Left")
+
+-- ==================== THEME ====================
+local C = {
+    bg         = Color3.fromRGB(10, 8, 16),
+    card       = Color3.fromRGB(22, 17, 34),
+    accent     = Color3.fromRGB(130, 70, 220),
+    accentSoft = Color3.fromRGB(90, 50, 160),
+    text       = Color3.fromRGB(235, 230, 245),
+    textMid    = Color3.fromRGB(170, 160, 190),
+    textDim    = Color3.fromRGB(100, 90, 120),
+    glow       = Color3.fromRGB(160, 80, 255),
+}
+
+-- ZIndex layers with Global mode:
+-- 2  = shadow
+-- 3  = particles (STAYS BELOW EVERYTHING)
+-- 5  = main frame bg
+-- 10 = dividers, section labels, progress bar bg
+-- 12 = progress fill
+-- 15 = toggle rows / button frames
+-- 20 = text inside rows/buttons
+-- 25 = pill toggles
+-- 30 = knobs
+
+-- ==================== MAIN FRAME ====================
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 248, 0, 252)
+mainFrame.Position = UDim2.new(1, -264, 0.5, -126)
+mainFrame.AnchorPoint = Vector2.new(0, 0.5)
+mainFrame.BackgroundColor3 = C.bg
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.ClipsDescendants = false
+mainFrame.ZIndex = 5
+mainFrame.Parent = screenGui
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 12)
+
+-- Bg gradient
+local bgGrad = Instance.new("UIGradient")
+bgGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 10, 24)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 6, 14)),
+})
+bgGrad.Rotation = 145
+bgGrad.Parent = mainFrame
+
+-- Outer glow shadow
+local shadow = Instance.new("ImageLabel")
+shadow.Size = UDim2.new(1, 40, 1, 40)
+shadow.Position = UDim2.new(0, -20, 0, -20)
+shadow.BackgroundTransparency = 1
+shadow.Image = "rbxassetid://5028857084"
+shadow.ImageColor3 = Color3.fromRGB(100, 40, 200)
+shadow.ImageTransparency = 0.55
+shadow.ScaleType = Enum.ScaleType.Slice
+shadow.SliceCenter = Rect.new(24, 24, 276, 276)
+shadow.ZIndex = 2
+shadow.Parent = mainFrame
+
+-- Animated spinning outline
+local outerStroke = Instance.new("UIStroke")
+outerStroke.Thickness = 2
+outerStroke.Color = C.accent
+outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+outerStroke.Parent = mainFrame
+
+local strokeGradient = Instance.new("UIGradient")
+strokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(210, 110, 255)),
+    ColorSequenceKeypoint.new(0.18, Color3.fromRGB(40, 15, 80)),
+    ColorSequenceKeypoint.new(0.36, Color3.fromRGB(190, 90, 255)),
+    ColorSequenceKeypoint.new(0.54, Color3.fromRGB(25, 10, 55)),
+    ColorSequenceKeypoint.new(0.72, Color3.fromRGB(220, 130, 255)),
+    ColorSequenceKeypoint.new(0.90, Color3.fromRGB(55, 18, 105)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(210, 110, 255)),
+})
+strokeGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0.00, 0.0),
+    NumberSequenceKeypoint.new(0.25, 0.45),
+    NumberSequenceKeypoint.new(0.50, 0.0),
+    NumberSequenceKeypoint.new(0.75, 0.45),
+    NumberSequenceKeypoint.new(1.00, 0.0),
+})
+strokeGradient.Parent = outerStroke
+
+task.spawn(function()
+    local rot = 0
+    while true do
+        task.wait(0.016)
+        rot = (rot + 1.8) % 360
+        strokeGradient.Rotation = rot
+    end
+end)
+
+-- ==================== PARTICLES (ZIndex 3 — always behind everything) ====================
+local particleContainer = Instance.new("Frame")
+particleContainer.Size = UDim2.new(1, 0, 1, 0)
+particleContainer.BackgroundTransparency = 1
+particleContainer.ClipsDescendants = true
+particleContainer.ZIndex = 3
+particleContainer.Parent = mainFrame
+Instance.new("UICorner", particleContainer).CornerRadius = UDim.new(0, 12)
+
+local particleList = {}
+for i = 1, 20 do
+    local p = Instance.new("Frame")
+    local sz = math.random(2, 5)
+    p.Size = UDim2.new(0, sz, 0, sz)
+    p.Position = UDim2.new(math.random(0, 100) / 100, 0, math.random(0, 100) / 100, 0)
+    local hue = math.random(265, 295) / 360
+    p.BackgroundColor3 = Color3.fromHSV(hue, 0.7, 1)
+    p.BorderSizePixel = 0
+    p.BackgroundTransparency = math.random(50, 80) / 100
+    p.ZIndex = 3
+    p.Parent = particleContainer
+    Instance.new("UICorner", p).CornerRadius = UDim.new(1, 0)
+    table.insert(particleList, {
+        p = p,
+        vx = math.random(-8, 8) / 1000,
+        vy = math.random(-8, 8) / 1000,
+        t  = math.random(0, 628) / 100,
+        amp = math.random(3, 8) / 10000,
+    })
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        for _, d in ipairs(particleList) do
+            if d.p and d.p.Parent then
+                d.t += 0.05
+                local px = (d.p.Position.X.Scale + d.vx + math.sin(d.t) * d.amp) % 1
+                local py = (d.p.Position.Y.Scale + d.vy + math.cos(d.t) * d.amp * 0.6) % 1
+                d.p.Position = UDim2.new(px, 0, py, 0)
+            end
+        end
+    end
+end)
+
+-- ==================== HEADER (ZIndex 10-12) ====================
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(0, 150, 0, 22)
+titleLabel.Position = UDim2.new(0, 14, 0, 12)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "HEX HUB"
+titleLabel.TextColor3 = C.text
+titleLabel.TextSize = 15
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.ZIndex = 12
+titleLabel.Parent = mainFrame
+
+local discordLabel = Instance.new("TextLabel")
+discordLabel.Size = UDim2.new(0, 150, 0, 16)
+discordLabel.Position = UDim2.new(0, 14, 0, 33)
+discordLabel.BackgroundTransparency = 1
+discordLabel.Text = "discord.gg/hexhub"
+discordLabel.TextSize = 11
+discordLabel.Font = Enum.Font.GothamMedium
+discordLabel.TextColor3 = Color3.fromRGB(180, 140, 230)
+discordLabel.TextXAlignment = Enum.TextXAlignment.Left
+discordLabel.ZIndex = 12
+discordLabel.Parent = mainFrame
+
+local discordGrad = Instance.new("UIGradient")
+discordGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.0, Color3.fromRGB(120, 70, 195)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(230, 175, 255)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(145, 95, 215)),
+    ColorSequenceKeypoint.new(1.0, Color3.fromRGB(205, 155, 255)),
+})
+discordGrad.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.05),
+    NumberSequenceKeypoint.new(0.45, 0),
+    NumberSequenceKeypoint.new(1, 0.15),
+})
+discordGrad.Parent = discordLabel
+
+task.spawn(function()
+    local r = 0
+    while true do
+        task.wait(0.016)
+        r = (r + 2.5) % 360
+        discordGrad.Rotation = r
+    end
+end)
+
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, -28, 0, 1)
+divider.Position = UDim2.new(0, 14, 0, 56)
+divider.BackgroundColor3 = Color3.fromRGB(50, 35, 70)
+divider.BorderSizePixel = 0
+divider.ZIndex = 10
+divider.Parent = mainFrame
+
+local divGrad = Instance.new("UIGradient")
+divGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 10, 25)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(110, 60, 180)),
+    ColorSequenceKeypoint.new(0.7, Color3.fromRGB(110, 60, 180)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 10, 25)),
+})
+divGrad.Parent = divider
+
+-- ==================== TOGGLE ROWS (ZIndex 15-30) ====================
+local semiTPEnabled = false
+local speedAfterSteal = false
+local speedConnection = nil
+local speedAfterStealValue = 29
+
+local toggleDefs = {
+    { label = "Half Tp",           yPos = 65 },
+    { label = "Speed After Steal", yPos = 94 },
+    { label = "Auto Potion",       yPos = 123 },
+}
+
+local function createToggleRow(def, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -28, 0, 24)
+    row.Position = UDim2.new(0, 14, 0, def.yPos)
+    row.BackgroundColor3 = C.card
+    row.BackgroundTransparency = 0.2
+    row.BorderSizePixel = 0
+    row.ZIndex = 15
+    row.Parent = mainFrame
+    Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+
+    local rowStroke = Instance.new("UIStroke", row)
+    rowStroke.Thickness = 1
+    rowStroke.Color = Color3.fromRGB(48, 33, 72)
+    rowStroke.Transparency = 0.2
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -56, 1, 0)
+    lbl.Position = UDim2.new(0, 11, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = def.label
+    lbl.TextColor3 = C.text
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.GothamSemibold
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.ZIndex = 20
+    lbl.Parent = row
+
+    local pill = Instance.new("TextButton")
+    pill.Size = UDim2.new(0, 38, 0, 20)
+    pill.Position = UDim2.new(1, -48, 0.5, -10)
+    pill.BackgroundColor3 = Color3.fromRGB(28, 20, 42)
+    pill.Text = ""
+    pill.BorderSizePixel = 0
+    pill.ZIndex = 25
+    pill.Parent = row
+    Instance.new("UICorner", pill).CornerRadius = UDim.new(1, 0)
+
+    local pillStroke = Instance.new("UIStroke", pill)
+    pillStroke.Thickness = 1
+    pillStroke.Color = Color3.fromRGB(58, 38, 88)
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 14, 0, 14)
+    knob.Position = UDim2.new(0, 3, 0.5, -7)
+    knob.BackgroundColor3 = Color3.fromRGB(120, 100, 155)
+    knob.BorderSizePixel = 0
+    knob.ZIndex = 30
+    knob.Parent = pill
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+    local active = false
+    pill.MouseButton1Click:Connect(function()
+        active = not active
+        local kPos   = active and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+        local pColor = active and C.accentSoft               or Color3.fromRGB(28, 20, 42)
+        local kColor = active and Color3.fromRGB(225, 205, 255) or Color3.fromRGB(120, 100, 155)
+        local sColor = active and C.accent                   or Color3.fromRGB(58, 38, 88)
+        TweenService:Create(knob, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = kPos, BackgroundColor3 = kColor}):Play()
+        TweenService:Create(pill, TweenInfo.new(0.18), {BackgroundColor3 = pColor}):Play()
+        TweenService:Create(pillStroke, TweenInfo.new(0.18), {Color = sColor}):Play()
+        callback(active)
+    end)
+end
+
+createToggleRow(toggleDefs[1], function(s) semiTPEnabled = s end)
+
+createToggleRow(toggleDefs[2], function(s)
+    speedAfterSteal = s
+    if s then
+        if speedConnection then speedConnection:Disconnect() end
+        speedConnection = RunService.Heartbeat:Connect(function()
+            if not speedAfterSteal then return end
+            if not player:GetAttribute("Stealing") then return end
+            local char = player.Character
+            if not char then return end
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            local root = char:FindFirstChild("HumanoidRootPart")
+            if not humanoid or not root then return end
+            local moveDir = humanoid.MoveDirection
+            if moveDir.Magnitude == 0 then return end
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            params.FilterDescendantsInstances = {char}
+            local grounded = workspace:Raycast(root.Position, Vector3.new(0, -4, 0), params) ~= nil
+            local cur = root.AssemblyLinearVelocity
+            local target = moveDir.Unit * speedAfterStealValue
+            local lerp = grounded and 0.35 or 0.25
+            local smoothed = Vector3.new(cur.X, 0, cur.Z):Lerp(target, lerp)
+            root.AssemblyLinearVelocity = Vector3.new(smoothed.X, cur.Y, smoothed.Z)
+        end)
+    else
+        if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+    end
+end)
+
+createToggleRow(toggleDefs[3], function(s) _G.AutoPotion = s end)
+
+-- ==================== SECTION LABEL ====================
+local sectionLabel = Instance.new("TextLabel")
+sectionLabel.Size = UDim2.new(1, -28, 0, 14)
+sectionLabel.Position = UDim2.new(0, 14, 0, 155)
+sectionLabel.BackgroundTransparency = 1
+sectionLabel.Text = "Semi Instant TP"
+sectionLabel.TextColor3 = C.textDim
+sectionLabel.TextSize = 9
+sectionLabel.Font = Enum.Font.GothamBold
+sectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+sectionLabel.ZIndex = 10
+sectionLabel.Parent = mainFrame
+
+-- ==================== STEAL BUTTONS (ZIndex 15-20) ====================
+local IsStealing = false
+local StealProgress = 0
+local CurrentStealTarget = nil
+
+local function makeBtn(label, xScale, xOffset, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.46, 0, 0, 34)
+    btn.Position = UDim2.new(xScale, xOffset, 0, 172)
+    btn.BackgroundColor3 = Color3.fromRGB(32, 22, 52)
+    btn.Text = ""
+    btn.BorderSizePixel = 0
+    btn.ZIndex = 15
+    btn.Parent = mainFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+    local bStroke = Instance.new("UIStroke", btn)
+    bStroke.Thickness = 1.2
+    bStroke.Color = C.accentSoft
+    bStroke.Transparency = 0.4
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.new(1, -16, 1, 0)
+    txt.Position = UDim2.new(0, 8, 0, 0)
+    txt.BackgroundTransparency = 1
+    txt.Text = label
+    txt.TextColor3 = C.text
+    txt.TextSize = 11
+    txt.Font = Enum.Font.GothamSemibold
+    txt.TextXAlignment = Enum.TextXAlignment.Center
+    txt.ZIndex = 20
+    txt.Parent = btn
+
+    btn.MouseEnter:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(52, 36, 84)}):Play()
+        TweenService:Create(bStroke, TweenInfo.new(0.12), {Transparency = 0.0}):Play()
+    end)
+    btn.MouseLeave:Connect(function()
+        TweenService:Create(btn, TweenInfo.new(0.18), {BackgroundColor3 = Color3.fromRGB(32, 22, 52)}):Play()
+        TweenService:Create(bStroke, TweenInfo.new(0.18), {Transparency = 0.4}):Play()
+    end)
+
+    btn.MouseButton1Click:Connect(callback)
+    return btn
+end
+
+-- ==================== PROGRESS BAR ====================
+local barBg = Instance.new("Frame")
+barBg.Size = UDim2.new(1, -28, 0, 10)
+barBg.Position = UDim2.new(0, 14, 0, 217)
+barBg.BackgroundColor3 = Color3.fromRGB(18, 13, 28)
+barBg.BorderSizePixel = 0
+barBg.ZIndex = 10
+barBg.Parent = mainFrame
+Instance.new("UICorner", barBg).CornerRadius = UDim.new(1, 0)
+
+local barStroke = Instance.new("UIStroke", barBg)
+barStroke.Thickness = 1
+barStroke.Color = Color3.fromRGB(48, 33, 70)
+barStroke.Transparency = 0.3
+
+local fill = Instance.new("Frame")
+fill.Size = UDim2.new(0, 0, 1, 0)
+fill.BackgroundColor3 = C.accent
+fill.BorderSizePixel = 0
+fill.ZIndex = 12
+fill.Parent = barBg
+Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+local fillGrad = Instance.new("UIGradient")
+fillGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(95, 45, 195)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(205, 135, 255)),
+})
+fillGrad.Parent = fill
+
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.5, 0, 0, 15)
+statusLabel.Position = UDim2.new(0, 14, 0, 231)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "IDLE"
+statusLabel.TextColor3 = C.textDim
+statusLabel.TextSize = 9
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.ZIndex = 10
+statusLabel.Parent = mainFrame
+
+local percentLabel = Instance.new("TextLabel")
+percentLabel.Size = UDim2.new(0.5, -14, 0, 15)
+percentLabel.Position = UDim2.new(0.5, 0, 0, 231)
+percentLabel.BackgroundTransparency = 1
+percentLabel.Text = "0%"
+percentLabel.TextColor3 = C.textMid
+percentLabel.TextSize = 9
+percentLabel.Font = Enum.Font.GothamBold
+percentLabel.TextXAlignment = Enum.TextXAlignment.Right
+percentLabel.ZIndex = 10
+percentLabel.Parent = mainFrame
+
+-- ==================== FOOTER ====================
+
+
+-- ==================== GAME LOGIC ====================
+local AnimalsData = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
+local allAnimalsCache = {}
+local PromptMemoryCache = {}
+local InternalStealCache = {}
+local AUTO_STEAL_PROX_RADIUS = 200
+
+local function ResetToWork()
+    local flags = {
+        {"GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "-5000"},
+        {"LargeReplicatorWrite5", "true"}, {"LargeReplicatorEnabled9", "true"},
+        {"AngularVelociryLimit", "360"}, {"TimestepArbiterVelocityCriteriaThresholdTwoDt", "2147483646"},
+        {"S2PhysicsSenderRate", "15000"}, {"DisableDPIScale", "true"},
+        {"MaxDataPacketPerSend", "2147483647"}, {"ServerMaxBandwith", "52"},
+        {"PhysicsSenderMaxBandwidthBps", "20000"}, {"MaxTimestepMultiplierBuoyancy", "2147483647"},
+        {"SimOwnedNOUCountThresholdMillionth", "2147483647"}, {"MaxMissedWorldStepsRemembered", "-2147483648"},
+        {"CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth", "1"},
+        {"StreamJobNOUVolumeLengthCap", "2147483647"}, {"DebugSendDistInSteps", "-2147483648"},
+        {"MaxTimestepMultiplierAcceleration", "2147483647"}, {"LargeReplicatorRead5", "true"},
+        {"SimExplicitlyCappedTimestepMultiplier", "2147483646"}, {"GameNetDontSendRedundantNumTimes", "1"},
+        {"CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent", "1"},
+        {"CheckPVCachedRotVelThresholdPercent", "10"}, {"LargeReplicatorSerializeRead3", "true"},
+        {"ReplicationFocusNouExtentsSizeCutoffForPauseStuds", "2147483647"},
+        {"NextGenReplicatorEnabledWrite4", "true"},
+        {"CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth", "1"},
+        {"GameNetDontSendRedundantDeltaPositionMillionth", "1"},
+        {"InterpolationFrameVelocityThresholdMillionth", "5"},
+        {"StreamJobNOUVolumeCap", "2147483647"}, {"InterpolationFrameRotVelocityThresholdMillionth", "5"},
+        {"WorldStepMax", "30"}, {"TimestepArbiterHumanoidLinearVelThreshold", "1"},
+        {"InterpolationFramePositionThresholdMillionth", "5"},
+        {"TimestepArbiterHumanoidTurningVelThreshold", "1"},
+        {"MaxTimestepMultiplierContstraint", "2147483647"},
+        {"GameNetPVHeaderLinearVelocityZeroCutoffExponent", "-5000"},
+        {"CheckPVCachedVelThresholdPercent", "10"}, {"TimestepArbiterOmegaThou", "1073741823"},
+        {"MaxAcceptableUpdateDelay", "1"}, {"LargeReplicatorSerializeWrite4", "true"},
+    }
+    for _, data in ipairs(flags) do
+        pcall(function() if setfflag then setfflag(data[1], data[2]) end end)
+    end
+    local char = player.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Dead) end
+        char:ClearAllChildren()
+        local f = Instance.new("Model", workspace)
+        player.Character = f task.wait()
+        player.Character = char f:Destroy()
+    end
+end
+
+local function getHRP()
+    local char = player.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso")
+end
+
+local function isMyBase(plotName)
+    local plot = workspace.Plots:FindFirstChild(plotName)
+    if not plot then return false end
+    local sign = plot:FindFirstChild("PlotSign")
+    return sign and sign:FindFirstChild("YourBase") and sign.YourBase.Enabled
+end
+
+local function scanSinglePlot(plot)
+    if not plot or not plot:IsA("Model") or isMyBase(plot.Name) then return end
+    local podiums = plot:FindFirstChild("AnimalPodiums")
+    if not podiums then return end
+    for _, podium in ipairs(podiums:GetChildren()) do
+        if podium:IsA("Model") and podium:FindFirstChild("Base") then
+            table.insert(allAnimalsCache, {
+                plot = plot.Name, slot = podium.Name,
+                worldPosition = podium:GetPivot().Position,
+                uid = plot.Name .. "_" .. podium.Name,
+            })
+        end
+    end
+end
+
+local function initializeScanner()
+    task.wait(2)
+    local plots = workspace:WaitForChild("Plots", 10)
+    for _, plot in ipairs(plots:GetChildren()) do scanSinglePlot(plot) end
+    plots.ChildAdded:Connect(scanSinglePlot)
+    task.spawn(function()
+        while task.wait(3) do
+            table.clear(allAnimalsCache)
+            for _, plot in ipairs(plots:GetChildren()) do scanSinglePlot(plot) end
+        end
+    end)
+end
+
+local function findPrompt(animal)
+    local cached = PromptMemoryCache[animal.uid]
+    if cached and cached.Parent then return cached end
+    local plot = workspace.Plots:FindFirstChild(animal.plot)
+    local podium = plot and plot.AnimalPodiums:FindFirstChild(animal.slot)
+    local prompt = podium and podium.Base.Spawn.PromptAttachment:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then PromptMemoryCache[animal.uid] = prompt end
+    return prompt
+end
+
+local function buildStealCallbacks(prompt)
+    if InternalStealCache[prompt] then return end
+    local data = { holdCallbacks = {}, triggerCallbacks = {}, ready = true }
+    local ok1, conns1 = pcall(getconnections, prompt.PromptButtonHoldBegan)
+    if ok1 and type(conns1) == "table" then
+        for _, conn in ipairs(conns1) do
+            if type(conn.Function) == "function" then table.insert(data.holdCallbacks, conn.Function) end
+        end
+    end
+    local ok2, conns2 = pcall(getconnections, prompt.Triggered)
+    if ok2 and type(conns2) == "table" then
+        for _, conn in ipairs(conns2) do
+            if type(conn.Function) == "function" then table.insert(data.triggerCallbacks, conn.Function) end
+        end
+    end
+    if #data.holdCallbacks > 0 or #data.triggerCallbacks > 0 then
+        InternalStealCache[prompt] = data
+    end
+end
+
+local function executeInternalStealAsync(prompt, animalData, sequence)
+    local data = InternalStealCache[prompt]
+    if not data or not data.ready then return false end
+    data.ready = false
+    IsStealing = true
+    StealProgress = 0
+    CurrentStealTarget = animalData
+    task.spawn(function()
+        for _, fn in ipairs(data.holdCallbacks) do task.spawn(fn) end
+        local startTime = tick()
+        local tpDone = false
+        while tick() - startTime < 1.3 do
+            StealProgress = (tick() - startTime) / 1.3
+            if StealProgress >= 0.73 and not tpDone then
+                tpDone = true
+                local hrp = getHRP()
+                if hrp then
+                    hrp.CFrame = sequence[1]
+                    task.wait(0.1)
+                    hrp.CFrame = sequence[2]
+                    task.wait(0.2)
+                    local d1 = (hrp.Position - pos1).Magnitude
+                    local d2 = (hrp.Position - pos2).Magnitude
+                    hrp.CFrame = CFrame.new(d1 < d2 and pos1 or pos2)
+                end
+            end
+            task.wait(0.05)
+        end
+        StealProgress = 1
+        for _, fn in ipairs(data.triggerCallbacks) do task.spawn(fn) end
+        task.wait(0.1)
+        data.ready = true
+        task.wait(0.3)
+        IsStealing = false
+        StealProgress = 0
+        CurrentStealTarget = nil
+    end)
+    return true
+end
+
+local function attemptSteal(prompt, animalData, sequence)
+    if not prompt or not prompt.Parent then return false end
+    buildStealCallbacks(prompt)
+    if not InternalStealCache[prompt] then return false end
+    return executeInternalStealAsync(prompt, animalData, sequence)
+end
+
+local function getNearestAnimal()
+    local hrp = getHRP()
+    if not hrp then return nil end
+    local nearest, dist = nil, math.huge
+    for _, animal in ipairs(allAnimalsCache) do
+        local d = (hrp.Position - animal.worldPosition).Magnitude
+        if d < dist and d <= AUTO_STEAL_PROX_RADIUS then
+            dist = d nearest = animal
+        end
+    end
+    return nearest
+end
+
+-- Progress bar update
+task.spawn(function()
+    while true do
+        task.wait(0.02)
+        local pct = math.clamp(StealProgress, 0, 1)
+        fill.Size = UDim2.new(pct, 0, 1, 0)
+        percentLabel.Text = math.floor(pct * 100 + 0.5) .. "%"
+        if IsStealing then
+            statusLabel.Text = "STEALING"
+            statusLabel.TextColor3 = Color3.fromRGB(200, 150, 255)
+        else
+            statusLabel.Text = "IDLE"
+            statusLabel.TextColor3 = C.textDim
+        end
+    end
+end)
+
+-- Create steal buttons
+makeBtn("Auto tp Left", 0.04, 0, function()
+    if IsStealing then return end
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local bp = player:FindFirstChild("Backpack")
+    if hum and bp then
+        local carpet = bp:FindFirstChild("Flying Carpet")
+        if carpet then hum:EquipTool(carpet); task.wait(0.05) end
+    end
+    local animal = getNearestAnimal()
+    if not animal then return end
+    local prompt = findPrompt(animal)
+    if not prompt then return end
+    attemptSteal(prompt, animal, spot1_sequence)
+end)
+
+makeBtn("Auto tp Right", 0.51, 0, function()
+    if IsStealing then return end
+    local char = player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local bp = player:FindFirstChild("Backpack")
+    if hum and bp then
+        local carpet = bp:FindFirstChild("Flying Carpet")
+        if carpet then hum:EquipTool(carpet); task.wait(0.05) end
+    end
+    local animal = getNearestAnimal()
+    if not animal then return end
+    local prompt = findPrompt(animal)
+    if not prompt then return end
+    attemptSteal(prompt, animal, spot2_sequence)
+end)
+
+-- ==================== PROXIMITY HOOKS ====================
+local currentEquipTask = nil
+local isHolding = false
+
+ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt, plr)
+    if plr ~= player or not semiTPEnabled then return end
+    isHolding = true
+    if currentEquipTask then task.cancel(currentEquipTask) end
+    currentEquipTask = task.spawn(function()
+        task.wait(1)
+        if isHolding and semiTPEnabled then
+            local bp = player:WaitForChild("Backpack", 2)
+            if bp then
+                local carpet = bp:FindFirstChild("Flying Carpet")
+                if carpet and player.Character and player.Character:FindFirstChild("Humanoid") then
+                    player.Character.Humanoid:EquipTool(carpet)
+                end
+            end
+        end
+    end)
+end)
+
+ProximityPromptService.PromptButtonHoldEnded:Connect(function(prompt, plr)
+    if plr ~= player then return end
+    isHolding = false
+    if currentEquipTask then task.cancel(currentEquipTask) end
+end)
+
+ProximityPromptService.PromptTriggered:Connect(function(prompt, plr)
+    if plr ~= player or not semiTPEnabled then return end
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if root then
+        local d1 = (root.Position - pos1).Magnitude
+        local d2 = (root.Position - pos2).Magnitude
+        root.CFrame = CFrame.new(d1 < d2 and pos1 or pos2)
+        if _G.AutoPotion then
+            local bp = player:FindFirstChild("Backpack")
+            if bp then
+                local potion = bp:FindFirstChild("Giant Potion")
+                if potion and player.Character and player.Character:FindFirstChild("Humanoid") then
+                    player.Character.Humanoid:EquipTool(potion)
+                    task.wait(0)
+                    pcall(function() potion:Activate() end)
+                end
+            end
+        end
+    end
+    isHolding = false
+end)
+
+-- ==================== DRAG ====================
+local dragging, dragStart, startPos
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ==================== STARTUP ====================
+task.spawn(function() task.wait(1) ResetToWork() end)
+initializeScanner()
+
+print("hex hub semi tp loaded")

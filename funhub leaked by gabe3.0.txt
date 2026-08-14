@@ -1,0 +1,1062 @@
+local cloneref = cloneref or function(object) return object end
+local Players           = cloneref(game:GetService("Players"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService        = cloneref(game:GetService("RunService"))
+local UserInputService  = cloneref(game:GetService("UserInputService"))
+local HttpService       = cloneref(game:GetService("HttpService"))
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+if getgenv and getgenv().StopAura then pcall(getgenv().StopAura) end
+
+-- CONFIGURATION SYSTEM --
+local CONFIG_FILE = "funhub_code_sniper_config.json"
+local savedConfig = {
+    codeSniper = true,
+    autoSubmit = true,
+    submitAfter = 1,
+    riddleSolver = false,
+    caseMode = "EXACT",
+    speedMode = "MAX",
+}
+pcall(function()
+    if type(isfile) == "function" and type(readfile) == "function"
+    and isfile(CONFIG_FILE) then
+        local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE))
+        if type(decoded) == "table" then
+            if type(decoded.codeSniper) == "boolean" then savedConfig.codeSniper = decoded.codeSniper end
+            if type(decoded.autoSubmit) == "boolean" then savedConfig.autoSubmit = decoded.autoSubmit end
+            if type(decoded.submitAfter) == "number" then savedConfig.submitAfter = math.max(1, math.floor(decoded.submitAfter)) end
+            if type(decoded.riddleSolver) == "boolean" then savedConfig.riddleSolver = decoded.riddleSolver end
+            if type(decoded.caseMode) == "string" then savedConfig.caseMode = decoded.caseMode end
+            if type(decoded.speedMode) == "string" then savedConfig.speedMode = decoded.speedMode end
+        end
+    end
+end)
+
+local function saveConfig()
+    if type(writefile) ~= "function" then return end
+    pcall(function()
+        writefile(CONFIG_FILE, HttpService:JSONEncode({
+            codeSniper = savedConfig.codeSniper,
+            autoSubmit = savedConfig.autoSubmit,
+            submitAfter = savedConfig.submitAfter,
+            riddleSolver = savedConfig.riddleSolver,
+            caseMode = savedConfig.caseMode,
+            speedMode = savedConfig.speedMode,
+        }))
+    end)
+end
+
+-- STATE VARIABLES --
+local _enabled              = savedConfig.codeSniper
+local _seen                 = {}
+local _focused              = nil
+local _lastBox              = nil
+local _autoAccept           = savedConfig.autoSubmit
+local _submitAfter          = savedConfig.submitAfter
+local _capturedParts        = {}
+local _lastWatchedBox       = nil
+local _boxTextConn          = nil
+local _boxAncestryConn      = nil
+local _boxVisibilityConns   = {}
+local _riddleSolver         = savedConfig.riddleSolver
+local _lastNonBlankBoxText  = ""
+local FUNHUB_CASE_MODE      = savedConfig.caseMode
+local FUNHUB_SPEED_MODE     = savedConfig.speedMode
+local FUNHUB_WORD_COUNT     = savedConfig.submitAfter
+
+local getupvalues = (debug and debug.getupvalues) or getupvalues
+local getconns    = getconnections or (debug and debug.getconnections)
+local setupv      = (debug and debug.setupvalue) or setupvalue
+
+local setStatus, flashCode, appendToBox
+local clearFunhubCapture
+local _lastStatusMsg = nil
+
+-- UTILITY & REDEEM LOGIC --
+local function isOurGui(instance)
+    local p = instance
+    for _ = 1, 10 do
+        if not p then break end
+        if p.Name == "FunhubCodeSniperUI" or p.Name == "ACECodeSniperUI" or p.Name == "SourcesHubRedeemerGui" then return true end
+        p = p.Parent
+    end
+    return false
+end
+
+local function isVisibleChain(inst)
+    local current = inst
+    while current do
+        if current:IsA("GuiObject") and not current.Visible then return false end
+        if current:IsA("ScreenGui") then return current.Enabled end
+        current = current.Parent
+    end
+    return true
+end
+
+local function findAllTextBoxes(pg)
+    local boxes = {}
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled and not isOurGui(gui) then
+            for _, d in ipairs(gui:GetDescendants()) do
+                if d:IsA("TextBox") and not isOurGui(d) then
+                    boxes[#boxes+1] = d
+                end
+            end
+        end
+    end
+    return boxes
+end
+
+local function findCodeButtons(pg)
+    local btns = {}
+    for _, gui in ipairs(pg:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled and not isOurGui(gui) then
+            for _, d in ipairs(gui:GetDescendants()) do
+                if (d:IsA("TextButton") or d:IsA("ImageButton")) and not isOurGui(d) then
+                    local n  = d.Name:lower()
+                    local pn = (d.Parent and d.Parent.Name or ""):lower()
+                    if (n:find("code") or n:find("redeem") or pn:find("code") or pn:find("redeem"))
+                        and isVisibleChain(d) then
+                        btns[#btns+1] = d
+                    end
+                end
+            end
+        end
+    end
+    return btns
+end
+
+local function clickButton(btn)
+    if not btn then return false end
+    local methods = {}
+    
+    methods[#methods+1] = function() btn.MouseButton1Click:Fire() end
+    methods[#methods+1] = function() btn.Activated:Fire() end
+    
+    if typeof(firesignal) == "function" then
+        methods[#methods+1] = function() firesignal(btn.MouseButton1Click) end
+        methods[#methods+1] = function() firesignal(btn.Activated) end
+    end
+    
+    if typeof(getconns) == "function" then
+        methods[#methods+1] = function()
+            local ok, cs = pcall(getconns, btn.MouseButton1Click)
+            if ok and type(cs) == "table" then
+                for _, c in ipairs(cs) do pcall(function() c:Fire() end) end
+            end
+            local ok2, cs2 = pcall(getconns, btn.Activated)
+            if ok2 and type(cs2) == "table" then
+                for _, c in ipairs(cs2) do pcall(function() c:Fire() end) end
+            end
+        end
+    end
+    
+    if typeof(fireclick) == "function" then
+        methods[#methods+1] = function() fireclick(btn) end
+    end
+    
+    local anyOk = false
+    for _, fn in ipairs(methods) do
+        local ok = pcall(fn)
+        anyOk = anyOk or ok
+    end
+    return anyOk
+end
+
+local function fireBoxFocusLost(box)
+    if not box then return false end
+    local anyFired = false
+    
+    if typeof(firesignal) == "function" then
+        local ok = pcall(firesignal, box.FocusLost, true)
+        anyFired = anyFired or ok
+    end
+    
+    if typeof(getconns) == "function" then
+        local ok, cs = pcall(getconns, box.FocusLost)
+        if ok and type(cs) == "table" then
+            for _, c in ipairs(cs) do
+                local fn
+                pcall(function() fn = c.Function end)
+                if fn and typeof(getupvalues) == "function" and typeof(setupv) == "function" then
+                    local uOk, ups = pcall(getupvalues, fn)
+                    if uOk and type(ups) == "table" then
+                        for i, v in pairs(ups) do
+                            if type(v) == "boolean" and v == true then
+                                pcall(setupv, fn, i, false)
+                            end
+                        end
+                    end
+                end
+                local fOk = pcall(function()
+                    if c.Enabled ~= false then c:Fire(true) end
+                end)
+                anyFired = anyFired or fOk
+            end
+        end
+    end
+    
+    return anyFired
+end
+
+local function typeAndSubmitCode(code)
+    local pg = playerGui or player:FindFirstChildOfClass("PlayerGui")
+    if not pg then return false, "no PlayerGui" end
+
+    local codesGui = pg:FindFirstChild("Codes")
+    if codesGui then
+        if codesGui:IsA("ScreenGui") then codesGui.Enabled = true end
+        local codesFrame = codesGui:FindFirstChild("Codes") or codesGui
+        if codesFrame then
+            if codesFrame:IsA("GuiObject") then codesFrame.Visible = true end
+            local cur = codesFrame
+            while cur and cur ~= codesGui do
+                if cur:IsA("GuiObject") then cur.Visible = true end
+                cur = cur.Parent
+            end
+
+            local box = nil
+            for _, d in ipairs(codesFrame:GetDescendants()) do
+                if d:IsA("TextBox") and not isOurGui(d) then
+                    box = d
+                    break
+                end
+            end
+
+            local submitBtn = nil
+            for _, d in ipairs(codesFrame:GetDescendants()) do
+                if (d:IsA("TextButton") or d:IsA("ImageButton")) and not isOurGui(d) then
+                    local n = d.Name:lower()
+                    local txt = ""
+                    pcall(function() txt = d.Text:lower() end)
+                    if n:find("submit") or txt:find("submit") or n:find("redeem") or txt:find("redeem") or n:find("claim") or txt:find("confirm") or n:find("enter") then
+                        submitBtn = d
+                        break
+                    end
+                end
+            end
+            if not submitBtn then
+                for _, d in ipairs(codesFrame:GetDescendants()) do
+                    if (d:IsA("TextButton") or d:IsA("ImageButton")) and not isOurGui(d) then
+                        local n = d.Name:lower()
+                        if not n:find("close") and not n:find("x") and not n:find("toggle") then
+                            submitBtn = d
+                            break
+                        end
+                    end
+                end
+            end
+
+            if box then
+                pcall(function() box.Text = code end)
+                task.wait(0.05)
+                if submitBtn then clickButton(submitBtn) end
+                fireBoxFocusLost(box)
+                return true, "submitted via PlayerGui.Codes"
+            end
+        end
+    end
+
+    local btns = findCodeButtons(pg)
+    for _, btn in ipairs(btns) do
+        clickButton(btn)
+        task.wait(0.05)
+    end
+
+    task.wait(0.2)
+
+    local box = nil
+    local deadline = tick() + 2
+    while tick() < deadline do
+        local allBoxes = findAllTextBoxes(pg)
+        for _, d in ipairs(allBoxes) do
+            if isVisibleChain(d) then
+                local n  = d.Name:lower()
+                local pn = (d.Parent and d.Parent.Name or ""):lower()
+                if n:find("code") or pn:find("code") or n:find("redeem") or pn:find("redeem") or n:find("input") or pn:find("textbox") or n:find("enter") then
+                    box = d
+                    break
+                end
+            end
+        end
+        if not box then
+            for _, d in ipairs(allBoxes) do
+                if isVisibleChain(d) then box = d; break end
+            end
+        end
+        if box then break end
+        task.wait(0.1)
+    end
+
+    if not box then return false, "no codebox visible" end
+
+    pcall(function() box.Text = code end)
+    task.wait(0.05)
+
+    local redeemBtn = nil
+    local searchNames = {"submit","redeem","claim","confirm","enter","send","apply","ok","use","go","check"}
+    local p = box.Parent
+    for _ = 1, 8 do
+        if not p then break end
+        for _, d in ipairs(p:GetDescendants()) do
+            if (d:IsA("TextButton") or d:IsA("ImageButton")) and not isOurGui(d) and d ~= box then
+                local n = d.Name:lower()
+                local txt = ""
+                pcall(function() txt = d.Text:lower() end)
+                for _, sn in ipairs(searchNames) do
+                    if n:find(sn) or txt:find(sn) then
+                        if isVisibleChain(d) then
+                            redeemBtn = d
+                            break
+                        end
+                    end
+                end
+                if redeemBtn then break end
+            end
+        end
+        if redeemBtn then break end
+        p = p.Parent
+    end
+
+    if redeemBtn then clickButton(redeemBtn) end
+    fireBoxFocusLost(box)
+
+    return true, "submitted via dynamic search"
+end
+
+local function funhubCodeBox()
+    local pg = playerGui
+    local allBoxes = findAllTextBoxes(pg)
+    for _, box in ipairs(allBoxes) do
+        if isVisibleChain(box) then return box end
+    end
+    return nil
+end
+
+-- THEME & COLORS (Matched to Funhub GUI Theme) --
+local COLORS = {
+    Window = Color3.fromRGB(11, 16, 30),
+    CardBg = Color3.fromRGB(17, 24, 44),
+    Control = Color3.fromRGB(24, 34, 61),
+    Border = Color3.fromRGB(36, 52, 92),
+    White = Color3.fromRGB(255, 255, 255),
+    Text = Color3.fromRGB(200, 215, 255),
+    Dim = Color3.fromRGB(130, 145, 180),
+    Accent = Color3.fromRGB(77, 158, 255),
+    Green = Color3.fromRGB(80, 230, 140),
+    Red = Color3.fromRGB(255, 90, 90),
+}
+
+local function addCorner(parent, radius)
+    local value = Instance.new("UICorner")
+    value.CornerRadius = UDim.new(0, radius)
+    value.Parent = parent
+    return value
+end
+
+local function addStroke(parent, color, thickness, transparency)
+    local value = Instance.new("UIStroke")
+    value.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    value.Color = color
+    value.Thickness = thickness or 1
+    value.Transparency = transparency or 0
+    value.Parent = parent
+    return value
+end
+
+local function makeLabel(parent, name, text, size, position, textSize, color, font)
+    local label = Instance.new("TextLabel")
+    label.Name = name
+    label.Size = size
+    label.Position = position
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextSize = textSize
+    label.TextColor3 = color
+    label.Font = font or Enum.Font.GothamMedium
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextYAlignment = Enum.TextYAlignment.Center
+    label.Parent = parent
+    return label
+end
+
+-- CLEANUP OLD GUIS --
+pcall(function()
+    for _, name in ipairs({"FunhubCodeSniperUI", "ACECodeSniperUI", "AutoTypeCodesUI", "ACEPaste"}) do
+        local previous = game.CoreGui:FindFirstChild(name)
+        if previous then previous:Destroy() end
+    end
+end)
+for _, name in ipairs({"FunhubCodeSniperUI", "ACECodeSniperUI", "AutoTypeCodesUI", "ACEPaste"}) do
+    local previous = playerGui:FindFirstChild(name)
+    if previous then previous:Destroy() end
+end
+
+-- MAIN GUI CREATION (FUNHUB THEME & LAYOUT) --
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "FunhubCodeSniperUI"
+GUI.ResetOnSpawn = false
+GUI.IgnoreGuiInset = true
+GUI.DisplayOrder = 999
+if not pcall(function() GUI.Parent = game.CoreGui end) then GUI.Parent = playerGui end
+
+local Window = Instance.new("Frame")
+Window.Name = "Window"
+Window.Size = UDim2.fromOffset(400, 390)
+Window.AnchorPoint = Vector2.new(1, 0)
+Window.Position = UDim2.new(1, -12, 0, 12)
+Window.BackgroundColor3 = COLORS.Window
+Window.BorderSizePixel = 0
+Window.ClipsDescendants = true
+Window.Parent = GUI
+addCorner(Window, 12)
+addStroke(Window, COLORS.Border, 1.5, 0.2)
+
+local InterfaceScale = Instance.new("UIScale")
+InterfaceScale.Name = "InterfaceScale"
+InterfaceScale.Scale = 1.0
+InterfaceScale.Parent = Window
+
+local viewportConnection
+local function updateInterfaceScale()
+    local camera = workspace.CurrentCamera
+    if not camera then InterfaceScale.Scale = 1.0; return end
+    local viewport = camera.ViewportSize
+    local fitScale = math.min((viewport.X - 20) / 400, (viewport.Y - 20) / 390)
+    if UserInputService.TouchEnabled then
+        InterfaceScale.Scale = math.max(0.5, math.min(0.85, fitScale))
+    else
+        InterfaceScale.Scale = 1.0
+    end
+end
+
+local function watchViewport()
+    if viewportConnection then viewportConnection:Disconnect(); viewportConnection = nil end
+    local camera = workspace.CurrentCamera
+    if camera then viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateInterfaceScale) end
+    updateInterfaceScale()
+end
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(watchViewport)
+watchViewport()
+
+-- HEADER --
+local Header = Instance.new("Frame")
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 48)
+Header.BackgroundTransparency = 1
+Header.Active = true
+Header.ZIndex = 3
+Header.Parent = Window
+
+local BrandMark = Instance.new("Frame")
+BrandMark.Name = "BrandMark"
+BrandMark.Size = UDim2.fromOffset(26, 26)
+BrandMark.Position = UDim2.fromOffset(14, 11)
+BrandMark.BackgroundColor3 = COLORS.Accent
+BrandMark.BorderSizePixel = 0
+BrandMark.Parent = Header
+addCorner(BrandMark, 6)
+
+local BrandLetter = makeLabel(BrandMark, "Letter", "F", UDim2.fromScale(1, 1), UDim2.fromOffset(0, 0), 14, COLORS.White, Enum.Font.GothamBold)
+BrandLetter.TextXAlignment = Enum.TextXAlignment.Center
+
+makeLabel(Header, "Title", "FUNHUB CODE SNIPER", UDim2.fromOffset(230, 25), UDim2.fromOffset(50, 12), 14, COLORS.White, Enum.Font.GothamBold)
+
+-- MINIMIZE / CLOSE BUTTON (FUNHUB STYLE (-) ICON) --
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.fromOffset(28, 28)
+MinimizeButton.Position = UDim2.new(1, -38, 0, 10)
+MinimizeButton.BackgroundColor3 = COLORS.Control
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Text = "-"
+MinimizeButton.TextSize = 18
+MinimizeButton.TextColor3 = COLORS.Text
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.ZIndex = 5
+MinimizeButton.Parent = Header
+addCorner(MinimizeButton, 14)
+addStroke(MinimizeButton, COLORS.Border, 1, 0.4)
+
+local windowVisible = true
+local function toggleMinimize()
+    windowVisible = not windowVisible
+    for _, child in ipairs(Window:GetChildren()) do
+        if child ~= Header and child ~= InterfaceScale then
+            child.Visible = windowVisible
+        end
+    end
+    Window.Size = windowVisible and UDim2.fromOffset(400, 390) or UDim2.fromOffset(400, 48)
+end
+MinimizeButton.Activated:Connect(toggleMinimize)
+MinimizeButton.MouseButton1Click:Connect(toggleMinimize)
+
+-- MAIN CONTENT LAYOUT (SPLIT PANE: CONTROLS & LOG) --
+local LeftContainer = Instance.new("ScrollingFrame")
+LeftContainer.Name = "LeftContainer"
+LeftContainer.Size = UDim2.new(0, 178, 1, -85)
+LeftContainer.Position = UDim2.fromOffset(12, 52)
+LeftContainer.BackgroundTransparency = 1
+LeftContainer.BorderSizePixel = 0
+LeftContainer.ScrollBarThickness = 3
+LeftContainer.ScrollBarImageColor3 = COLORS.Border
+LeftContainer.CanvasSize = UDim2.new(0, 0, 0, 310)
+LeftContainer.Parent = Window
+
+local RightContainer = Instance.new("Frame")
+RightContainer.Name = "RightContainer"
+RightContainer.Size = UDim2.new(1, -200, 1, -85)
+RightContainer.Position = UDim2.new(0, 196, 0, 52)
+RightContainer.BackgroundColor3 = COLORS.CardBg
+RightContainer.BackgroundTransparency = 0.3
+RightContainer.BorderSizePixel = 0
+RightContainer.Parent = Window
+addCorner(RightContainer, 8)
+addStroke(RightContainer, COLORS.Border, 1, 0.5)
+
+-- CONTROLS CREATION (MATCHING LABELS & TOGGLES FROM GUI) --
+local currentY = 0
+
+local function createToggleRow(name, labelText, defaultState, callback)
+    local row = Instance.new("Frame")
+    row.Name = name
+    row.Size = UDim2.new(1, 0, 0, 36)
+    row.Position = UDim2.fromOffset(0, currentY)
+    row.BackgroundColor3 = COLORS.CardBg
+    row.BorderSizePixel = 0
+    row.Parent = LeftContainer
+    addCorner(row, 6)
+    addStroke(row, COLORS.Border, 1, 0.6)
+
+    makeLabel(row, "Label", labelText, UDim2.new(1, -45, 1, 0), UDim2.fromOffset(10, 0), 11, COLORS.White, Enum.Font.GothamMedium)
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "Toggle"
+    toggleBtn.Size = UDim2.fromOffset(36, 20)
+    toggleBtn.Position = UDim2.new(1, -42, 0.5, -10)
+    toggleBtn.BackgroundColor3 = defaultState and COLORS.Accent or COLORS.Control
+    toggleBtn.BorderSizePixel = 0
+    toggleBtn.AutoButtonColor = false
+    toggleBtn.Text = ""
+    toggleBtn.Parent = row
+    addCorner(toggleBtn, 10)
+
+    local knob = Instance.new("Frame")
+    knob.Name = "Knob"
+    knob.Size = UDim2.fromOffset(16, 16)
+    knob.Position = defaultState and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = COLORS.White
+    knob.BorderSizePixel = 0
+    knob.Parent = toggleBtn
+    addCorner(knob, 8)
+
+    local state = defaultState
+    local function fireToggle()
+        state = not state
+        toggleBtn.BackgroundColor3 = state and COLORS.Accent or COLORS.Control
+        knob.Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+        if callback then callback(state) end
+    end
+
+    toggleBtn.Activated:Connect(fireToggle)
+    toggleBtn.MouseButton1Click:Connect(fireToggle)
+
+    currentY = currentY + 44
+    return row
+end
+
+-- 1. Auto Submit Toggle
+createToggleRow("AutoSubmitRow", "Auto submit", _autoAccept, function(state)
+    _autoAccept = state
+    savedConfig.autoSubmit = state
+    saveConfig()
+end)
+
+-- 2. Riddle Solver Toggle
+createToggleRow("RiddleSolverRow", "Riddle solver", _riddleSolver, function(state)
+    _riddleSolver = state
+    savedConfig.riddleSolver = state
+    saveConfig()
+end)
+
+-- 3. Words Counter Row (- 1 +)
+local wordsRow = Instance.new("Frame")
+wordsRow.Name = "WordsRow"
+wordsRow.Size = UDim2.new(1, 0, 0, 52)
+wordsRow.Position = UDim2.fromOffset(0, currentY)
+wordsRow.BackgroundColor3 = COLORS.CardBg
+wordsRow.BorderSizePixel = 0
+wordsRow.Parent = LeftContainer
+addCorner(wordsRow, 6)
+addStroke(wordsRow, COLORS.Border, 1, 0.6)
+
+makeLabel(wordsRow, "Label", "Words", UDim2.new(1, 0, 0, 20), UDim2.fromOffset(10, 4), 11, COLORS.White, Enum.Font.GothamMedium)
+
+local counterFrame = Instance.new("Frame")
+counterFrame.Name = "Counter"
+counterFrame.Size = UDim2.new(1, -16, 0, 24)
+counterFrame.Position = UDim2.fromOffset(8, 24)
+counterFrame.BackgroundTransparency = 1
+counterFrame.Parent = wordsRow
+
+local minusBtn = Instance.new("TextButton")
+minusBtn.Name = "Minus"
+minusBtn.Size = UDim2.fromOffset(24, 24)
+minusBtn.Position = UDim2.fromOffset(0, 0)
+minusBtn.BackgroundColor3 = COLORS.Control
+minusBtn.BorderSizePixel = 0
+minusBtn.AutoButtonColor = false
+minusBtn.Text = "-"
+minusBtn.TextSize = 14
+minusBtn.TextColor3 = COLORS.Text
+minusBtn.Font = Enum.Font.GothamBold
+minusBtn.Parent = counterFrame
+addCorner(minusBtn, 4)
+
+local countLabel = makeLabel(counterFrame, "Count", tostring(FUNHUB_WORD_COUNT), UDim2.new(1, -48, 1, 0), UDim2.fromOffset(24, 0), 12, COLORS.White, Enum.Font.GothamBold)
+countLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+local plusBtn = Instance.new("TextButton")
+plusBtn.Name = "Plus"
+plusBtn.Size = UDim2.fromOffset(24, 24)
+plusBtn.Position = UDim2.new(1, -24, 0, 0)
+plusBtn.BackgroundColor3 = COLORS.Control
+plusBtn.BorderSizePixel = 0
+plusBtn.AutoButtonColor = false
+plusBtn.Text = "+"
+plusBtn.TextSize = 14
+plusBtn.TextColor3 = COLORS.Text
+plusBtn.Font = Enum.Font.GothamBold
+plusBtn.Parent = counterFrame
+addCorner(plusBtn, 4)
+
+minusBtn.MouseButton1Click:Connect(function()
+    FUNHUB_WORD_COUNT = math.max(1, FUNHUB_WORD_COUNT - 1)
+    _submitAfter = FUNHUB_WORD_COUNT
+    countLabel.Text = tostring(FUNHUB_WORD_COUNT)
+    savedConfig.submitAfter = FUNHUB_WORD_COUNT
+    saveConfig()
+end)
+
+plusBtn.MouseButton1Click:Connect(function()
+    FUNHUB_WORD_COUNT = FUNHUB_WORD_COUNT + 1
+    _submitAfter = FUNHUB_WORD_COUNT
+    countLabel.Text = tostring(FUNHUB_WORD_COUNT)
+    savedConfig.submitAfter = FUNHUB_WORD_COUNT
+    saveConfig()
+end)
+
+currentY = currentY + 60
+
+-- 4. Case Selection Row (EXACT)
+local caseRow = Instance.new("Frame")
+caseRow.Name = "CaseRow"
+caseRow.Size = UDim2.new(1, 0, 0, 36)
+caseRow.Position = UDim2.fromOffset(0, currentY)
+caseRow.BackgroundColor3 = COLORS.CardBg
+caseRow.BorderSizePixel = 0
+caseRow.Parent = LeftContainer
+addCorner(caseRow, 6)
+addStroke(caseRow, COLORS.Border, 1, 0.6)
+
+makeLabel(caseRow, "Label", "Case", UDim2.new(0, 50, 1, 0), UDim2.fromOffset(10, 0), 11, COLORS.White, Enum.Font.GothamMedium)
+
+local caseBtn = Instance.new("TextButton")
+caseBtn.Name = "CaseBtn"
+caseBtn.Size = UDim2.fromOffset(72, 22)
+caseBtn.Position = UDim2.new(1, -80, 0.5, -11)
+caseBtn.BackgroundColor3 = COLORS.Control
+caseBtn.BorderSizePixel = 0
+caseBtn.AutoButtonColor = false
+caseBtn.Text = FUNHUB_CASE_MODE
+caseBtn.TextSize = 10
+caseBtn.TextColor3 = COLORS.Accent
+caseBtn.Font = Enum.Font.GothamBold
+caseBtn.Parent = caseRow
+addCorner(caseBtn, 4)
+
+caseBtn.MouseButton1Click:Connect(function()
+    if FUNHUB_CASE_MODE == "EXACT" then FUNHUB_CASE_MODE = "LOWER" else FUNHUB_CASE_MODE = "EXACT" end
+    caseBtn.Text = FUNHUB_CASE_MODE
+    savedConfig.caseMode = FUNHUB_CASE_MODE
+    saveConfig()
+end)
+
+currentY = currentY + 44
+
+-- 5. Speed Selection Row (MAX)
+local speedRow = Instance.new("Frame")
+speedRow.Name = "SpeedRow"
+speedRow.Size = UDim2.new(1, 0, 0, 36)
+speedRow.Position = UDim2.fromOffset(0, currentY)
+speedRow.BackgroundColor3 = COLORS.CardBg
+speedRow.BorderSizePixel = 0
+speedRow.Parent = LeftContainer
+addCorner(speedRow, 6)
+addStroke(speedRow, COLORS.Border, 1, 0.6)
+
+makeLabel(speedRow, "Label", "Speed", UDim2.new(0, 50, 1, 0), UDim2.fromOffset(10, 0), 11, COLORS.White, Enum.Font.GothamMedium)
+
+local speedBtn = Instance.new("TextButton")
+speedBtn.Name = "SpeedBtn"
+speedBtn.Size = UDim2.fromOffset(72, 22)
+speedBtn.Position = UDim2.new(1, -80, 0.5, -11)
+speedBtn.BackgroundColor3 = COLORS.Control
+speedBtn.BorderSizePixel = 0
+speedBtn.AutoButtonColor = false
+speedBtn.Text = FUNHUB_SPEED_MODE
+speedBtn.TextSize = 10
+speedBtn.TextColor3 = COLORS.Accent
+speedBtn.Font = Enum.Font.GothamBold
+speedBtn.Parent = speedRow
+addCorner(speedBtn, 4)
+
+speedBtn.MouseButton1Click:Connect(function()
+    if FUNHUB_SPEED_MODE == "MAX" then FUNHUB_SPEED_MODE = "FAST" else FUNHUB_SPEED_MODE = "MAX" end
+    speedBtn.Text = FUNHUB_SPEED_MODE
+    savedConfig.speedMode = FUNHUB_SPEED_MODE
+    saveConfig()
+end)
+
+currentY = currentY + 44
+
+-- 6. Clear Pasted Row (C)
+local clearRow = Instance.new("Frame")
+clearRow.Name = "ClearRow"
+clearRow.Size = UDim2.new(1, 0, 0, 36)
+clearRow.Position = UDim2.fromOffset(0, currentY)
+clearRow.BackgroundColor3 = COLORS.CardBg
+clearRow.BorderSizePixel = 0
+clearRow.Parent = LeftContainer
+addCorner(clearRow, 6)
+addStroke(clearRow, COLORS.Border, 1, 0.6)
+
+makeLabel(clearRow, "Label", "Clear pasted", UDim2.new(1, -40, 1, 0), UDim2.fromOffset(10, 0), 11, COLORS.White, Enum.Font.GothamMedium)
+
+local clearBtn = Instance.new("TextButton")
+clearBtn.Name = "ClearBtn"
+clearBtn.Size = UDim2.fromOffset(26, 22)
+clearBtn.Position = UDim2.new(1, -34, 0.5, -11)
+clearBtn.BackgroundColor3 = COLORS.Control
+clearBtn.BorderSizePixel = 0
+clearBtn.AutoButtonColor = false
+clearBtn.Text = "C"
+clearBtn.TextSize = 11
+clearBtn.TextColor3 = COLORS.Text
+clearBtn.Font = Enum.Font.GothamBold
+clearBtn.Parent = clearRow
+addCorner(clearBtn, 4)
+
+clearBtn.MouseButton1Click:Connect(function()
+    if clearFunhubCapture then clearFunhubCapture() end
+    setStatus("Cleared pasted cache", COLORS.Dim)
+end)
+
+LeftContainer.CanvasSize = UDim2.new(0, 0, 0, currentY + 10)
+
+-- RIGHT PANE CONSOLE / TERMINAL OUTPUT (MATCHING THE THEME & LABELS) --
+local Console = Instance.new("ScrollingFrame")
+Console.Name = "Console"
+Console.Size = UDim2.new(1, -16, 1, -16)
+Console.Position = UDim2.fromOffset(8, 8)
+Console.BackgroundTransparency = 1
+Console.BorderSizePixel = 0
+Console.ClipsDescendants = true
+Console.Active = true
+Console.ScrollingEnabled = true
+Console.ScrollingDirection = Enum.ScrollingDirection.Y
+Console.CanvasSize = UDim2.new(0, 0, 0, 0)
+Console.ScrollBarThickness = 3
+Console.ScrollBarImageColor3 = COLORS.Border
+Console.Parent = RightContainer
+
+local ConsoleOutput = Instance.new("TextLabel")
+ConsoleOutput.Name = "ConsoleOutput"
+ConsoleOutput.Size = UDim2.new(1, 0, 0, 0)
+ConsoleOutput.AutomaticSize = Enum.AutomaticSize.Y
+ConsoleOutput.Position = UDim2.fromOffset(0, 0)
+ConsoleOutput.BackgroundTransparency = 1
+ConsoleOutput.RichText = true
+ConsoleOutput.Text = '<font color="rgb(235,140,80)">» Riddle solver OFF</font>\n\nPasted 1/1\n\n<font color="rgb(80,230,140)">[code] -> Taco</font>\n\n<font color="rgb(130,145,180)">Redeemed: Taco</font>'
+ConsoleOutput.TextSize = 12
+ConsoleOutput.Font = Enum.Font.Code
+ConsoleOutput.TextColor3 = COLORS.Text
+ConsoleOutput.TextXAlignment = Enum.TextXAlignment.Left
+ConsoleOutput.TextYAlignment = Enum.TextYAlignment.Top
+ConsoleOutput.TextWrapped = true
+ConsoleOutput.Parent = Console
+
+ConsoleOutput:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+    Console.CanvasSize = UDim2.new(0, 0, 0, ConsoleOutput.AbsoluteSize.Y + 20)
+end)
+
+-- BOTTOM FOOTER & SCALE BAR --
+local DiscordFooter = makeLabel(Window, "DiscordFooter", "discord.gg/funhub", UDim2.fromOffset(160, 18), UDim2.new(0, 12, 1, -28), 10, COLORS.Dim, Enum.Font.GothamMedium)
+
+local ScaleContainer = Instance.new("Frame")
+ScaleContainer.Name = "ScaleContainer"
+ScaleContainer.Size = UDim2.fromOffset(120, 24)
+ScaleContainer.Position = UDim2.new(1, -132, 1, -30)
+ScaleContainer.BackgroundTransparency = 1
+ScaleContainer.Parent = Window
+
+makeLabel(ScaleContainer, "ScaleLabel", "scale", UDim2.fromOffset(36, 24), UDim2.fromOffset(0, 0), 10, COLORS.Dim, Enum.Font.GothamMedium)
+
+local ScaleValueBox = Instance.new("TextButton")
+ScaleValueBox.Name = "ScaleValue"
+ScaleValueBox.Size = UDim2.fromOffset(76, 22)
+ScaleValueBox.Position = UDim2.fromOffset(44, 1)
+ScaleValueBox.BackgroundColor3 = COLORS.CardBg
+ScaleValueBox.BorderSizePixel = 0
+ScaleValueBox.AutoButtonColor = false
+ScaleValueBox.Text = string.format("%.1f", InterfaceScale.Scale)
+ScaleValueBox.TextSize = 11
+ScaleValueBox.TextColor3 = COLORS.White
+ScaleValueBox.Font = Enum.Font.GothamBold
+ScaleValueBox.Parent = ScaleContainer
+addCorner(ScaleValueBox, 6)
+addStroke(ScaleValueBox, COLORS.Border, 1, 0.4)
+
+ScaleValueBox.MouseButton1Click:Connect(function()
+    if InterfaceScale.Scale >= 1.0 then
+        InterfaceScale.Scale = 0.8
+    elseif InterfaceScale.Scale >= 0.8 then
+        InterfaceScale.Scale = 0.6
+    else
+        InterfaceScale.Scale = 1.0
+    end
+    ScaleValueBox.Text = string.format("%.1f", InterfaceScale.Scale)
+end)
+
+-- WINDOW DRAGGING SYSTEM --
+do
+    local dragging = false
+    local dragInput, dragStart, startPos
+
+    Header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = Window.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Window.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- CONSOLE LOGGING HELPERS --
+local function col3ToRich(col)
+    return string.format("rgb(%d,%d,%d)", math.floor(col.R * 255 + 0.5), math.floor(col.G * 255 + 0.5), math.floor(col.B * 255 + 0.5))
+end
+
+function setStatus(msg, col)
+    if not ConsoleOutput or not _enabled then return end
+    if msg == _lastStatusMsg then return end
+    _lastStatusMsg = msg
+    col = col or COLORS.Dim
+    local line = '<font color="' .. col3ToRich(col) .. '">' .. tostring(msg) .. "</font>"
+    if ConsoleOutput.Text == "" then ConsoleOutput.Text = line
+    else ConsoleOutput.Text = ConsoleOutput.Text .. "\n\n" .. line end
+    task.defer(function()
+        if Console then Console.CanvasPosition = Vector2.new(0, math.max(0, Console.AbsoluteCanvasSize.Y - Console.AbsoluteWindowSize.Y)) end
+    end)
+end
+
+function flashCode(code, col)
+    if not code or code == "" or code == "—" then return end
+    setStatus("[code] -> " .. tostring(code), col or COLORS.White)
+end
+
+local function resetPasteCounter() _capturedParts = {} end
+clearFunhubCapture = function() _capturedParts = {} end
+
+local function clearBoxWatchers()
+    if _boxTextConn then pcall(function() _boxTextConn:Disconnect() end) end
+    if _boxAncestryConn then pcall(function() _boxAncestryConn:Disconnect() end) end
+    for _, connection in ipairs(_boxVisibilityConns) do pcall(function() connection:Disconnect() end) end
+    _boxTextConn = nil
+    _boxAncestryConn = nil
+    _boxVisibilityConns = {}
+    _lastWatchedBox = nil
+end
+
+local function watchBoxForBlankReset(box)
+    if not box or _lastWatchedBox == box then return end
+    clearBoxWatchers()
+    _lastWatchedBox = box
+    if box.Text ~= "" then _lastNonBlankBoxText = box.Text end
+    _boxTextConn = box:GetPropertyChangedSignal("Text"):Connect(function()
+        if box.Text == "" then resetPasteCounter()
+        else _lastNonBlankBoxText = box.Text end
+    end)
+    _boxAncestryConn = box.AncestryChanged:Connect(function(_, parent)
+        if not parent then resetPasteCounter(); clearBoxWatchers() end
+    end)
+end
+
+UserInputService.TextBoxFocused:Connect(function(box)
+    if box:IsDescendantOf(GUI) then return end
+    if box ~= funhubCodeBox() then return end
+    _focused = box
+    _lastBox = box
+    watchBoxForBlankReset(box)
+    if _enabled then setStatus("Ready", COLORS.Green) end
+end)
+
+UserInputService.TextBoxFocusReleased:Connect(function(box)
+    if box:IsDescendantOf(GUI) then return end
+    local codeBox = funhubCodeBox()
+    if box ~= codeBox and box ~= _lastBox then return end
+    if _focused == box then
+        _focused = nil
+        if _enabled then
+            setStatus((_lastBox and _lastBox.Parent) and "Ready" or "Click code box first", (_lastBox and _lastBox.Parent) and COLORS.Green or COLORS.Dim)
+        end
+    end
+end)
+
+function appendToBox(text)
+    if not text or text == "" then return end
+    if FUNHUB_CASE_MODE == "LOWER" then
+        text = text:lower()
+    end
+    if _lastWatchedBox and not isVisibleChain(_lastWatchedBox) then
+        resetPasteCounter()
+        clearBoxWatchers()
+    end
+    local box = funhubCodeBox()
+    _capturedParts[#_capturedParts + 1] = text
+    local combinedCode = table.concat(_capturedParts)
+    local capturedCount = #_capturedParts
+
+    if box then
+        _lastBox = box
+        watchBoxForBlankReset(box)
+        local boxWasFocused = UserInputService:GetFocusedTextBox() == box
+        box.Text = combinedCode
+        if boxWasFocused then
+            pcall(function()
+                local caretEnd = #combinedCode + 1
+                box.CursorPosition = caretEnd
+                box.SelectionStart = caretEnd
+            end)
+        end
+    else
+        setStatus("Captured; searching UI...", COLORS.Text)
+    end
+
+    setStatus("Pasted " .. tostring(capturedCount) .. "/" .. tostring(FUNHUB_WORD_COUNT), COLORS.Green)
+    flashCode(combinedCode, COLORS.Green)
+
+    if capturedCount >= FUNHUB_WORD_COUNT then
+        _capturedParts = {}
+        if _autoAccept then
+            local ok, statusMsg = typeAndSubmitCode(combinedCode)
+            if ok then
+                setStatus("Redeemed: " .. combinedCode, COLORS.Green)
+            else
+                setStatus("Failed: " .. tostring(statusMsg), COLORS.Red)
+            end
+        end
+    end
+end
+
+-- NOTIFICATION LISTENER INTEGRATION --
+local function resolveNotifyRemote()
+    if _G.PhiNotifyRemote then return _G.PhiNotifyRemote end
+    local Net = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Net")
+    local getinfo = debug and (debug.getinfo or debug.info)
+    if getgc and getinfo and getconnections then
+        for _, d in ipairs(Net:GetDescendants()) do
+            if d:IsA("RemoteEvent") then
+                local ok, cs = pcall(getconnections, d.OnClientEvent)
+                if ok then
+                    for _, c in ipairs(cs) do
+                        local f, fn = pcall(function() return c.Function end)
+                        if f and type(fn) == "function" then
+                            local i, info = pcall(getinfo, fn)
+                            if i and tostring(info.short_src or info.source or ""):find("NotificationController", 1, true) then
+                                return d
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function funhubStripRich(text)
+    if type(text) ~= "string" then return tostring(text) end
+    return (text:gsub("<[^>]->", ""))
+end
+
+local function funhubTokenize(text)
+    local words = {}
+    for word in text:gmatch("[%w_]+") do
+        words[#words + 1] = word
+    end
+    return words
+end
+
+local funhubCollectBuffer = {}
+local function onFunhubAnnouncement(...)
+    local text = funhubStripRich(tostring((...) or ""))
+    text = text:match("^%s*(.-)%s*$") or ""
+    if text == "" or text:find("%s") then return end
+    
+    for _, word in ipairs(funhubTokenize(text)) do
+        funhubCollectBuffer[#funhubCollectBuffer + 1] = word
+    end
+    
+    local parts = {}
+    for index = 1, math.min(#funhubCollectBuffer, FUNHUB_WORD_COUNT) do
+        parts[index] = funhubCollectBuffer[index]
+    end
+    if #funhubCollectBuffer < FUNHUB_WORD_COUNT then return end
+    funhubCollectBuffer = {}
+    
+    local captured = table.concat(parts)
+    if captured == "" or _seen[captured] then return end
+    _seen[captured] = true
+    task.delay(1.25, function() _seen[captured] = nil end)
+    appendToBox(captured)
+end
+
+local funhubNotifyRemote = resolveNotifyRemote()
+local funhubListenConnection
+if funhubNotifyRemote then
+    if getgenv then
+        local previous = getgenv().FunhubCodeSniperNotifyConnection
+        if previous then pcall(function() previous:Disconnect() end) end
+    end
+    funhubListenConnection = funhubNotifyRemote.OnClientEvent:Connect(function(...)
+        if not _enabled then return end
+        pcall(onFunhubAnnouncement, ...)
+    end)
+    if getgenv then getgenv().FunhubCodeSniperNotifyConnection = funhubListenConnection end
+end
+
+if getgenv then
+    getgenv().StopAura = function()
+        if funhubListenConnection then
+            pcall(function() funhubListenConnection:Disconnect() end)
+            funhubListenConnection = nil
+        end
+        if GUI then GUI:Destroy() end
+    end
+end

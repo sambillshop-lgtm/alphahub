@@ -1,0 +1,46 @@
+@here 
+PrimaryModel = "qwen",
+    RiddleURL = "https://sab-riddle-solver.xyrcheatz.workers.dev",
+    RiddleToken = "0facce8d7ac3a4b6fc4b6ae068b3b219883009780cb2ca31",
+
+local function aiPost(path, body)
+    if not httpRequest then return nil end
+    local ok, res = pcall(httpRequest, {
+        Url = CONFIG.RiddleURL .. path,
+        Method = "POST",
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["Authorization"] = "Bearer " .. CONFIG.RiddleToken,
+        },
+        Body = HttpService:JSONEncode(body),
+    })
+    if not ok or type(res) ~= "table" then return nil end
+    local raw = res.Body or res.body
+    if type(raw) ~= "string" then return nil end
+    local okd, data = pcall(function() return HttpService:JSONDecode(raw) end)
+    if okd and type(data) == "table" then return data end
+    return nil
+end
+
+local function solveMessage(message, seq, hist)
+    solving = solving + 1
+    if updateStatus then updateStatus() end
+    task.spawn(function()
+        local model = CONFIG.RaceModels and CONFIG.BackupModel or CONFIG.PrimaryModel
+        local data = aiPost("/solve", { message = message, model = model, history = hist })
+        solving = math.max(0, solving - 1)
+        if updateStatus then updateStatus() end
+        if not running then return end
+        local top = (data and data.riddle == true and type(data.answers) == "table" and data.answers[1]) and normalizeCode(data.answers[1]) or nil
+        if top and #top > 0 and CONFIG.Enabled and CONFIG.AIRiddles and seq >= lastTypedSeq then
+            lastTypedSeq = seq
+            lastSubmitted = { msg = message, ans = top, at = os.clock() }
+            solvedCount = solvedCount + 1
+            local sent = submitRiddleAnswer(top)
+            if updateStatus then updateStatus() end
+            if logFeed then logFeed(message, "solved", top) end
+        elseif not top or #top == 0 then
+            if logFeed then logFeed(message, "skip") end
+        end
+    end)
+end
