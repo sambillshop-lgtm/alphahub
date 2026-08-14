@@ -1,0 +1,233 @@
+-- // VISION SPEED BYPASS LEAKED BY CZ HUB discord.gg/p3E77CCeJE//
+
+-- // 1 (Services) //
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+-- // 2 (Player + state) //
+local lp = Players.LocalPlayer
+local activated = false
+local keybind = Enum.KeyCode.V
+local waitingForKey = false
+local power = 97000
+local lagAmount = 0.12
+local lagConn = nil
+
+-- // 3 (Map power to lag amount) //
+local function applyPower(val)
+	power = math.clamp(val, 10000, 500000)
+	local t = (power - 10000) / 490000
+	lagAmount = t * 0.2
+end
+
+applyPower(power)
+
+-- // 4 (Start / stop lag) //
+local function startLag()
+	if lagConn then lagConn:Disconnect() end
+
+	lagConn = RunService.RenderStepped:Connect(function()
+		if not activated then return end
+		if lagAmount > 0 then
+			local t = tick()
+			while tick() - t < lagAmount do end
+		end
+	end)
+end
+
+local function stopLag()
+	activated = false
+	if lagConn then lagConn:Disconnect(); lagConn = nil end
+end
+
+-- // 5 (Cleanup) //
+if CoreGui:FindFirstChild("VisionSpeedBypass") then
+	CoreGui.VisionSpeedBypass:Destroy()
+end
+
+-- // 6 (ScreenGui) //
+local gui = Instance.new("ScreenGui")
+gui.Name = "VisionSpeedBypass"
+gui.ResetOnSpawn = false
+gui.Parent = CoreGui
+
+-- // 7 (Main frame - SMALLER SQUARE 180x180) //
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 180, 0, 180)
+main.Position = UDim2.new(0.5, -90, 0.5, -90)
+main.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.ClipsDescendants = true
+main.Parent = gui
+
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 10)
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Thickness = 1.5
+mainStroke.Color = Color3.fromRGB(50, 50, 60)
+mainStroke.Parent = main
+
+-- // 8 (Title) //
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 32)
+title.Position = UDim2.new(0, 0, 0, 5)
+title.BackgroundTransparency = 1
+title.Text = "Vision Speed Bypass"
+title.TextColor3 = Color3.fromRGB(160, 80, 220)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
+title.Parent = main
+
+-- // 9 (Enable button) //
+local enableBtn = Instance.new("TextButton")
+enableBtn.Size = UDim2.new(0.9, 0, 0, 34)
+enableBtn.Position = UDim2.new(0.05, 0, 0, 42)
+enableBtn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+enableBtn.Text = "Enable"
+enableBtn.TextColor3 = Color3.new(1, 1, 1)
+enableBtn.Font = Enum.Font.GothamBold
+enableBtn.TextSize = 12
+enableBtn.BorderSizePixel = 0
+enableBtn.AutoButtonColor = false
+enableBtn.Parent = main
+
+Instance.new("UICorner", enableBtn).CornerRadius = UDim.new(0, 8)
+
+-- // 10 (Row helper) //
+local function createRow(yPos, labelText)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(0.9, 0, 0, 30)
+	row.Position = UDim2.new(0.05, 0, 0, yPos)
+	row.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+	row.BorderSizePixel = 0
+	row.Parent = main
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(0.5, 0, 1, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = labelText
+	label.TextColor3 = Color3.fromRGB(200, 200, 200)
+	label.Font = Enum.Font.GothamMedium
+	label.TextSize = 10
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = row
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.Parent = label
+
+	return row, label
+end
+
+-- // 11 (Version row) //
+local versionRow, versionLabel = createRow(81, "Version")
+local versionBtn = Instance.new("TextButton")
+versionBtn.Size = UDim2.new(0.4, 0, 0.7, 0)
+versionBtn.Position = UDim2.new(0.55, 0, 0.15, 0)
+versionBtn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+versionBtn.Text = "V1"
+versionBtn.TextColor3 = Color3.new(1, 1, 1)
+versionBtn.Font = Enum.Font.GothamBold
+versionBtn.TextSize = 11
+versionBtn.BorderSizePixel = 0
+versionBtn.AutoButtonColor = false
+versionBtn.Parent = versionRow
+Instance.new("UICorner", versionBtn).CornerRadius = UDim.new(0, 6)
+
+-- // 12 (Power row) //
+local powerRow, powerLabel = createRow(115, "Power")
+local powerBox = Instance.new("TextBox")
+powerBox.Size = UDim2.new(0.4, 0, 0.7, 0)
+powerBox.Position = UDim2.new(0.55, 0, 0.15, 0)
+powerBox.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+powerBox.Text = tostring(power)
+powerBox.TextColor3 = Color3.new(1, 1, 1)
+powerBox.Font = Enum.Font.GothamBold
+powerBox.TextSize = 12
+powerBox.BorderSizePixel = 0
+powerBox.ClearTextOnFocus = false
+powerBox.Parent = powerRow
+Instance.new("UICorner", powerBox).CornerRadius = UDim.new(0, 6)
+
+powerBox.FocusLost:Connect(function()
+	local val = tonumber(powerBox.Text)
+	if val then
+		applyPower(val)
+		powerBox.Text = tostring(power)
+	else
+		powerBox.Text = tostring(power)
+	end
+end)
+
+-- // 13 (Keybind row) //
+local kbRow, kbLabel = createRow(149, "Keybind")
+local kbBtn = Instance.new("TextButton")
+kbBtn.Size = UDim2.new(0.4, 0, 0.7, 0)
+kbBtn.Position = UDim2.new(0.55, 0, 0.15, 0)
+kbBtn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+kbBtn.Text = keybind.Name
+kbBtn.TextColor3 = Color3.new(1, 1, 1)
+kbBtn.Font = Enum.Font.GothamBold
+kbBtn.TextSize = 12
+kbBtn.BorderSizePixel = 0
+kbBtn.AutoButtonColor = false
+kbBtn.Parent = kbRow
+Instance.new("UICorner", kbBtn).CornerRadius = UDim.new(0, 6)
+
+kbBtn.MouseButton1Click:Connect(function()
+	waitingForKey = true
+	kbBtn.Text = "..."
+	kbBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
+end)
+
+-- // 14 (Toggle logic) //
+local function toggle()
+	if not activated then
+		activated = true
+		enableBtn.Text = "Disable"
+		enableBtn.BackgroundColor3 = Color3.fromRGB(200, 70, 70)
+		startLag()
+	else
+		stopLag()
+		enableBtn.Text = "Enable"
+		enableBtn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+	end
+end
+
+enableBtn.MouseButton1Click:Connect(toggle)
+
+-- // 15 (Input listener) //
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if waitingForKey then
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			keybind = input.KeyCode
+			kbBtn.Text = keybind.Name
+			kbBtn.BackgroundColor3 = Color3.fromRGB(140, 70, 200)
+			waitingForKey = false
+		end
+		return
+	end
+	if input.KeyCode == keybind then
+		toggle()
+	end
+end)
+
+-- // 16 (Re-apply on respawn) //
+lp.CharacterAdded:Connect(function()
+	task.wait(1)
+	if activated then
+		stopLag()
+		activated = true
+		startLag()
+	end
+end)
+
+-- // 17 (End) //
