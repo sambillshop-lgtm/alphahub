@@ -1,0 +1,356 @@
+local Workspace           = game:GetService("Workspace")
+local Players             = game:GetService("Players")
+local TweenService        = game:GetService("TweenService")
+local UserInputService    = game:GetService("UserInputService")
+local TeleportService     = game:GetService("TeleportService")
+local HttpService         = game:GetService("HttpService")
+local LP                  = Players.LocalPlayer
+
+local G = (getgenv and getgenv()) or _G
+G.AutoHoneyEnabled  = true -- Auto-turned on when script executes
+G.ServerHopEnabled  = G.ServerHopEnabled or false
+G.__HoneyRun        = (G.__HoneyRun or 0) + 1
+local myToken       = G.__HoneyRun
+
+local TARGET_PLACE_ID = 109983668079237
+
+local setStatus, setState
+
+local OFF_COLOR = Color3.fromRGB(58, 58, 72)
+local ON_COLOR  = Color3.fromRGB(255, 180, 55)
+local ACCENT_A  = Color3.fromRGB(255, 170, 0)
+local ACCENT_B  = Color3.fromRGB(255, 215, 60)
+local MUTED     = Color3.fromRGB(140, 140, 158)
+
+local function corner(o, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o end
+local function tween(o, t, p) TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), p):Play() end
+
+local function getRoot()
+    local char = LP.Character
+    return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso"))
+end
+
+local function getHumanoid()
+    local char = LP.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function equipCoil()
+    local char = LP.Character
+    local backpack = LP:FindFirstChild("Backpack")
+    if not char or not backpack then return end
+
+    if char:FindFirstChild("Coil Combo") or char:FindFirstChild("Speed Coil") then
+        return
+    end
+
+    local coil = backpack:FindFirstChild("Coil Combo") or backpack:FindFirstChild("Speed Coil")
+    if not coil then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") and item.Name:lower():find("coil") then
+                coil = item
+                break
+            end
+        end
+    end
+
+    local hum = getHumanoid()
+    if coil and hum then
+        hum:EquipTool(coil)
+    end
+end
+
+local function touchHoney(honeyModel)
+    local root = getRoot()
+    if not root then return end
+    
+    local touchPart = honeyModel.PrimaryPart or honeyModel:FindFirstChildWhichIsA("BasePart")
+    if not touchPart then return end
+
+    if firetouchinterest then
+        firetouchinterest(root, touchPart, 0)
+        task.wait(0.02)
+        firetouchinterest(root, touchPart, 1)
+    end
+end
+
+local function collectHoneyInstance(honey)
+    if not honey or not honey.Parent then return end
+    local root = getRoot()
+    local hum = getHumanoid()
+    if not root then return end
+
+    local pos = honey:GetPivot().Position
+
+    equipCoil()
+    if hum then
+        hum:MoveTo(pos)
+        local reached = false
+        local conn = hum.MoveToFinished:Connect(function() reached = true end)
+        
+        local t0 = os.clock()
+        local lastPos = root.Position
+        local lastCheckTime = os.clock()
+
+        while G.AutoHoneyEnabled and not reached and honey.Parent and (os.clock() - t0 < 6) do
+            if (root.Position - pos).Magnitude < 4 then
+                break
+            end
+
+            if os.clock() - lastCheckTime >= 1.5 then
+                local distMoved = (root.Position - lastPos).Magnitude
+                if distMoved < 1.0 then
+                    conn:Disconnect()
+                    if hum then hum.Health = 0 end
+                    break
+                end
+                lastPos = root.Position
+                lastCheckTime = os.clock()
+            end
+
+            task.wait(0.05)
+        end
+        if conn.Connected then
+            conn:Disconnect()
+        end
+        touchHoney(honey)
+    end
+end
+
+local function hopToSmallServer()
+    setStatus("Hopping to small server...", Color3.fromRGB(255, 100, 100))
+    local success, err = pcall(function()
+        local url = ("https://games.roblox.com/v1/games/%d/servers/0?sortOrder=Asc&limit=100"):format(TARGET_PLACE_ID)
+        local raw = game:HttpGet(url)
+        local body = HttpService:JSONDecode(raw)
+        
+        if body and body.data then
+            for _, server in ipairs(body.data) do
+                if server.playing and server.playing < server.maxPlayers and server.id ~= game.JobId then
+                    TeleportService:TeleportToPlaceInstance(TARGET_PLACE_ID, server.id, LP)
+                    return
+                end
+            end
+        end
+    end)
+    
+    if not success then
+        -- Fallback if server list fails
+        TeleportService:Teleport(TARGET_PLACE_ID, LP)
+    end
+end
+
+local function processHoneyQueue()
+    task.spawn(function()
+        while G.AutoHoneyEnabled and myToken == G.__HoneyRun do
+            local honeys = {}
+            for _, obj in ipairs(Workspace:GetChildren()) do
+                if obj.Name == "Honey" then
+                    table.insert(honeys, obj)
+                end
+            end
+
+            if #honeys > 0 then
+                setStatus(("Collecting (%d left)"):format(#honeys), ON_COLOR)
+                for _, honey in ipairs(honeys) do
+                    if not G.AutoHoneyEnabled or myToken ~= G.__HoneyRun then break end
+                    if honey.Parent then
+                        collectHoneyInstance(honey)
+                    end
+                end
+            else
+                if G.ServerHopEnabled then
+                    hopToSmallServer()
+                    break
+                else
+                    setStatus("Waiting for Honey...", Color3.fromRGB(150, 150, 165))
+                    task.wait(0.3)
+                end
+            end
+            task.wait(0.1)
+        end
+    end)
+end
+
+-- GUI Setup
+if G.__HoneyGui then pcall(function() G.__HoneyGui:Destroy() end) end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "HoneyCollectorGUI"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+pcall(function() if protectgui then protectgui(gui) end end)
+
+local parent
+pcall(function() parent = gethui and gethui() end)
+if not parent then pcall(function() parent = game:GetService("CoreGui") end) end
+if not parent then parent = LP:WaitForChild("PlayerGui") end
+gui.Parent = parent
+G.__HoneyGui = gui
+
+-- Main Card
+local card = Instance.new("Frame")
+card.Size = UDim2.fromOffset(256, 180)
+card.Position = UDim2.fromOffset(30, 480)
+card.BackgroundColor3 = Color3.fromRGB(17, 17, 23)
+card.BorderSizePixel = 0
+card.Active = true
+card.Parent = gui
+corner(card, 16)
+
+local cstroke = Instance.new("UIStroke", card)
+cstroke.Color = Color3.fromRGB(42, 42, 56); cstroke.Thickness = 1.5; cstroke.Transparency = 0.1
+
+local accent = Instance.new("Frame")
+accent.Size = UDim2.new(1, -32, 0, 3); accent.Position = UDim2.fromOffset(16, 14)
+accent.BorderSizePixel = 0; accent.Parent = card; corner(accent, 2)
+Instance.new("UIGradient", accent).Color = ColorSequence.new(ACCENT_A, ACCENT_B)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -32, 0, 20); title.Position = UDim2.fromOffset(16, 26)
+title.BackgroundTransparency = 1; title.Text = "Auto Honey Collector"
+title.TextXAlignment = Enum.TextXAlignment.Left; title.TextColor3 = Color3.fromRGB(240, 240, 248)
+title.Font = Enum.Font.GothamBold; title.TextSize = 15; title.Parent = card
+
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1, -32, 0, 14); sub.Position = UDim2.fromOffset(16, 45)
+sub.BackgroundTransparency = 1; sub.Text = "Collect Spawns Automatically"
+sub.TextXAlignment = Enum.TextXAlignment.Left; sub.TextColor3 = MUTED
+sub.Font = Enum.Font.Gotham; sub.TextSize = 11; sub.Parent = card
+
+local div1 = Instance.new("Frame")
+div1.Size = UDim2.new(1, -32, 0, 1); div1.Position = UDim2.fromOffset(16, 65)
+div1.BackgroundColor3 = Color3.fromRGB(38, 38, 50); div1.BorderSizePixel = 0; div1.Parent = card
+
+-- Auto Collect Toggle Row
+local rowLabel = Instance.new("TextLabel")
+rowLabel.Size = UDim2.fromOffset(120, 24); rowLabel.Position = UDim2.fromOffset(16, 73)
+rowLabel.BackgroundTransparency = 1; rowLabel.Text = "Auto Collect"
+rowLabel.TextXAlignment = Enum.TextXAlignment.Left; rowLabel.TextColor3 = Color3.fromRGB(218, 218, 228)
+rowLabel.Font = Enum.Font.GothamMedium; rowLabel.TextSize = 13; rowLabel.Parent = card
+
+local track = Instance.new("Frame")
+track.Size = UDim2.fromOffset(46, 22); track.Position = UDim2.new(1, -62, 0, 74)
+track.BackgroundColor3 = OFF_COLOR; track.BorderSizePixel = 0; track.Parent = card; corner(track, 11)
+
+local knob = Instance.new("Frame")
+knob.Size = UDim2.fromOffset(16, 16); knob.Position = UDim2.fromOffset(3, 3)
+knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250); knob.BorderSizePixel = 0; knob.Parent = track; corner(knob, 8)
+
+local hit = Instance.new("TextButton")
+hit.Size = UDim2.fromScale(1, 1); hit.BackgroundTransparency = 1; hit.Text = ""; hit.Parent = track
+
+-- Open Settings Button
+local openSettingsBtn = Instance.new("TextButton")
+openSettingsBtn.Size = UDim2.new(1, -32, 0, 24); openSettingsBtn.Position = UDim2.fromOffset(16, 104)
+openSettingsBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
+openSettingsBtn.Text = "Collection Settings"
+openSettingsBtn.TextColor3 = Color3.fromRGB(210, 210, 230)
+openSettingsBtn.Font = Enum.Font.GothamMedium; openSettingsBtn.TextSize = 11; openSettingsBtn.Parent = card
+corner(openSettingsBtn, 6)
+
+status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -32, 0, 14); status.Position = UDim2.fromOffset(16, 136)
+status.BackgroundTransparency = 1; status.Text = "Idle"
+status.TextXAlignment = Enum.TextXAlignment.Left; status.TextColor3 = MUTED
+status.Font = Enum.Font.Gotham; status.TextSize = 11; status.Parent = card
+
+-- Settings GUI Window
+local settingsCard = Instance.new("Frame")
+settingsCard.Size = UDim2.fromOffset(256, 140)
+settingsCard.Position = UDim2.fromOffset(296, 480)
+settingsCard.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+settingsCard.BorderSizePixel = 0
+settingsCard.Visible = false
+settingsCard.Active = true
+settingsCard.Parent = gui
+corner(settingsCard, 16)
+
+local sstroke = Instance.new("UIStroke", settingsCard)
+sstroke.Color = Color3.fromRGB(50, 50, 68); sstroke.Thickness = 1.5; sstroke.Transparency = 0.1
+
+local stitle = Instance.new("TextLabel")
+stitle.Size = UDim2.new(1, -32, 0, 20); stitle.Position = UDim2.fromOffset(16, 14)
+stitle.BackgroundTransparency = 1; stitle.Text = "Collection Method"
+stitle.TextXAlignment = Enum.TextXAlignment.Left; stitle.TextColor3 = Color3.fromRGB(240, 240, 248)
+stitle.Font = Enum.Font.GothamBold; stitle.TextSize = 13; stitle.Parent = settingsCard
+
+-- Server Hop Toggle Button inside Collection Method GUI
+local hopBtn = Instance.new("TextButton")
+hopBtn.Size = UDim2.new(1, -32, 0, 32); hopBtn.Position = UDim2.fromOffset(16, 44)
+hopBtn.BackgroundColor3 = G.ServerHopEnabled and Color3.fromRGB(40, 80, 50) or Color3.fromRGB(28, 28, 38)
+hopBtn.Text = "Server Hop (Small): " .. (G.ServerHopEnabled and "ON" or "OFF")
+hopBtn.TextColor3 = G.ServerHopEnabled and Color3.fromRGB(100, 255, 120) or Color3.fromRGB(255, 215, 60)
+hopBtn.Font = Enum.Font.GothamBold; hopBtn.TextSize = 11; hopBtn.Parent = settingsCard
+corner(hopBtn, 8)
+
+hopBtn.MouseButton1Click:Connect(function()
+    G.ServerHopEnabled = not G.ServerHopEnabled
+    if G.ServerHopEnabled then
+        hopBtn.Text = "Server Hop (Small): ON"
+        hopBtn.TextColor3 = Color3.fromRGB(100, 255, 120)
+        hopBtn.BackgroundColor3 = Color3.fromRGB(40, 80, 50)
+    else
+        hopBtn.Text = "Server Hop (Small): OFF"
+        hopBtn.TextColor3 = Color3.fromRGB(255, 215, 60)
+        hopBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+    end
+end)
+
+local closeSettingsBtn = Instance.new("TextButton")
+closeSettingsBtn.Size = UDim2.new(1, -32, 0, 24); closeSettingsBtn.Position = UDim2.fromOffset(16, 88)
+closeSettingsBtn.BackgroundColor3 = Color3.fromRGB(255, 170, 0)
+closeSettingsBtn.Text = "Done"
+closeSettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeSettingsBtn.Font = Enum.Font.GothamBold; closeSettingsBtn.TextSize = 11; closeSettingsBtn.Parent = settingsCard
+corner(closeSettingsBtn, 6)
+
+openSettingsBtn.MouseButton1Click:Connect(function() settingsCard.Visible = not settingsCard.Visible end)
+closeSettingsBtn.MouseButton1Click:Connect(function() settingsCard.Visible = false end)
+
+function setStatus(text, color)
+    status.Text = text
+    tween(status, 0.15, {TextColor3 = color or MUTED})
+end
+
+function setState(on)
+    G.AutoHoneyEnabled = on and true or false
+    if G.AutoHoneyEnabled then
+        tween(track, 0.2, {BackgroundColor3 = ON_COLOR})
+        tween(knob, 0.2, {Position = UDim2.fromOffset(25, 3)})
+        setStatus("Active", ON_COLOR)
+        processHoneyQueue()
+    else
+        tween(track, 0.2, {BackgroundColor3 = OFF_COLOR})
+        tween(knob, 0.2, {Position = UDim2.fromOffset(3, 3)})
+        setStatus("Stopped", MUTED)
+    end
+end
+
+hit.MouseButton1Click:Connect(function() setState(not G.AutoHoneyEnabled) end)
+
+local function enableDrag(frame, handle)
+    local dragging, dragStart, startPos
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = i.Position; startPos = frame.Position
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+end
+
+enableDrag(card, card)
+enableDrag(settingsCard, settingsCard)
+
+-- Automatically start the collector on execution
+setState(true)

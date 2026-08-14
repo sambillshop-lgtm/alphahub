@@ -1,0 +1,193 @@
+repeat task.wait() until game:IsLoaded()
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local Players          = game:GetService("Players")
+local HttpService      = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+while not LocalPlayer or not LocalPlayer:FindFirstChild("PlayerGui") do
+    task.wait(0.5)
+    LocalPlayer = Players.LocalPlayer
+end
+local function applyDesyncFFlags(enable)
+    pcall(function()
+        if enable then
+            setfflag("WorldStepMax", "-99999999999999")
+            setfflag("DFIntMaxMissedWorldStepsRemembered", "-2147483648")
+            setfflag("DFIntDebugDefaultTargetWorldStepsPerFrame", "-2147483648")
+            setfflag("DFIntS2PhysicsSenderRate", "1")
+            setfflag("PhysicsSenderMaxBandwidthBps", "0")
+        else
+            setfflag("WorldStepMax", "-1")
+        end
+    end)
+end
+local fileName = "JustAFanConfig.json"
+local function savePos(pos)
+    if writefile then writefile(fileName, HttpService:JSONEncode({X_Scale = pos.X.Scale, X_Offset = pos.X.Offset, Y_Scale = pos.Y.Scale, Y_Offset = pos.Y.Offset})) end
+end
+local function loadPos()
+    if isfile and readfile and isfile(fileName) then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(fileName)) end)
+        if ok and data then return UDim2.new(data.X_Scale, data.X_Offset, data.Y_Scale, data.Y_Offset) end
+    end
+    return UDim2.new(0.1, 0, 0.4, 0)
+end
+local desyncEnabled = false
+local speedEnabled = false
+local orb, distLabel = nil, nil
+local speedConnection = nil
+local TARGET_SPEED = 19   -- <-- Hier geändert
+local function applyVelocitySpeed(enable)
+    speedEnabled = enable
+    if speedConnection then speedConnection:Disconnect() end
+    if not enable then return end
+    speedConnection = RunService.Heartbeat:Connect(function()
+        local char = LocalPlayer.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChild("Humanoid")
+        if root and hum then
+            hum.WalkSpeed = TARGET_SPEED
+            local moveDir = hum.MoveDirection
+            if moveDir.Magnitude > 0.1 then
+                local vel = root.Velocity
+                root.Velocity = Vector3.new(moveDir.X * TARGET_SPEED, vel.Y, moveDir.Z * TARGET_SPEED)
+            end
+        end
+    end)
+end
+local function makeDragable(handle, target)
+    local dragging, dragInput, dragStart, sPos
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true; dragStart = i.Position; sPos = target.Position
+        end
+    end)
+    handle.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement then dragInput = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and i == dragInput then
+            local d = i.Position - dragStart
+            target.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + d.X, sPos.Y.Scale, sPos.Y.Offset + d.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+            savePos(target.Position)
+        end
+    end)
+end
+local function createOrb()
+    local part = Instance.new("Part")
+    part.Name = "JustAFanServerPos"
+    part.Shape = Enum.PartType.Ball
+    part.Size = Vector3.new(2,2,2)
+    part.Color = Color3.fromRGB(0,255,255)
+    part.Material = Enum.Material.Neon
+    part.Anchored = true
+    part.CanCollide = false
+    part.Transparency = 0.4
+    local bgui = Instance.new("BillboardGui", part)
+    bgui.Size = UDim2.new(0,150,0,40)
+    bgui.AlwaysOnTop = true
+    bgui.ExtentsOffset = Vector3.new(0,2.5,0)
+    local lbl = Instance.new("TextLabel", bgui)
+    lbl.Size = UDim2.new(1,0,1,0)
+    lbl.BackgroundTransparency = 1
+    lbl.TextColor3 = Color3.fromRGB(0,255,255)
+    lbl.Font = Enum.Font.SourceSansBold
+    lbl.TextSize = 18
+    lbl.Text = "SERVER POS\n0.0 studs"
+    return part, lbl
+end
+local old = LocalPlayer.PlayerGui:FindFirstChild(".gg_luascripts_Desync")
+if old then old:Destroy() end
+local sg = Instance.new("ScreenGui")
+sg.Name = ".gg_luascripts_Desync"
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.DisplayOrder = 10000
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = LocalPlayer.PlayerGui
+local Main = Instance.new("Frame", sg)
+Main.Size = UDim2.new(0, 260, 0, 155)
+Main.Position = loadPos()
+Main.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+Main.BorderSizePixel = 0
+Main.ZIndex = 10
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
+local Top = Instance.new("Frame", Main)
+Top.Size = UDim2.new(1,-12, 0, 26)
+Top.Position = UDim2.new(0, 6, 0, 6)
+Top.BackgroundColor3 = Color3.fromRGB(27, 27, 36)
+Top.ZIndex = 11
+Instance.new("UICorner", Top).CornerRadius = UDim.new(0, 8)
+local Title = Instance.new("TextLabel", Top)
+Title.Size = UDim2.new(1, -70, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = ".gg/luascripts Desync"
+Title.TextColor3 = Color3.fromRGB(242, 242, 248)
+Title.Font = Enum.Font.GothamSemibold
+Title.TextSize = 12
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.ZIndex = 12
+local Mini = Instance.new("TextButton", Top) Mini.Size = UDim2.new(0,16,0,16) Mini.Position = UDim2.new(1,-48,0.5,-8) Mini.BackgroundColor3 = Color3.fromRGB(36,36,46) Mini.Text = "-" Mini.TextColor3 = Color3.fromRGB(180,180,190) Mini.Font = Enum.Font.GothamBold Instance.new("UICorner", Mini).CornerRadius = UDim.new(0,4) Mini.ZIndex = 13
+local Close = Instance.new("TextButton", Top) Close.Size = UDim2.new(0,16,0,16) Close.Position = UDim2.new(1,-26,0.5,-8) Close.BackgroundColor3 = Color3.fromRGB(36,36,46) Close.Text = "x" Close.TextColor3 = Color3.fromRGB(180,180,190) Close.Font = Enum.Font.GothamBold Instance.new("UICorner", Close).CornerRadius = UDim.new(0,4) Close.ZIndex = 13
+local Row1 = Instance.new("Frame", Main) Row1.Size = UDim2.new(1,-12,0,34) Row1.Position = UDim2.new(0,6,0,38) Row1.BackgroundColor3 = Color3.fromRGB(25,25,33) Row1.ZIndex = 10 Instance.new("UICorner", Row1).CornerRadius = UDim.new(0,8)
+local Dot = Instance.new("Frame", Row1) Dot.Size = UDim2.new(0,6,0,6) Dot.Position = UDim2.new(0,10,0.5,-3) Dot.BackgroundColor3 = Color3.fromRGB(74,220,120) Dot.ZIndex = 11 Instance.new("UICorner", Dot).CornerRadius = UDim.new(1,0)
+local InfoText = Instance.new("TextLabel", Row1) InfoText.Size = UDim2.new(1,-72,1,0) InfoText.Position = UDim2.new(0,22,0,0) InfoText.BackgroundTransparency = 1 InfoText.Text = "desync active" InfoText.TextColor3 = Color3.fromRGB(165,255,190) InfoText.Font = Enum.Font.Gotham InfoText.TextSize = 10 InfoText.TextXAlignment = Enum.TextXAlignment.Left InfoText.ZIndex = 11
+local ToggleBg = Instance.new("Frame", Row1) ToggleBg.Size = UDim2.new(0,28,0,16) ToggleBg.Position = UDim2.new(1,-38,0.5,-8) ToggleBg.BackgroundColor3 = Color3.fromRGB(98,80,170) ToggleBg.ZIndex = 11 Instance.new("UICorner", ToggleBg).CornerRadius = UDim.new(1,0)
+local Knob = Instance.new("Frame", ToggleBg) Knob.Size = UDim2.new(0,10,0,10) Knob.Position = UDim2.new(1,-13,0.5,-5) Knob.BackgroundColor3 = Color3.fromRGB(210,210,220) Knob.ZIndex = 12 Instance.new("UICorner", Knob).CornerRadius = UDim.new(1,0)
+local ToggleBtn = Instance.new("TextButton", Row1) ToggleBtn.Size = UDim2.new(1,0,1,0) ToggleBtn.BackgroundTransparency = 1 ToggleBtn.Text = "" ToggleBtn.ZIndex = 13
+local RowSpeed = Instance.new("Frame", Main) RowSpeed.Size = UDim2.new(1,-12,0,34) RowSpeed.Position = UDim2.new(0,6,0,78) RowSpeed.BackgroundColor3 = Color3.fromRGB(25,25,33) RowSpeed.ZIndex = 10 Instance.new("UICorner", RowSpeed).CornerRadius = UDim.new(0,8)
+local SpeedLabel = Instance.new("TextLabel", RowSpeed) SpeedLabel.Size = UDim2.new(0.6,0,1,0) SpeedLabel.Position = UDim2.new(0,10,0,0) SpeedLabel.BackgroundTransparency = 1 SpeedLabel.Text = "Prevent Lagback Speed" SpeedLabel.TextColor3 = Color3.fromRGB(180,180,190) SpeedLabel.Font = Enum.Font.Gotham SpeedLabel.TextSize = 10 SpeedLabel.TextXAlignment = Enum.TextXAlignment.Left SpeedLabel.ZIndex = 11
+local SpeedBtn = Instance.new("TextButton", RowSpeed) SpeedBtn.Size = UDim2.new(0,80,0,24) SpeedBtn.Position = UDim2.new(1,-90,0.5,-12) SpeedBtn.BackgroundColor3 = Color3.fromRGB(98,80,170) SpeedBtn.Text = "OFF" SpeedBtn.TextColor3 = Color3.fromRGB(255,255,255) SpeedBtn.Font = Enum.Font.GothamBold SpeedBtn.TextSize = 11 SpeedBtn.ZIndex = 12 Instance.new("UICorner", SpeedBtn).CornerRadius = UDim.new(0,6)
+makeDragable(Top, Main)
+local function setToggleVisual(on)
+    if on then
+        InfoText.Text = "desync active" InfoText.TextColor3 = Color3.fromRGB(165,255,190)
+        Dot.BackgroundColor3 = Color3.fromRGB(74,220,120)
+        ToggleBg.BackgroundColor3 = Color3.fromRGB(98,80,170)
+        Knob.Position = UDim2.new(1,-13,0.5,-5)
+    else
+        InfoText.Text = "desync off" InfoText.TextColor3 = Color3.fromRGB(255,150,150)
+        Dot.BackgroundColor3 = Color3.fromRGB(255,90,90)
+        ToggleBg.BackgroundColor3 = Color3.fromRGB(68,68,80)
+        Knob.Position = UDim2.new(0,3,0.5,-5)
+    end
+end
+local function getRoot() local c = LocalPlayer.Character return c and c:FindFirstChild("HumanoidRootPart") end
+local function takeSnapshot()
+    local root = getRoot()
+    if root and orb and orb.Parent == workspace then orb.CFrame = root.CFrame end
+end
+local function toggleRaknet(state)
+    pcall(function() if raknet and raknet.desync then raknet.desync(state) end end)
+end
+local function toggleDesync(state)
+    desyncEnabled = state
+    applyDesyncFFlags(state)
+    toggleRaknet(state)
+    if state then
+        if not orb then orb, distLabel = createOrb() end
+        task.spawn(function()
+            repeat task.wait() until getRoot()
+            if orb then orb.Parent = workspace takeSnapshot() end
+        end)
+    else
+        if orb then orb.Parent = nil end
+    end
+    setToggleVisual(state)
+end
+ToggleBtn.Activated:Connect(function() toggleDesync(not desyncEnabled) end)
+SpeedBtn.Activated:Connect(function()
+    applyVelocitySpeed(not speedEnabled)
+    SpeedBtn.Text = speedEnabled and "ON" or "OFF"
+    SpeedBtn.BackgroundColor3 = speedEnabled and Color3.fromRGB(74,220,120) or Color3.fromRGB(98,80,170)
+end)
+Close.Activated:Connect(function() sg:Destroy() if orb then orb:Destroy() end end)
+toggleDesync(true)
+print("✅ .gg/luascripts Desync | Speed 19 + GUI fixed")

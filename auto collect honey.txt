@@ -1,0 +1,481 @@
+--[[
+    AUTO HONEY COLLECTOR – Fixed Indecision + Jump to High Targets
+    - Hard target lock – no left‑right wobble
+    - Smooth movement (updates destination 5x per second)
+    - Full 52 speed with anti‑cheat bypass
+    - Jumps if target is >3 studs above you
+    - Press F to toggle on/off
+]]
+
+pcall(function()
+
+local cloneref     = cloneref or function(x) return x end
+local Players      = cloneref(game:GetService("Players"))
+local Workspace    = cloneref(game:GetService("Workspace"))
+local RS           = cloneref(game:GetService("ReplicatedStorage"))
+local RunService   = cloneref(game:GetService("RunService"))
+local UserInput    = cloneref(game:GetService("UserInputService"))
+
+local LP   = Players.LocalPlayer
+local Char = LP.Character or LP.CharacterAdded:Wait()
+local Hum  = Char:WaitForChild("Humanoid")
+local HRP  = Char:WaitForChild("HumanoidRootPart")
+
+-- ============ TOGGLE ============
+local COLLECTOR_ENABLED = true
+local TOGGLE_KEY = Enum.KeyCode.F
+
+UserInput.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == TOGGLE_KEY then
+        COLLECTOR_ENABLED = not COLLECTOR_ENABLED
+        print(COLLECTOR_ENABLED and "🟢 Collector ON" or "🔴 Collector OFF")
+        if not COLLECTOR_ENABLED then
+            stopFollowing()
+        end
+    end
+end)
+
+------------------------------------------------------------------------
+-- ANTI-DETECT LAYER 1: block HTTP reporting calls
+------------------------------------------------------------------------
+pcall(function()
+    local BAD = {
+        "log","report","detect","analytics",
+        "telemetry","anticheat","anti_cheat","ban","kick","cheat"
+    }
+    local function wrapReq(fn)
+        if not fn then return fn end
+        return newcclosure(function(opts, ...)
+            if type(opts) == "table" then
+                local url = ((opts.Url or opts.url) or ""):lower()
+                for _, kw in ipairs(BAD) do
+                    if url:find(kw, 1, true) then
+                        return {StatusCode=200, Body="", Success=true}
+                    end
+                end
+            end
+            return fn(opts, ...)
+        end)
+    end
+    if syn and syn.request then syn.request  = wrapReq(syn.request)  end
+    if request             then request       = wrapReq(request)       end
+    if http_request        then http_request  = wrapReq(http_request)  end
+end)
+
+------------------------------------------------------------------------
+-- ANTI-DETECT LAYER 2: block game:Shutdown() / BindToClose()
+------------------------------------------------------------------------
+pcall(function()
+    local gmt = getrawmetatable(game)
+    if not gmt then return end
+    setreadonly(gmt, false)
+    local _nc = gmt.__namecall
+    gmt.__namecall = newcclosure(function(self, ...)
+        local m = (getnamecallmethod and getnamecallmethod() or ""):lower()
+        if m == "shutdown" or m == "bindtoclose" then return end
+        return _nc(self, ...)
+    end)
+    setreadonly(gmt, true)
+end)
+
+------------------------------------------------------------------------
+-- REMOTES
+------------------------------------------------------------------------
+local Net        = RS:WaitForChild("Packages"):WaitForChild("Net")
+local ClaimHoney = Net:WaitForChild("RE/EventService/Bee/ClaimHoney")
+local SpawnHoney = Net:WaitForChild("RE/EventService/Bee/SpawnHoney")
+
+------------------------------------------------------------------------
+-- CONFIG
+------------------------------------------------------------------------
+local CFG = {
+    MoveSpeed       = 52,
+    CollectRange    = 5,
+    JumpThresholdY  = 3,   -- jump if target is this many studs above
+
+    Keywords = {
+        "honey","jar","wisp",
+        "nectar","hive",
+        "golden","pollen","comb",
+    },
+
+    Blacklist = {
+        ["Beehive"]=true,["BeeHive"]=true,["BeeHiveSpawnVFX"]=true,
+        ["QueenBrainrot"]=true,["ActiveVFX"]=true,["Active"]=true,
+        ["Map"]=true,["Road"]=true,["Terrain"]=true,["Camera"]=true,
+    },
+}
+
+------------------------------------------------------------------------
+-- YSLEM SPEED SYSTEM (with anti-cheat bypass)
+------------------------------------------------------------------------
+local speedEnabled   = false
+local speedConn      = nil
+local lastPosition   = nil
+local lastTime       = nil
+
+local function getCharParts()
+    local c = LP.Character
+    if not c then return nil, nil end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    local r = c:FindFirstChild("HumanoidRootPart")
+    if not h or not r then return nil, nil end
+    return h, r
+end
+
+local function claimOwnership(root)
+    pcall(function() root:SetNetworkOwner(LP) end)
+end
+
+local function applySpeed(spd)
+    if speedConn then speedConn:Disconnect(); speedConn = nil end
+
+    local hum, root = getCharParts()
+    if not hum or not root then return end
+
+    hum.WalkSpeed = spd
+    claimOwnership(root)
+    lastPosition  = root.Position
+    lastTime      = tick()
+
+    local ownershipTimer    = 0
+    local ownershipInterval = 1.3 + math.random() * 0.4
+    local lagbackCooldown   = 0
+
+    local function heartbeat(dt)
+        if not speedEnabled then return end
+        local h, r = getCharParts()
+        if not h or not r then return end
+
+        ownershipTimer = ownershipTimer + dt
+        if ownershipTimer >= ownershipInterval then
+            claimOwnership(r)
+            ownershipTimer    = 0
+            ownershipInterval = 1.3 + math.random() * 0.4
+        end
+
+        local dir = h.MoveDirection
+        if dir.Magnitude < 0.1 then
+            h.WalkSpeed  = 16
+            lastPosition = r.Position
+            lastTime     = tick()
+            return
+        end
+
+        h.WalkSpeed = spd
+        local noise      = 1 + (math.random() - 0.5) * 0.012
+        local curVel     = r.AssemblyLinearVelocity
+        local targetVel  = Vector3.new(dir.X*spd*noise, curVel.Y, dir.Z*spd*noise)
+        local alpha      = math.min(dt * 22, 1)
+        r.AssemblyLinearVelocity = curVel:Lerp(targetVel, alpha)
+
+        lagbackCooldown = lagbackCooldown - dt
+        local now       = tick()
+        local elapsed   = now - lastTime
+        if elapsed > 0.1 and lastPosition then
+            local expectedDist = spd * elapsed
+            local actualDist   = (r.Position - lastPosition).Magnitude
+            if actualDist < expectedDist * 0.3 and lagbackCooldown <= 0 then
+                r.AssemblyLinearVelocity = targetVel * 1.2
+                lagbackCooldown = 0.3
+            end
+        end
+
+        lastPosition = r.Position
+        lastTime     = now
+    end
+
+    speedConn = RunService.Heartbeat:Connect(
+        (newcclosure and newcclosure(heartbeat)) or heartbeat
+    )
+end
+
+local function enableSpeed()
+    speedEnabled = true
+    applySpeed(CFG.MoveSpeed)
+end
+
+local function disableSpeed()
+    speedEnabled = false
+    if speedConn then speedConn:Disconnect(); speedConn = nil end
+    local hum = getCharParts()
+    if hum then hum.WalkSpeed = 16 end
+    lastPosition = nil; lastTime = nil
+end
+
+enableSpeed()
+
+LP.CharacterAdded:Connect(function(c)
+    Char = c
+    Hum  = c:WaitForChild("Humanoid")
+    HRP  = c:WaitForChild("HumanoidRootPart")
+    task.wait(0.1)
+    if speedEnabled then
+        applySpeed(CFG.MoveSpeed)
+    end
+end)
+
+------------------------------------------------------------------------
+-- HELPERS
+------------------------------------------------------------------------
+local function matchesKeyword(name)
+    local lower = name:lower()
+    for _, kw in ipairs(CFG.Keywords) do
+        if lower:find(kw, 1, true) then return true end
+    end
+    return false
+end
+
+local function isBlacklisted(obj)
+    if CFG.Blacklist[obj.Name] then return true end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character and
+        (obj == p.Character or obj:IsDescendantOf(p.Character)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function getRoot(obj)
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+    end
+    if obj:IsA("BasePart") then return obj end
+    return nil
+end
+
+local function isValidTarget(obj)
+    if not obj or not obj.Parent    then return false end
+    if isBlacklisted(obj)           then return false end
+    if not matchesKeyword(obj.Name) then return false end
+    if not getRoot(obj)             then return false end
+    return true
+end
+
+------------------------------------------------------------------------
+-- RAYCAST (obstacle avoidance)
+------------------------------------------------------------------------
+local function makeRayParams()
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local chars = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then table.insert(chars, p.Character) end
+    end
+    params.FilterDescendantsInstances = chars
+    return params
+end
+
+local function isBlocked(dir, dist)
+    if not HRP then return true end
+    local origin = HRP.Position + Vector3.new(0, 1, 0)
+    return Workspace:Raycast(origin, dir.Unit * dist, makeRayParams()) ~= nil
+end
+
+local function findClearDir(toGoal)
+    if not HRP then return Vector3.new(1,0,0) end
+    local fg = Vector3.new(toGoal.X, 0, toGoal.Z).Unit
+    for _, deg in ipairs({15, 30, 45, 60, 75, 90}) do
+        local r  = math.rad(deg)
+        local L  = Vector3.new(fg.X*math.cos(r) -fg.Z*math.sin(r),0,fg.X*math.sin(r) +fg.Z*math.cos(r))
+        if not isBlocked(L, 6) then return L end
+        local R  = Vector3.new(fg.X*math.cos(-r)-fg.Z*math.sin(-r),0,fg.X*math.sin(-r)+fg.Z*math.cos(-r))
+        if not isBlocked(R, 6) then return R end
+    end
+    return fg
+end
+
+------------------------------------------------------------------------
+-- TARGET LOCK – once set, never change until collected or gone
+------------------------------------------------------------------------
+local lockedTarget = nil
+local followConn   = nil
+local stuckTimer   = 0
+local lastPos      = Vector3.new()
+local jumpCooldown = 0
+
+local function startFollowing(target)
+    lockedTarget = target
+    if followConn then return end
+
+    followConn = RunService.Heartbeat:Connect(function()
+        if not lockedTarget or not lockedTarget.Parent then
+            stopFollowing()
+            return
+        end
+
+        if not HRP or not Hum or not COLLECTOR_ENABLED then return end
+
+        local root = getRoot(lockedTarget)
+        if not root or not root.Parent then
+            stopFollowing()
+            return
+        end
+
+        local dist = (HRP.Position - root.Position).Magnitude
+        if dist <= CFG.CollectRange then
+            Hum:MoveTo(HRP.Position)
+            return
+        end
+
+        -- ===== VERTICAL: jump if target is above =====
+        local yDiff = root.Position.Y - HRP.Position.Y
+        if yDiff > CFG.JumpThresholdY then
+            jumpCooldown = jumpCooldown - 0.05
+            if jumpCooldown <= 0 then
+                Hum.Jump = true
+                jumpCooldown = 0.2
+            end
+        else
+            jumpCooldown = 0
+        end
+
+        -- ===== HORIZONTAL movement =====
+        local goal = root.Position
+        local toGoal = goal - HRP.Position
+        local flatDir = Vector3.new(toGoal.X, 0, toGoal.Z)
+        local blocked = isBlocked(flatDir, 6)
+        local moveDir = blocked and findClearDir(toGoal) or flatDir.Unit
+
+        if blocked then
+            Hum.Jump = true
+        end
+
+        -- Move to a point ahead, but not past the target
+        local destDist = math.min(dist, 8)
+        local dest = HRP.Position + moveDir * destDist
+        Hum:MoveTo(dest)
+
+        -- Stuck detection
+        if (HRP.Position - lastPos).Magnitude < 0.5 then
+            stuckTimer = stuckTimer + 0.05
+            if stuckTimer > 1.5 then
+                Hum.Jump = true
+                stuckTimer = 0
+            end
+        else
+            stuckTimer = 0
+        end
+        lastPos = HRP.Position
+    end)
+end
+
+local function stopFollowing()
+    if followConn then
+        followConn:Disconnect()
+        followConn = nil
+    end
+    lockedTarget = nil
+    stuckTimer = 0
+    jumpCooldown = 0
+    if Hum and HRP then
+        Hum:MoveTo(HRP.Position)
+    end
+end
+
+------------------------------------------------------------------------
+-- QUEUE – but we only take one at a time
+------------------------------------------------------------------------
+local queue    = {}
+local seen     = {}
+
+local function addToQueue(obj)
+    if seen[obj]              then return end
+    if not isValidTarget(obj) then return end
+    seen[obj] = true
+    table.insert(queue, obj)
+end
+
+------------------------------------------------------------------------
+-- CLAIM
+------------------------------------------------------------------------
+local function claim(obj)
+    task.wait(0.1)
+    pcall(function() ClaimHoney:FireServer(obj) end)
+end
+
+------------------------------------------------------------------------
+-- MAIN COLLECTOR LOOP
+------------------------------------------------------------------------
+task.spawn(function()
+    task.wait(2)
+    while true do
+        task.wait(0.15)
+
+        if not COLLECTOR_ENABLED then
+            stopFollowing()
+            task.wait(1)
+            continue
+        end
+
+        -- If we're currently following a target, check it
+        if lockedTarget then
+            if not lockedTarget.Parent then
+                stopFollowing()
+            else
+                local root = getRoot(lockedTarget)
+                if root and root.Parent then
+                    local dist = (HRP.Position - root.Position).Magnitude
+                    if dist <= CFG.CollectRange then
+                        claim(lockedTarget)
+                        seen[lockedTarget] = nil
+                        stopFollowing()
+                    end
+                else
+                    stopFollowing()
+                end
+            end
+            continue  -- stay locked
+        end
+
+        -- Pick new target from queue
+        while #queue > 0 do
+            local obj = queue[1]
+            table.remove(queue, 1)
+            if obj and obj.Parent and isValidTarget(obj) then
+                startFollowing(obj)
+                break
+            else
+                seen[obj] = nil
+            end
+        end
+
+        if not lockedTarget then
+            task.wait(0.5)
+        end
+    end
+end)
+
+------------------------------------------------------------------------
+-- WATCHERS
+------------------------------------------------------------------------
+Workspace.ChildAdded:Connect(function(obj)
+    task.wait()
+    addToQueue(obj)
+end)
+
+local Events = Workspace:FindFirstChild("Events")
+if Events then
+    Events.ChildAdded:Connect(function(obj) task.wait(); addToQueue(obj) end)
+    for _, obj in ipairs(Events:GetChildren()) do addToQueue(obj) end
+end
+
+local Beehive = Workspace:FindFirstChild("Beehive")
+if Beehive then
+    Beehive.DescendantAdded:Connect(function(obj) task.wait(); addToQueue(obj) end)
+end
+
+SpawnHoney.OnClientEvent:Connect(function(obj)
+    task.wait()
+    if obj and typeof(obj) == "Instance" then
+        addToQueue(obj)
+    else
+        for _, child in ipairs(Workspace:GetChildren()) do addToQueue(child) end
+    end
+end)
+
+for _, obj in ipairs(Workspace:GetChildren()) do addToQueue(obj) end
+
+end)

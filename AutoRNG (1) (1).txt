@@ -1,0 +1,602 @@
+local CollectionService   = game:GetService("CollectionService")
+local UserInputService    = game:GetService("UserInputService")
+local TweenService        = game:GetService("TweenService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players             = game:GetService("Players")
+local RS                  = game:GetService("ReplicatedStorage")
+local HttpService         = game:GetService("HttpService")
+local LP                  = Players.LocalPlayer
+
+local FAST_DELAY = 0.05
+
+local G = (getgenv and getgenv()) or _G
+G.RNGAutoSpin      = false
+G.TargetBrainrots  = G.TargetBrainrots or ""
+G.MinIncomePerSec  = G.MinIncomePerSec or 0
+G.DiscordWebhook   = G.DiscordWebhook or ""
+G.__RNGRun         = (G.__RNGRun or 0) + 1
+local myToken      = G.__RNGRun
+
+local Animals, Rarities, machine
+pcall(function() Animals  = require(RS.Datas.Animals) end)
+pcall(function() Rarities = require(RS.Datas.Rarities) end)
+pcall(function() machine  = require(RS.Packages.ReplicatorClient).get("RNGMachine_" .. LP.UserId) end)
+
+local FALLBACK = {
+    Common = Color3.fromRGB(190, 195, 205), Uncommon = Color3.fromRGB(120, 210, 130),
+    Rare = Color3.fromRGB(90, 150, 255), Epic = Color3.fromRGB(180, 100, 255),
+    Legendary = Color3.fromRGB(255, 180, 55), Mythic = Color3.fromRGB(255, 85, 85),
+    Secret = Color3.fromRGB(180, 90, 220), ["Brainrot God"] = Color3.fromRGB(255, 95, 200),
+    OG = Color3.fromRGB(255, 215, 60),
+}
+
+local MutationMultipliers = {
+    ["Gold"]        = "1.25x",
+    ["Diamond"]     = "1.5x",
+    ["Bloodrot"]    = "2x",
+    ["Candy"]       = "4x",
+    ["Lava"]        = "6x",
+    ["Galaxy"]      = "7x",
+    ["Yin Yang"]    = "8x",
+    ["Radioactive"] = "8.5x",
+    ["Cursed"]      = "9x",
+    ["Divine"]      = "10x",
+    ["Rainbow"]     = "10x",
+    ["Cyber"]       = "11x",
+    ["Phantom"]     = "12x",
+    ["Crystal"]     = "13x"
+}
+
+local function rarityColor(r)
+    local info = Rarities and Rarities[r]
+    if info then
+        local c = info.Color or info.Colour
+        if typeof(c) == "Color3" then return c end
+        if type(c) == "table" then
+            if c[1] then return Color3.fromRGB(c[1], c[2], c[3]) end
+            if c.R then return Color3.new(c.R, c.G, c.B) end
+        end
+    end
+    return FALLBACK[r] or Color3.fromRGB(232, 232, 238)
+end
+
+local function colorToDecimal(c3)
+    local r = math.floor(c3.R * 255)
+    local g = math.floor(c3.G * 255)
+    local b = math.floor(c3.B * 255)
+    return (r * 65536) + (g * 256) + b
+end
+
+local function short(val)
+    if type(val) == "string" then return val end
+    local n = tonumber(val) or 0
+    local a = math.abs(n)
+    if a >= 1e12 then return ("%.2fT"):format(n / 1e12) end
+    if a >= 1e9  then return ("%.2fB"):format(n / 1e9) end
+    if a >= 1e6  then return ("%.2fM"):format(n / 1e6) end
+    if a >= 1e3  then return ("%.1fK"):format(n / 1e3) end
+    return tostring(math.floor(n))
+end
+
+local function getIncome(offer)
+    if not offer then return 0 end
+    for _, key in ipairs({"Income", "IncomePerSecond", "MPS", "MoneyPerSec", "Generation", "PerSecond"}) do
+        if offer[key] then return tonumber(offer[key]) or 0 end
+    end
+    
+    if offer.Name and Animals and Animals[offer.Name] then
+        local data = Animals[offer.Name]
+        for _, key in ipairs({"Income", "IncomePerSecond", "MPS", "MoneyPerSec", "Generation", "PerSecond"}) do
+            if data[key] then return tonumber(data[key]) or 0 end
+        end
+    end
+    return 0
+end
+
+local function sendSecretWebhook(offer)
+    if G.DiscordWebhook == "" or not string.match(G.DiscordWebhook, "^https://discord%.com/api/webhooks/") then
+        return
+    end
+
+    local name = offer.Name or "Unknown Secret"
+    local mut = offer.Mutation or offer.Variant or ""
+    local mult = MutationMultipliers[mut]
+    local mutFormatted = (mut ~= "" and mult) and ("%s (%s)"):format(mut, mult) or (mut ~= "" and mut or "None")
+
+    local secretColor3 = rarityColor("Secret")
+    local decimalColor = colorToDecimal(secretColor3)
+
+    local payload = {
+        ["embeds"] = {{
+            ["title"] = "You Obtained a New Secret Brainrot!",
+            ["color"] = decimalColor,
+            ["fields"] = {
+                {
+                    ["name"] = "**Spawned By:**",
+                    ["value"] = "@" .. LP.Name,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "**Brainrot Spawned:**",
+                    ["value"] = name,
+                    ["inline"] = false
+                },
+                {
+                    ["name"] = "**Mutation:**",
+                    ["value"] = mutFormatted,
+                    ["inline"] = false
+                }
+            },
+            ["timestamp"] = DateTime.now():ToIsoDate()
+        }}
+    }
+
+    local requestFunc = (syn and syn.request) or (http and http.request) or http_request or request
+    if requestFunc then
+        task.spawn(function()
+            pcall(function()
+                requestFunc({
+                    Url = G.DiscordWebhook,
+                    Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json" },
+                    Body = HttpService:JSONEncode(payload)
+                })
+            end)
+        end)
+    end
+end
+
+-- Integrated prompt retrieval mechanism
+local function getSpinPrompt()
+    for _, p in ipairs(CollectionService:GetTagged("RNGMachineSpinPrompt")) do
+        if p:IsA("ProximityPrompt") and p:IsDescendantOf(workspace) then return p end
+    end
+    local ok, p = pcall(function() return workspace.RNGMachine.Prompt.RNGMachinePrompt end)
+    if ok and typeof(p) == "Instance" and p:IsA("ProximityPrompt") then return p end
+    return nil
+end
+
+local function getBuyPrompt()
+    if workspace:FindFirstChild("RNGMachine") then
+        for _, desc in ipairs(workspace.RNGMachine:GetDescendants()) do
+            if desc:IsA("ProximityPrompt") then
+                local act = (desc.ActionText or ""):lower()
+                local name = (desc.Name or ""):lower()
+                if act:find("purchase") or act:find("buy") or name:find("buy") or name:find("purchase") then
+                    return desc
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- Integrated spin activation mechanic
+local function doSpin(prompt)
+    if fireproximityprompt then
+        fireproximityprompt(prompt)
+    else
+        pcall(function()
+            prompt.MaxActivationDistance = math.huge
+            prompt.RequiresLineOfSight = false
+        end)
+        prompt:InputHoldBegin()
+        task.wait(0.01)
+        prompt:InputHoldEnd()
+    end
+end
+
+local setStatus, showWin, setState
+local spins = 0
+
+local function isTarget(name)
+    if not name or G.TargetBrainrots == "" then return false end
+    for target in string.gmatch(G.TargetBrainrots, "([^,]+)") do
+        local cleanedTarget = target:match("^%s*(.-)%s*$"):lower()
+        if cleanedTarget ~= "" and name:lower() == cleanedTarget then
+            return true
+        end
+    end
+    return false
+end
+
+local function shouldBuy(offer)
+    if not offer or not offer.Name then return false end
+    if isTarget(offer.Name) then return true end
+    
+    local inc = getIncome(offer)
+    if G.MinIncomePerSec > 0 and inc >= G.MinIncomePerSec then
+        return true
+    end
+    return false
+end
+
+local function executeBuyHold(currentOffer)
+    local buyPrompt = getBuyPrompt()
+    local holdDuration = (buyPrompt and buyPrompt.HoldDuration) or 0.6
+    
+    if buyPrompt then
+        doSpin(buyPrompt)
+    end
+
+    task.spawn(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(holdDuration + 0.2)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end)
+
+    pcall(function()
+        if RS:FindFirstChild("Remotes") and RS.Remotes:FindFirstChild("BuyRNG") then
+            RS.Remotes.BuyRNG:FireServer()
+        elseif RS:FindFirstChild("Packages") and RS.Packages:FindFirstChild("Knit") then
+            local services = RS.Packages.Knit:FindFirstChild("Services")
+            if services and services:FindFirstChild("RNGService") then
+                local rng = services.RNGService
+                if rng:FindFirstChild("RF") and rng.RF:FindFirstChild("Buy") then
+                    rng.RF.Buy:InvokeServer()
+                elseif rng:FindFirstChild("RE") and rng.RE:FindFirstChild("Buy") then
+                    rng.RE.Buy:FireServer()
+                end
+            end
+        end
+    end)
+    
+    task.wait(holdDuration + 0.3)
+
+    if currentOffer then
+        local a = Animals and Animals[currentOffer.Name]
+        local rarity = (a and a.Rarity) or currentOffer.Rarity or ""
+        if rarity:lower() == "secret" then
+            sendSecretWebhook(currentOffer)
+        end
+    end
+end
+
+local function startLoop()
+    task.spawn(function()
+        while G.RNGAutoSpin and myToken == G.__RNGRun do
+            local currentOffer = machine and machine.Data and machine.Data.Offer
+            
+            if currentOffer and currentOffer.Name and shouldBuy(currentOffer) then
+                setStatus("Buying: " .. currentOffer.Name, Color3.fromRGB(255, 215, 0))
+                executeBuyHold(currentOffer)
+            else
+                local spinPrompt = getSpinPrompt()
+                if spinPrompt and spinPrompt.Enabled then
+                    setStatus("Spinning", Color3.fromRGB(250, 200, 90))
+                    pcall(doSpin, spinPrompt)
+                    spins += 1
+                    
+                    local t0 = os.clock()
+                    while G.RNGAutoSpin and spinPrompt.Parent and spinPrompt.Enabled and os.clock() - t0 < 0.35 do
+                        task.wait(0.01)
+                    end
+                    while G.RNGAutoSpin and spinPrompt.Parent and not spinPrompt.Enabled do
+                        task.wait(0.01)
+                    end
+                    if G.RNGAutoSpin then
+                        setStatus(("Active  •  %d spins"):format(spins), Color3.fromRGB(52, 199, 123))
+                        task.wait(FAST_DELAY)
+                    end
+                else
+                    setStatus("Waiting for machine", Color3.fromRGB(150, 150, 165))
+                    task.wait(0.05)
+                end
+            end
+        end
+    end)
+end
+
+-- Full Base Auto-Stop Listener
+local pGui = LP:WaitForChild("PlayerGui")
+local function checkTextForFullBase(txt)
+    if txt and string.find(string.lower(txt), "need more room in your base") then
+        if G.RNGAutoSpin and setState then
+            setState(false)
+            setStatus("Stopped (Base Full!)", Color3.fromRGB(255, 85, 85))
+        end
+    end
+end
+
+pGui.DescendantAdded:Connect(function(desc)
+    if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+        desc:GetPropertyChangedSignal("Text"):Connect(function()
+            checkTextForFullBase(desc.Text)
+        end)
+        checkTextForFullBase(desc.Text)
+    end
+end)
+
+for _, desc in ipairs(pGui:GetDescendants()) do
+    if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+        desc:GetPropertyChangedSignal("Text"):Connect(function()
+            checkTextForFullBase(desc.Text)
+        end)
+        checkTextForFullBase(desc.Text)
+    end
+end
+
+if G.__RNGGui then pcall(function() G.__RNGGui:Destroy() end) end
+
+local ON_COLOR  = Color3.fromRGB(52, 199, 123)
+local OFF_COLOR = Color3.fromRGB(58, 58, 72)
+local ACCENT_A  = Color3.fromRGB(138, 99, 255)
+local ACCENT_B  = Color3.fromRGB(86, 138, 255)
+local MUTED     = Color3.fromRGB(140, 140, 158)
+
+local function corner(o, r) local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r); c.Parent = o end
+local function tween(o, t, p) TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), p):Play() end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "RNGSpinToggle"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
+pcall(function() if protectgui then protectgui(gui) end end)
+local parent
+pcall(function() parent = gethui and gethui() end)
+if not parent then pcall(function() parent = game:GetService("CoreGui") end) end
+if not parent then parent = LP:WaitForChild("PlayerGui") end
+gui.Parent = parent
+G.__RNGGui = gui
+
+-- Main Card
+local card = Instance.new("Frame")
+card.Size = UDim2.fromOffset(256, 230)
+card.Position = UDim2.fromOffset(30, 230)
+card.BackgroundColor3 = Color3.fromRGB(17, 17, 23)
+card.BorderSizePixel = 0
+card.Active = true
+card.Parent = gui
+corner(card, 16)
+local cstroke = Instance.new("UIStroke", card)
+cstroke.Color = Color3.fromRGB(42, 42, 56); cstroke.Thickness = 1.5; cstroke.Transparency = 0.1
+
+local accent = Instance.new("Frame")
+accent.Size = UDim2.new(1, -32, 0, 3); accent.Position = UDim2.fromOffset(16, 14)
+accent.BorderSizePixel = 0; accent.Parent = card; corner(accent, 2)
+Instance.new("UIGradient", accent).Color = ColorSequence.new(ACCENT_A, ACCENT_B)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -32, 0, 20); title.Position = UDim2.fromOffset(16, 26)
+title.BackgroundTransparency = 1; title.Text = "Sources Hub Auto Spin"
+title.TextXAlignment = Enum.TextXAlignment.Left; title.TextColor3 = Color3.fromRGB(240, 240, 248)
+title.Font = Enum.Font.GothamBold; title.TextSize = 16; title.Parent = card
+
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1, -32, 0, 14); sub.Position = UDim2.fromOffset(16, 45)
+sub.BackgroundTransparency = 1; sub.Text = "https://discord.gg/S64Av2qnHd"
+sub.TextXAlignment = Enum.TextXAlignment.Left; sub.TextColor3 = MUTED
+sub.Font = Enum.Font.Gotham; sub.TextSize = 11; sub.Parent = card
+
+local div1 = Instance.new("Frame")
+div1.Size = UDim2.new(1, -32, 0, 1); div1.Position = UDim2.fromOffset(16, 65)
+div1.BackgroundColor3 = Color3.fromRGB(38, 38, 50); div1.BorderSizePixel = 0; div1.Parent = card
+
+-- Auto Spin Toggle Row
+local rowLabel = Instance.new("TextLabel")
+rowLabel.Size = UDim2.fromOffset(120, 24); rowLabel.Position = UDim2.fromOffset(16, 73)
+rowLabel.BackgroundTransparency = 1; rowLabel.Text = "Auto Spin"
+rowLabel.TextXAlignment = Enum.TextXAlignment.Left; rowLabel.TextColor3 = Color3.fromRGB(218, 218, 228)
+rowLabel.Font = Enum.Font.GothamMedium; rowLabel.TextSize = 13; rowLabel.Parent = card
+
+local track = Instance.new("Frame")
+track.Size = UDim2.fromOffset(46, 22); track.Position = UDim2.new(1, -62, 0, 74)
+track.BackgroundColor3 = OFF_COLOR; track.BorderSizePixel = 0; track.Parent = card; corner(track, 11)
+local knob = Instance.new("Frame")
+knob.Size = UDim2.fromOffset(16, 16); knob.Position = UDim2.fromOffset(3, 3)
+knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250); knob.BorderSizePixel = 0; knob.Parent = track; corner(knob, 8)
+local hit = Instance.new("TextButton")
+hit.Size = UDim2.fromScale(1, 1); hit.BackgroundTransparency = 1; hit.Text = ""; hit.Parent = track
+
+-- Open Settings Button
+local openSettingsBtn = Instance.new("TextButton")
+openSettingsBtn.Size = UDim2.new(1, -32, 0, 24); openSettingsBtn.Position = UDim2.fromOffset(16, 104)
+openSettingsBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 44)
+openSettingsBtn.Text = "Auto Buy Settings"
+openSettingsBtn.TextColor3 = Color3.fromRGB(210, 210, 230)
+openSettingsBtn.Font = Enum.Font.GothamMedium; openSettingsBtn.TextSize = 11; openSettingsBtn.Parent = card
+corner(openSettingsBtn, 6)
+
+status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -32, 0, 14); status.Position = UDim2.fromOffset(16, 134)
+status.BackgroundTransparency = 1; status.Text = "Idle"
+status.TextXAlignment = Enum.TextXAlignment.Left; status.TextColor3 = MUTED
+status.Font = Enum.Font.Gotham; status.TextSize = 11; status.Parent = card
+
+local div2 = Instance.new("Frame")
+div2.Size = UDim2.new(1, -32, 0, 1); div2.Position = UDim2.fromOffset(16, 154)
+div2.BackgroundColor3 = Color3.fromRGB(38, 38, 50); div2.BorderSizePixel = 0; div2.Parent = card
+
+local winHeader = Instance.new("TextLabel")
+winHeader.Size = UDim2.new(1, -32, 0, 12); winHeader.Position = UDim2.fromOffset(16, 162)
+winHeader.BackgroundTransparency = 1; winHeader.Text = "LAST WIN"
+winHeader.TextXAlignment = Enum.TextXAlignment.Left; winHeader.TextColor3 = Color3.fromRGB(105, 105, 122)
+winHeader.Font = Enum.Font.GothamBold; winHeader.TextSize = 10; winHeader.Parent = card
+
+local winName = Instance.new("TextLabel")
+winName.Size = UDim2.new(1, -32, 0, 18); winName.Position = UDim2.fromOffset(16, 176)
+winName.BackgroundTransparency = 1; winName.Text = "—"
+winName.TextXAlignment = Enum.TextXAlignment.Left; winName.TextColor3 = Color3.fromRGB(232, 232, 238)
+winName.Font = Enum.Font.GothamBold; winName.TextSize = 13; winName.TextTruncate = Enum.TextTruncate.AtEnd
+winName.Parent = card
+
+local winInfo = Instance.new("TextLabel")
+winInfo.Size = UDim2.new(1, -32, 0, 14); winInfo.Position = UDim2.fromOffset(16, 196)
+winInfo.BackgroundTransparency = 1; winInfo.Text = "no spins yet"
+winInfo.TextXAlignment = Enum.TextXAlignment.Left; winInfo.TextColor3 = MUTED
+winInfo.Font = Enum.Font.Gotham; winInfo.TextSize = 11; winInfo.Parent = card
+
+-- Settings GUI Window
+local settingsCard = Instance.new("Frame")
+settingsCard.Size = UDim2.fromOffset(270, 230)
+settingsCard.Position = UDim2.fromOffset(310, 230)
+settingsCard.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+settingsCard.BorderSizePixel = 0
+settingsCard.Visible = false
+settingsCard.Active = true
+settingsCard.Parent = gui
+corner(settingsCard, 16)
+local sstroke = Instance.new("UIStroke", settingsCard)
+sstroke.Color = Color3.fromRGB(50, 50, 68); sstroke.Thickness = 1.5; sstroke.Transparency = 0.1
+
+local stitle = Instance.new("TextLabel")
+stitle.Size = UDim2.new(1, -32, 0, 20); stitle.Position = UDim2.fromOffset(16, 12)
+stitle.BackgroundTransparency = 1; stitle.Text = "Auto Buy & Webhook Settings"
+stitle.TextXAlignment = Enum.TextXAlignment.Left; stitle.TextColor3 = Color3.fromRGB(240, 240, 248)
+stitle.Font = Enum.Font.GothamBold; stitle.TextSize = 13; stitle.Parent = settingsCard
+
+-- Exact Name Box
+local buyLabel = Instance.new("TextLabel")
+buyLabel.Size = UDim2.new(1, -32, 0, 12); buyLabel.Position = UDim2.fromOffset(16, 38)
+buyLabel.BackgroundTransparency = 1; buyLabel.Text = "Exact Names (Comma Separated)"
+buyLabel.TextXAlignment = Enum.TextXAlignment.Left; buyLabel.TextColor3 = MUTED
+buyLabel.Font = Enum.Font.GothamMedium; buyLabel.TextSize = 9; buyLabel.Parent = settingsCard
+
+local inputBg = Instance.new("Frame")
+inputBg.Size = UDim2.new(1, -32, 0, 22); inputBg.Position = UDim2.fromOffset(16, 52)
+inputBg.BackgroundColor3 = Color3.fromRGB(28, 28, 38); inputBg.BorderSizePixel = 0; inputBg.ClipsDescendants = true; inputBg.Parent = settingsCard; corner(inputBg, 6)
+
+local textBox = Instance.new("TextBox")
+textBox.Size = UDim2.new(1, -12, 1, 0); textBox.Position = UDim2.fromOffset(6, 0)
+textBox.BackgroundTransparency = 1; textBox.Text = G.TargetBrainrots
+textBox.PlaceholderText = "e.g. Gelatina Volatina, Skibidi"
+textBox.PlaceholderColor3 = Color3.fromRGB(90, 90, 105)
+textBox.TextColor3 = Color3.fromRGB(230, 230, 240)
+textBox.Font = Enum.Font.Gotham; textBox.TextSize = 10
+textBox.TextXAlignment = Enum.TextXAlignment.Left; textBox.ClearTextOnFocus = false; textBox.ClipsDescendants = true; textBox.Parent = inputBg
+
+textBox:GetPropertyChangedSignal("Text"):Connect(function()
+    G.TargetBrainrots = textBox.Text
+end)
+
+-- Min Income Box
+local incLabel = Instance.new("TextLabel")
+incLabel.Size = UDim2.new(1, -32, 0, 12); incLabel.Position = UDim2.fromOffset(16, 80)
+incLabel.BackgroundTransparency = 1; incLabel.Text = "Min Income/sec (e.g. 10000000)"
+incLabel.TextXAlignment = Enum.TextXAlignment.Left; incLabel.TextColor3 = MUTED
+incLabel.Font = Enum.Font.GothamMedium; incLabel.TextSize = 9; incLabel.Parent = settingsCard
+
+local incBg = Instance.new("Frame")
+incBg.Size = UDim2.new(1, -32, 0, 22); incBg.Position = UDim2.fromOffset(16, 94)
+incBg.BackgroundColor3 = Color3.fromRGB(28, 28, 38); incBg.BorderSizePixel = 0; incBg.ClipsDescendants = true; incBg.Parent = settingsCard; corner(incBg, 6)
+
+local incBox = Instance.new("TextBox")
+incBox.Size = UDim2.new(1, -12, 1, 0); incBox.Position = UDim2.fromOffset(6, 0)
+incBox.BackgroundTransparency = 1; incBox.Text = G.MinIncomePerSec > 0 and tostring(G.MinIncomePerSec) or ""
+incBox.PlaceholderText = "e.g. 10000000"
+incBox.PlaceholderColor3 = Color3.fromRGB(90, 90, 105)
+incBox.TextColor3 = Color3.fromRGB(230, 230, 240)
+incBox.Font = Enum.Font.Gotham; incBox.TextSize = 10
+incBox.TextXAlignment = Enum.TextXAlignment.Left; incBox.ClearTextOnFocus = false; incBox.ClipsDescendants = true; incBox.Parent = incBg
+
+incBox:GetPropertyChangedSignal("Text"):Connect(function()
+    G.MinIncomePerSec = tonumber(incBox.Text) or 0
+end)
+
+-- Webhook URL Box
+local hookLabel = Instance.new("TextLabel")
+hookLabel.Size = UDim2.new(1, -32, 0, 12); hookLabel.Position = UDim2.fromOffset(16, 122)
+hookLabel.BackgroundTransparency = 1; hookLabel.Text = "Discord Webhook URL"
+hookLabel.TextXAlignment = Enum.TextXAlignment.Left; hookLabel.TextColor3 = MUTED
+hookLabel.Font = Enum.Font.GothamMedium; hookLabel.TextSize = 9; hookLabel.Parent = settingsCard
+
+local hookBg = Instance.new("Frame")
+hookBg.Size = UDim2.new(1, -32, 0, 22); hookBg.Position = UDim2.fromOffset(16, 136)
+hookBg.BackgroundColor3 = Color3.fromRGB(28, 28, 38); hookBg.BorderSizePixel = 0; hookBg.ClipsDescendants = true; hookBg.Parent = settingsCard; corner(hookBg, 6)
+
+local hookBox = Instance.new("TextBox")
+hookBox.Size = UDim2.new(1, -12, 1, 0); hookBox.Position = UDim2.fromOffset(6, 0)
+hookBox.BackgroundTransparency = 1; hookBox.Text = G.DiscordWebhook
+hookBox.PlaceholderText = "https://discord.com/api/webhooks/..."
+hookBox.PlaceholderColor3 = Color3.fromRGB(90, 90, 105)
+hookBox.TextColor3 = Color3.fromRGB(230, 230, 240)
+hookBox.Font = Enum.Font.Gotham; hookBox.TextSize = 10
+hookBox.TextXAlignment = Enum.TextXAlignment.Left; hookBox.ClearTextOnFocus = false; hookBox.ClipsDescendants = true; hookBox.Parent = hookBg
+
+hookBox:GetPropertyChangedSignal("Text"):Connect(function()
+    G.DiscordWebhook = hookBox.Text
+end)
+
+local closeSettingsBtn = Instance.new("TextButton")
+closeSettingsBtn.Size = UDim2.new(1, -32, 0, 22); closeSettingsBtn.Position = UDim2.fromOffset(16, 192)
+closeSettingsBtn.BackgroundColor3 = Color3.fromRGB(138, 99, 255)
+closeSettingsBtn.Text = "Done"
+closeSettingsBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeSettingsBtn.Font = Enum.Font.GothamBold; closeSettingsBtn.TextSize = 11; closeSettingsBtn.Parent = settingsCard
+corner(closeSettingsBtn, 6)
+
+openSettingsBtn.MouseButton1Click:Connect(function() settingsCard.Visible = not settingsCard.Visible end)
+closeSettingsBtn.MouseButton1Click:Connect(function() settingsCard.Visible = false end)
+
+function setStatus(text, color)
+    status.Text = text
+    tween(status, 0.15, {TextColor3 = color or MUTED})
+end
+
+function showWin(offer)
+    if not offer or not offer.Name then return end
+    local a = Animals and Animals[offer.Name]
+    local rarity = (a and a.Rarity) or offer.Rarity or "?"
+    local price = offer.BuyPrice or offer.Price or offer.Cost or 0
+    local income = getIncome(offer)
+    
+    winName.Text = ("%s - %s (%s/s)"):format(offer.Name, short(price), short(income))
+    winName.TextColor3 = rarityColor(rarity)
+    
+    local info = ("Rarity: %s"):format(rarity)
+    local mult = offer.Multiplier or 1
+    if mult > 1 then info = info .. ("  •  x%s luck"):format(mult) end
+    winInfo.Text = info
+end
+
+if machine then
+    task.spawn(function()
+        local last
+        while gui.Parent and myToken == G.__RNGRun do
+            local d = machine.Data
+            if d and d.Offer and d.Offer.Name and d.Offer.ExpiresAt ~= last then
+                last = d.Offer.ExpiresAt
+                showWin(d.Offer)
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+
+function setState(on)
+    G.RNGAutoSpin = on and true or false
+    if G.RNGAutoSpin then
+        tween(track, 0.2, {BackgroundColor3 = ON_COLOR})
+        tween(knob, 0.2, {Position = UDim2.fromOffset(25, 3)})
+        setStatus("Active", ON_COLOR)
+        startLoop()
+    else
+        tween(track, 0.2, {BackgroundColor3 = OFF_COLOR})
+        tween(knob, 0.2, {Position = UDim2.fromOffset(3, 3)})
+        setStatus(("Stopped  •  %d spins"):format(spins), MUTED)
+    end
+end
+hit.MouseButton1Click:Connect(function() setState(not G.RNGAutoSpin) end)
+
+local function enableDrag(frame, handle)
+    local dragging, dragStart, startPos
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; dragStart = i.Position; startPos = frame.Position
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end)
+end
+
+enableDrag(card, card)
+enableDrag(settingsCard, settingsCard)
