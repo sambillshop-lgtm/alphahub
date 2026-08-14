@@ -1,0 +1,668 @@
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local LP = Players.LocalPlayer
+
+local WebSocket = nil
+if syn and syn.websocket then WebSocket = syn.websocket.connect
+elseif WebSocket and WebSocket.connect then WebSocket = WebSocket.connect end
+if not WebSocket and not getgenv().WebSocket then
+    if typeof(WebSocket) ~= "function" then else WebSocket = WebSocket or getgenv().WebSocket.connect end
+else WebSocket = WebSocket or getgenv().WebSocket.connect end
+
+local function Fmt(n)
+    n = tonumber(n) or 0
+    if n>=1e15 then return string.format("$%.1fQa",n/1e15)
+    elseif n>=1e12 then return string.format("$%.1fT",n/1e12)
+    elseif n>=1e9  then return string.format("$%.1fB",n/1e9)
+    elseif n>=1e6  then return string.format("$%.1fM",n/1e6)
+    elseif n>=1e3  then return string.format("$%.1fK",n/1e3)
+    else return "$"..math.floor(n) end
+end
+
+local function Tw(o,p,d,s,dr)
+    if not o or not o.Parent then return end
+    TweenService:Create(o,TweenInfo.new(d or .25, s or Enum.EasingStyle.Quart, dr or Enum.EasingDirection.Out),p):Play()
+end
+
+local function Rip(btn, col)
+    local r=Instance.new("Frame",btn)
+    r.AnchorPoint=Vector2.new(.5,.5); r.Size=UDim2.new(0,0,0,0)
+    r.Position=UDim2.new(.5,0,.5,0); r.BackgroundColor3=col or Color3.fromRGB(160,100,220)
+    r.BackgroundTransparency=.6; r.BorderSizePixel=0; r.ZIndex=btn.ZIndex+2
+    Instance.new("UICorner",r).CornerRadius=UDim.new(1,0)
+    local s=math.max(btn.AbsoluteSize.X,btn.AbsoluteSize.Y)*2.2
+    Tw(r,{Size=UDim2.new(0,s,0,s),BackgroundTransparency=1},.45)
+    task.delay(.5,function() if r.Parent then r:Destroy() end end)
+end
+
+local function Copy(t)
+    if setclipboard then setclipboard(t) elseif toclipboard then toclipboard(t) end
+end
+
+local function sendDuelInvite(targetUsername)
+    local PlayerGui = LP:FindFirstChild("PlayerGui")
+    if not PlayerGui then return end
+    local duelsGui = PlayerGui:FindFirstChild("DuelsMachinePlayerList")
+    if duelsGui then duelsGui = duelsGui:FindFirstChild("DuelsMachinePlayerList") end
+    if not duelsGui then return end
+    local searchBox = duelsGui:FindFirstChild("SearchFrame") and duelsGui.SearchFrame:FindFirstChild("SearchBox")
+    local list = duelsGui:FindFirstChild("GlobalList")
+    if not searchBox or not list then return end
+    searchBox.Text = targetUsername
+    firesignal(searchBox.FocusLost, true)
+    task.wait(1.5)
+    for _, entry in ipairs(list:GetChildren()) do
+        if entry.Name:lower():match("^" .. targetUsername:lower() .. "_") then
+            local sendButton = entry:FindFirstChild("Fill") and entry.Fill:FindFirstChild("Send")
+            if sendButton then
+                firesignal(sendButton.MouseButton1Click)
+                firesignal(sendButton.Activated)
+            end
+            break
+        end
+    end
+end
+
+local G = {
+    bg      = Color3.fromRGB(8,5,10),
+    bg2     = Color3.fromRGB(12,7,14),
+    surface = Color3.fromRGB(16,10,20),
+    card    = Color3.fromRGB(18,12,22),
+    cardHov = Color3.fromRGB(24,16,30),
+    a0      = Color3.fromRGB(160,100,220),
+    a1      = Color3.fromRGB(190,140,240),
+    a2      = Color3.fromRGB(110,60,170),
+    aDim    = Color3.fromRGB(50,30,70),
+    t0      = Color3.fromRGB(240,230,255),
+    t1      = Color3.fromRGB(180,160,200),
+    t2      = Color3.fromRGB(80,60,100),
+    border  = Color3.fromRGB(30,20,40),
+    danger  = Color3.fromRGB(239,68,68),
+    warn    = Color3.fromRGB(251,191,36),
+}
+
+if CoreGui:FindFirstChild("GrapeFinder2") then CoreGui.GrapeFinder2:Destroy() end
+local SG = Instance.new("ScreenGui"); SG.Name="GrapeFinder2"
+SG.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; SG.Parent=CoreGui
+
+local ws,zlWs,my_id,connected,pingT = nil,nil,HttpService:GenerateGUID(false),false,0
+local chilliOffers = {}
+local zlOffers = {}
+local searchQ,curTab = "","OFFERS"
+
+local function loadScale()
+    local success, data = pcall(function() return readfile("GrapeFinderScale.txt") end)
+    if success and data then
+        local val = tonumber(data)
+        if val and val >= 0.5 and val <= 2.0 then
+            return val
+        end
+    end
+    return 0.6
+end
+
+local function saveScale(val)
+    pcall(function() writefile("GrapeFinderScale.txt", tostring(val)) end)
+end
+
+local uiScale = loadScale()
+local uiScaleObj = Instance.new("UIScale", SG)
+uiScaleObj.Scale = uiScale
+
+local function IsMe(o)
+    if not o then return false end
+    local a,b,c = o.host or o.username or "", o.from or "", o.displayName or ""
+    return a==LP.Name or a==LP.DisplayName or b==LP.Name or b==LP.DisplayName
+        or c==LP.Name or c==LP.DisplayName
+        or (o.userId and o.userId==LP.UserId)
+        or (o.clientId and o.clientId==my_id)
+end
+
+local Chip = Instance.new("TextButton",SG)
+Chip.Size=UDim2.new(0,54,0,54)
+Chip.Position=UDim2.new(.5,-27,0,10)
+Chip.BackgroundColor3=G.surface
+Chip.Text="🍇"
+Chip.TextSize=26
+Chip.Font=Enum.Font.GothamBold
+Chip.AutoButtonColor=false
+Chip.Visible=false
+Chip.ZIndex=10
+Instance.new("UICorner",Chip).CornerRadius=UDim.new(0,12)
+local chipS=Instance.new("UIStroke",Chip); chipS.Color=G.a0; chipS.Thickness=2
+spawn(function()
+    while Chip and Chip.Parent do
+        if Chip.Visible then
+            Tw(chipS,{Color=G.a1,Thickness=2.5},.6)
+            task.wait(.65)
+            Tw(chipS,{Color=G.a0,Thickness=1.5},.6)
+            task.wait(.65)
+        else task.wait(.3) end
+    end
+end)
+
+local W = Instance.new("Frame",SG); W.Name="Win"
+W.Size=UDim2.new(0,800,0,540); W.Position=UDim2.new(.5,-400,.5,-270)
+W.BackgroundColor3=G.bg; W.BorderSizePixel=0; W.Active=true; W.ClipsDescendants=true
+Instance.new("UICorner",W).CornerRadius=UDim.new(0,14)
+
+local gS=Instance.new("UIStroke",W); gS.Thickness=1.5; gS.Transparency=.4
+spawn(function()
+    local t=0
+    while W and W.Parent do
+        t=t+.018
+        local a=(math.sin(t*1.3)+1)*.5
+        gS.Color=Color3.fromRGB(math.floor(25+a*30),math.floor(25+a*20),math.floor(170+a*80))
+        gS.Transparency=.25+a*.45
+        task.wait(.03)
+    end
+end)
+
+local bg2=Instance.new("Frame",W); bg2.Size=UDim2.new(1,0,1,0); bg2.BackgroundTransparency=1; bg2.ZIndex=0
+Instance.new("UIGradient",bg2).Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(10,6,12)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(6,3,8)),
+}
+
+local _d,_s,_p=false
+W.InputBegan:Connect(function(i)
+    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+        _d=true;_s=i.Position;_p=W.Position
+        i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then _d=false end end)
+    end
+end)
+W.InputChanged:Connect(function(i)
+    if _d and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+        local d=i.Position-_s; W.Position=UDim2.new(_p.X.Scale,_p.X.Offset+d.X,_p.Y.Scale,_p.Y.Offset+d.Y)
+    end
+end)
+
+W.Size=UDim2.new(0,800,0,0); W.BackgroundTransparency=1
+Tw(W,{Size=UDim2.new(0,800,0,540),BackgroundTransparency=0},.5,Enum.EasingStyle.Back)
+
+local SB=Instance.new("Frame",W)
+SB.Size=UDim2.new(0,56,1,0); SB.BackgroundColor3=G.bg2; SB.BorderSizePixel=0; SB.ZIndex=2
+
+local sbLine=Instance.new("Frame",SB)
+sbLine.Size=UDim2.new(0,1,1,0); sbLine.Position=UDim2.new(1,-1,0,0)
+sbLine.BackgroundColor3=G.border; sbLine.BorderSizePixel=0
+
+local logo=Instance.new("TextLabel",SB)
+logo.Size=UDim2.new(1,0,0,56); logo.BackgroundTransparency=1
+logo.Text="🍇"; logo.Font=Enum.Font.GothamBlack; logo.TextSize=22
+logo.TextColor3=G.a0; logo.ZIndex=3
+
+local logoGlow=Instance.new("Frame",SB)
+logoGlow.Size=UDim2.new(0,40,0,40); logoGlow.Position=UDim2.new(.5,-20,0,8)
+logoGlow.BackgroundColor3=G.a0; logoGlow.BackgroundTransparency=.85; logoGlow.BorderSizePixel=0; logoGlow.ZIndex=2
+Instance.new("UICorner",logoGlow).CornerRadius=UDim.new(1,0)
+
+local sbDiv=Instance.new("Frame",SB)
+sbDiv.Size=UDim2.new(.55,0,0,1); sbDiv.Position=UDim2.new(.225,0,0,56)
+sbDiv.BackgroundColor3=G.border; sbDiv.BorderSizePixel=0
+
+local TABS = {
+    {id="OFFERS", icon="⊞", tip="OFFERS", y=68},
+}
+local tabBtns={}
+for _,td in ipairs(TABS) do
+    local btn=Instance.new("TextButton",SB)
+    btn.Size=UDim2.new(1,0,0,48); btn.Position=UDim2.new(0,0,0,td.y)
+    btn.BackgroundTransparency=1; btn.Text=""; btn.AutoButtonColor=false; btn.ZIndex=3
+
+    local pill=Instance.new("Frame",btn)
+    pill.Size=UDim2.new(0,3,0,20); pill.Position=UDim2.new(0,0,.5,-10)
+    pill.BackgroundColor3=G.a0; pill.BackgroundTransparency=0; pill.BorderSizePixel=0; pill.Name="Pill"
+    Instance.new("UICorner",pill).CornerRadius=UDim.new(0,2)
+
+    local bh=Instance.new("Frame",btn)
+    bh.Size=UDim2.new(1,0,1,0); bh.BackgroundColor3=G.a0; bh.BackgroundTransparency=.9
+    bh.BorderSizePixel=0; bh.ZIndex=2; bh.Name="BH"
+    Instance.new("UICorner",bh).CornerRadius=UDim.new(0,8)
+
+    local ico=Instance.new("TextLabel",btn)
+    ico.Size=UDim2.new(1,0,1,0); ico.BackgroundTransparency=1
+    ico.Text=td.icon; ico.Font=Enum.Font.GothamBold; ico.TextSize=20
+    ico.TextColor3=G.a0; ico.ZIndex=4; ico.Name="Ico"
+
+    local tip=Instance.new("Frame",btn)
+    tip.Size=UDim2.new(0,72,0,24); tip.Position=UDim2.new(1,6,.5,-12)
+    tip.BackgroundColor3=G.surface; tip.BorderSizePixel=0; tip.Visible=false; tip.ZIndex=20
+    Instance.new("UICorner",tip).CornerRadius=UDim.new(0,7)
+    Instance.new("UIStroke",tip).Color=G.border
+    local tl=Instance.new("TextLabel",tip); tl.Size=UDim2.new(1,0,1,0); tl.BackgroundTransparency=1
+    tl.Text=td.tip; tl.TextColor3=G.a1; tl.Font=Enum.Font.GothamBold; tl.TextSize=10
+
+    btn.MouseEnter:Connect(function() tip.Visible=true end)
+    btn.MouseLeave:Connect(function() tip.Visible=false end)
+    tabBtns[td.id]=btn
+end
+
+local TB=Instance.new("Frame",W)
+TB.Size=UDim2.new(1,-56,0,52); TB.Position=UDim2.new(0,56,0,0)
+TB.BackgroundColor3=G.bg2; TB.BorderSizePixel=0; TB.ZIndex=2
+
+local tbl=Instance.new("Frame",W)
+tbl.Size=UDim2.new(1,-56,0,2); tbl.Position=UDim2.new(0,56,0,51); tbl.BorderSizePixel=0; tbl.ZIndex=3
+local tblG=Instance.new("UIGradient",tbl)
+tblG.Color=ColorSequence.new{
+    ColorSequenceKeypoint.new(0,G.bg2),
+    ColorSequenceKeypoint.new(.3,G.a2),
+    ColorSequenceKeypoint.new(.55,G.a1),
+    ColorSequenceKeypoint.new(.8,G.a2),
+    ColorSequenceKeypoint.new(1,G.bg2),
+}
+spawn(function() local o=0; while tbl and tbl.Parent do o=(o+.005)%1; tblG.Offset=Vector2.new(o,0); task.wait(.03) end end)
+
+local tTitle=Instance.new("TextLabel",TB)
+tTitle.Size=UDim2.new(0,170,0,28); tTitle.Position=UDim2.new(0,14,0,4)
+tTitle.BackgroundTransparency=1; tTitle.Text="GRAPE FINDER"
+tTitle.Font=Enum.Font.GothamBlack; tTitle.TextSize=17; tTitle.TextColor3=G.a0
+tTitle.TextXAlignment=Enum.TextXAlignment.Left
+
+local tSub=Instance.new("TextLabel",TB)
+tSub.Size=UDim2.new(0,200,0,14); tSub.Position=UDim2.new(0,15,0,32)
+tSub.BackgroundTransparency=1; tSub.Text="discord.gg/irsh"
+tSub.Font=Enum.Font.Gotham; tSub.TextSize=9; tSub.TextColor3=G.a0
+tSub.TextXAlignment=Enum.TextXAlignment.Left
+local subClk=Instance.new("TextButton",TB)
+subClk.Size=UDim2.new(0,110,0,16); subClk.Position=UDim2.new(0,14,0,31)
+subClk.BackgroundTransparency=1; subClk.Text=""; subClk.ZIndex=5
+subClk.MouseEnter:Connect(function() Tw(tSub,{TextColor3=G.a1},.15) end)
+subClk.MouseLeave:Connect(function() Tw(tSub,{TextColor3=G.a0},.15) end)
+subClk.MouseButton1Click:Connect(function()
+    Copy("https://discord.gg/irsh")
+    local orig=tSub.Text; tSub.Text="✓ copied!"; tSub.TextColor3=G.a1
+    task.delay(1.5,function() if tSub.Parent then tSub.Text=orig; Tw(tSub,{TextColor3=G.a0},.3) end end)
+end)
+
+local pc=Instance.new("Frame",TB)
+pc.Size=UDim2.new(0,136,0,30); pc.Position=UDim2.new(0,190,0.5,-15)
+pc.BackgroundColor3=G.surface; pc.BorderSizePixel=0
+Instance.new("UICorner",pc).CornerRadius=UDim.new(0,8)
+Instance.new("UIStroke",pc).Color=G.border
+local pcIco=Instance.new("TextLabel",pc)
+pcIco.Size=UDim2.new(0,24,1,0); pcIco.Position=UDim2.new(0,6,0,0)
+pcIco.BackgroundTransparency=1; pcIco.Text="◉"; pcIco.TextColor3=G.a0
+pcIco.Font=Enum.Font.GothamBold; pcIco.TextSize=13
+local pcLbl=Instance.new("TextLabel",pc)
+pcLbl.Size=UDim2.new(1,-30,1,0); pcLbl.Position=UDim2.new(0,28,0,0)
+pcLbl.BackgroundTransparency=1; pcLbl.Text=LP.DisplayName
+pcLbl.TextColor3=G.t0; pcLbl.Font=Enum.Font.GothamBold; pcLbl.TextSize=11
+pcLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+local SR=Instance.new("Frame",TB)
+SR.Size=UDim2.new(0,210,0,30); SR.Position=UDim2.new(1,-320,0.5,-15)
+SR.BackgroundColor3=G.surface; SR.BorderSizePixel=0
+Instance.new("UICorner",SR).CornerRadius=UDim.new(0,9)
+local srS=Instance.new("UIStroke",SR); srS.Color=G.border; srS.Thickness=1
+local srIco=Instance.new("TextLabel",SR)
+srIco.Size=UDim2.new(0,26,1,0); srIco.Position=UDim2.new(0,5,0,0)
+srIco.BackgroundTransparency=1; srIco.Text="⌕"; srIco.TextColor3=G.t2
+srIco.Font=Enum.Font.GothamBold; srIco.TextSize=15
+local SBox=Instance.new("TextBox",SR)
+SBox.Size=UDim2.new(1,-32,1,0); SBox.Position=UDim2.new(0,28,0,0)
+SBox.PlaceholderText="Search offers..."; SBox.PlaceholderColor3=G.t2
+SBox.Text=""; SBox.BackgroundTransparency=1; SBox.TextColor3=G.t0
+SBox.Font=Enum.Font.Gotham; SBox.TextSize=12; SBox.ClearTextOnFocus=false
+SBox.TextXAlignment=Enum.TextXAlignment.Left
+SBox.Focused:Connect(function() Tw(srS,{Color=G.a0,Thickness=1.5},.2) end)
+SBox.FocusLost:Connect(function() Tw(srS,{Color=G.border,Thickness=1},.2) end)
+
+local badge=Instance.new("Frame",TB)
+badge.Size=UDim2.new(0,22,0,22); badge.Position=UDim2.new(1,-320,0.5,-11)
+badge.BackgroundColor3=G.a2; badge.BorderSizePixel=0; badge.ZIndex=5; badge.Visible=false
+Instance.new("UICorner",badge).CornerRadius=UDim.new(1,0)
+local badgeLbl=Instance.new("TextLabel",badge)
+badgeLbl.Size=UDim2.new(1,0,1,0); badgeLbl.BackgroundTransparency=1
+badgeLbl.TextColor3=G.t0; badgeLbl.Font=Enum.Font.GothamBold; badgeLbl.TextSize=9
+
+local stDot=Instance.new("Frame",TB)
+stDot.Size=UDim2.new(0,8,0,8); stDot.Position=UDim2.new(1,-100,0.5,-4)
+stDot.BackgroundColor3=G.danger; stDot.BorderSizePixel=0
+Instance.new("UICorner",stDot).CornerRadius=UDim.new(1,0)
+spawn(function()
+    while stDot and stDot.Parent do
+        Tw(stDot,{Size=UDim2.new(0,10,0,10),Position=UDim2.new(1,-101,.5,-5)},.5)
+        task.wait(.55); Tw(stDot,{Size=UDim2.new(0,8,0,8),Position=UDim2.new(1,-100,.5,-4)},.5); task.wait(.55)
+    end
+end)
+local stLbl=Instance.new("TextLabel",TB)
+stLbl.Text="OFFLINE"; stLbl.TextColor3=G.t2; stLbl.Font=Enum.Font.GothamBold; stLbl.TextSize=10
+stLbl.Size=UDim2.new(0,56,1,0); stLbl.Position=UDim2.new(1,-90,0,0); stLbl.BackgroundTransparency=1
+stLbl.TextXAlignment=Enum.TextXAlignment.Left
+local pingLbl=Instance.new("TextLabel",TB)
+pingLbl.Text=""; pingLbl.TextColor3=G.t2; pingLbl.Font=Enum.Font.Code; pingLbl.TextSize=9
+pingLbl.Size=UDim2.new(0,38,1,0); pingLbl.Position=UDim2.new(1,-44,0,0); pingLbl.BackgroundTransparency=1
+
+local scaleFrame=Instance.new("Frame",TB)
+scaleFrame.Size=UDim2.new(0,84,0,26); scaleFrame.Position=UDim2.new(1,-176,0.5,-13)
+scaleFrame.BackgroundColor3=G.surface; scaleFrame.BorderSizePixel=0
+Instance.new("UICorner",scaleFrame).CornerRadius=UDim.new(0,8)
+Instance.new("UIStroke",scaleFrame).Color=G.border
+
+local scMinus=Instance.new("TextButton",scaleFrame)
+scMinus.Size=UDim2.new(0,24,1,0); scMinus.BackgroundTransparency=1
+scMinus.Text="−"; scMinus.TextColor3=G.t1; scMinus.Font=Enum.Font.GothamBold; scMinus.TextSize=16
+scMinus.AutoButtonColor=false
+
+local scLbl=Instance.new("TextLabel",scaleFrame)
+scLbl.Size=UDim2.new(1,-48,1,0); scLbl.Position=UDim2.new(0,24,0,0)
+scLbl.BackgroundTransparency=1; scLbl.Text=string.format("%d%%",math.floor(uiScale*100))
+scLbl.TextColor3=G.a0; scLbl.Font=Enum.Font.GothamBold; scLbl.TextSize=10
+
+local scPlus=Instance.new("TextButton",scaleFrame)
+scPlus.Size=UDim2.new(0,24,1,0); scPlus.Position=UDim2.new(1,-24,0,0)
+scPlus.BackgroundTransparency=1
+scPlus.Text="+"; scPlus.TextColor3=G.t1; scPlus.Font=Enum.Font.GothamBold; scPlus.TextSize=16
+scPlus.AutoButtonColor=false
+
+local SCALE_STEP=0.1; local SCALE_MIN=0.5; local SCALE_MAX=2.0
+local function SetScale(v)
+    uiScale=math.clamp(math.floor(v*10+.5)/10, SCALE_MIN, SCALE_MAX)
+    uiScaleObj.Scale=uiScale
+    scLbl.Text=string.format("%d%%",math.floor(uiScale*100))
+    saveScale(uiScale)
+    Tw(scLbl,{TextColor3=G.a1},.1); task.delay(.3,function() if scLbl.Parent then Tw(scLbl,{TextColor3=G.a0},.2) end end)
+end
+scMinus.MouseButton1Click:Connect(function() Rip(scMinus,G.t2); SetScale(uiScale-SCALE_STEP) end)
+scPlus.MouseButton1Click:Connect(function() Rip(scPlus,G.a0); SetScale(uiScale+SCALE_STEP) end)
+scMinus.MouseEnter:Connect(function() Tw(scMinus,{TextColor3=G.a0},.15) end)
+scMinus.MouseLeave:Connect(function() Tw(scMinus,{TextColor3=G.t1},.15) end)
+scPlus.MouseEnter:Connect(function() Tw(scPlus,{TextColor3=G.a0},.15) end)
+scPlus.MouseLeave:Connect(function() Tw(scPlus,{TextColor3=G.t1},.15) end)
+
+local minB=Instance.new("TextButton",TB)
+minB.Size=UDim2.new(0,28,0,28); minB.Position=UDim2.new(1,-36,.5,-14)
+minB.BackgroundColor3=G.surface; minB.Text=""; minB.AutoButtonColor=false; minB.ZIndex=5
+Instance.new("UICorner",minB).CornerRadius=UDim.new(1,0)
+Instance.new("UIStroke",minB).Color=G.border
+local minIco=Instance.new("TextLabel",minB); minIco.Size=UDim2.new(1,0,1,0); minIco.BackgroundTransparency=1
+minIco.Text="−"; minIco.Font=Enum.Font.GothamBold; minIco.TextSize=16; minIco.TextColor3=G.t2
+minB.MouseEnter:Connect(function() Tw(minIco,{TextColor3=G.a0},.15) end)
+minB.MouseLeave:Connect(function() Tw(minIco,{TextColor3=G.t2},.15) end)
+
+local function MinUI()
+    Tw(W,{Size=UDim2.new(0,800,0,0),BackgroundTransparency=1},.28,Enum.EasingStyle.Back,Enum.EasingDirection.In)
+    task.delay(.3,function() W.Visible=false; Chip.Visible=true end)
+end
+local function MaxUI()
+    Chip.Visible=false; W.Visible=true
+    W.Size=UDim2.new(0,800,0,0); W.BackgroundTransparency=1
+    Tw(W,{Size=UDim2.new(0,800,0,540),BackgroundTransparency=0},.42,Enum.EasingStyle.Back)
+end
+minB.MouseButton1Click:Connect(function() Rip(minB); MinUI() end)
+Chip.MouseButton1Click:Connect(function() Rip(Chip); MaxUI() end)
+
+local CA=Instance.new("Frame",W)
+CA.Size=UDim2.new(1,-56,1,-54); CA.Position=UDim2.new(0,56,0,53)
+CA.BackgroundTransparency=1; CA.ClipsDescendants=true
+
+local PO=Instance.new("ScrollingFrame",CA)
+PO.Size=UDim2.new(1,-8,1,-6); PO.Position=UDim2.new(0,4,0,3)
+PO.BackgroundTransparency=1; PO.ScrollBarThickness=3; PO.ScrollBarImageColor3=G.a2
+PO.CanvasSize=UDim2.new(0,0,0,0); PO.Visible=true; PO.BorderSizePixel=0
+local loO=Instance.new("UIListLayout",PO); loO.Padding=UDim.new(0,5); loO.SortOrder=Enum.SortOrder.LayoutOrder
+Instance.new("UIPadding",PO).PaddingTop=UDim.new(0,3)
+
+local emptyO=Instance.new("Frame",PO)
+emptyO.Name="EmptyState"; emptyO.Size=UDim2.new(1,0,0,90); emptyO.BackgroundTransparency=1; emptyO.LayoutOrder=999999
+local emLbl=Instance.new("TextLabel",emptyO); emLbl.Size=UDim2.new(1,0,1,0); emLbl.BackgroundTransparency=1
+emLbl.Text="◈  Connecting to server..."; emLbl.TextColor3=G.t2
+emLbl.Font=Enum.Font.GothamSemibold; emLbl.TextSize=13
+
+local PAGES = {OFFERS=PO}
+
+local function SwTab(id)
+    if curTab==id then return end
+    PAGES[curTab].Visible=false; PAGES[id].Visible=true; curTab=id
+    SR.Visible=(id=="OFFERS")
+end
+
+local function MkCard(par,offer)
+    if not par or not par.Parent or not offer then return nil end
+    local rid=tostring(offer.roomId or offer.offerId or offer.from or HttpService:GenerateGUID(false))
+    local pn=offer.host or offer.username or "Unknown"
+    local iname=offer.item or "Item"
+    local vtxt=offer.valueText or ""
+    local vnum=tonumber(offer.valueNumber or 0) or 0
+    if pn=="Unknown" or pn=="" then return nil end
+    local dv=vtxt; if dv=="" or dv=="$0" then dv=Fmt(vnum).."/s" end
+    local mine=IsMe(offer)
+
+    local f=Instance.new("Frame")
+    f.Name="Offer_"..rid
+    f.Size=UDim2.new(1,0,0,58)
+    f.BackgroundColor3=mine and Color3.fromRGB(14,10,18) or G.card
+    f.BorderSizePixel=0; f.ClipsDescendants=true
+    Instance.new("UICorner",f).CornerRadius=UDim.new(0,11)
+    local fs=Instance.new("UIStroke",f); fs.Color=mine and Color3.fromRGB(60,40,80) or G.border; fs.Thickness=1
+
+    local ab=Instance.new("Frame",f)
+    ab.Size=UDim2.new(0,3,0,24); ab.Position=UDim2.new(0,0,.5,-12)
+    ab.BackgroundColor3=mine and G.a0 or G.a2; ab.BorderSizePixel=0
+    Instance.new("UICorner",ab).CornerRadius=UDim.new(0,2)
+
+    local ag=Instance.new("Frame",f)
+    ag.Size=UDim2.new(0,20,1,0); ag.BackgroundColor3=mine and G.a0 or G.a2
+    ag.BackgroundTransparency=.9; ag.BorderSizePixel=0
+    Instance.new("UIGradient",ag).Color=ColorSequence.new{
+        ColorSequenceKeypoint.new(0,Color3.fromRGB(255,255,255)),
+        ColorSequenceKeypoint.new(1,Color3.fromRGB(0,0,0)),
+    }
+
+    local nl=Instance.new("TextLabel",f)
+    nl.Text=pn; nl.TextColor3=G.t0; nl.Font=Enum.Font.GothamBold; nl.TextSize=13
+    nl.Position=UDim2.new(0,16,0,9); nl.Size=UDim2.new(0,220,0,18)
+    nl.BackgroundTransparency=1; nl.TextXAlignment=Enum.TextXAlignment.Left
+
+    local copyB=Instance.new("TextButton",f)
+    copyB.Text="⎘"; copyB.Size=UDim2.new(0,20,0,18); copyB.Position=UDim2.new(0,238,0,10)
+    copyB.BackgroundTransparency=1; copyB.TextColor3=G.t2; copyB.Font=Enum.Font.GothamBold; copyB.TextSize=14
+    copyB.MouseEnter:Connect(function() Tw(copyB,{TextColor3=G.a0},.15) end)
+    copyB.MouseLeave:Connect(function() Tw(copyB,{TextColor3=G.t2},.15) end)
+    copyB.MouseButton1Click:Connect(function()
+        Copy(pn); copyB.Text="✓"; Tw(copyB,{TextColor3=G.a1},.1)
+        task.delay(1.2,function() if copyB.Parent then copyB.Text="⎘"; Tw(copyB,{TextColor3=G.t2},.25) end end)
+    end)
+
+    local il=Instance.new("TextLabel",f)
+    il.Name="ItemInfo"; il.Text=iname.."  ·  "..dv
+    il.TextColor3=G.a0; il.Font=Enum.Font.Gotham; il.TextSize=11
+    il.Position=UDim2.new(0,16,0,30); il.Size=UDim2.new(0,350,0,16)
+    il.BackgroundTransparency=1; il.TextXAlignment=Enum.TextXAlignment.Left
+
+    f.MouseEnter:Connect(function()
+        Tw(f,{BackgroundColor3=mine and Color3.fromRGB(18,12,24) or G.cardHov},.15)
+        Tw(fs,{Color=G.a2,Thickness=1.2},.15)
+    end)
+    f.MouseLeave:Connect(function()
+        Tw(f,{BackgroundColor3=mine and Color3.fromRGB(14,10,18) or G.card},.15)
+        Tw(fs,{Color=mine and Color3.fromRGB(60,40,80) or G.border,Thickness=1},.15)
+    end)
+
+    if mine then
+        local tg=Instance.new("Frame",f); tg.Size=UDim2.new(0,58,0,20); tg.Position=UDim2.new(1,-166,.5,-10)
+        tg.BackgroundColor3=G.aDim; tg.BorderSizePixel=0; Instance.new("UICorner",tg).CornerRadius=UDim.new(0,6)
+        local tgl=Instance.new("TextLabel",tg); tgl.Size=UDim2.new(1,0,1,0); tgl.BackgroundTransparency=1
+        tgl.Text="YOURS"; tgl.TextColor3=G.a0; tgl.Font=Enum.Font.GothamBold; tgl.TextSize=9
+    else
+        local ob=Instance.new("TextButton",f)
+        ob.Text="DUEL ▶"
+        ob.Size=UDim2.new(0,84,0,30)
+        ob.Position=UDim2.new(1,-92,.5,-15)
+        ob.BackgroundColor3=G.aDim
+        ob.TextColor3=G.a0
+        ob.Font=Enum.Font.GothamBold
+        ob.TextSize=10
+        ob.AutoButtonColor=false
+        Instance.new("UICorner",ob).CornerRadius=UDim.new(0,8)
+        Instance.new("UIStroke",ob).Color=G.a2
+
+        ob.MouseEnter:Connect(function()
+            Tw(ob,{BackgroundColor3=G.a2,TextColor3=G.t0},.15)
+        end)
+        ob.MouseLeave:Connect(function()
+            Tw(ob,{BackgroundColor3=G.aDim,TextColor3=G.a0},.15)
+        end)
+        ob.MouseButton1Click:Connect(function()
+            Rip(ob)
+            sendDuelInvite(pn)
+        end)
+    end
+
+    f.BackgroundTransparency=.8; f.Parent=par
+    Tw(f,{BackgroundTransparency=0},.28)
+    return f
+end
+
+local function Filter(q)
+    q=string.lower(q or ""); local has=false
+    for _,c in pairs(PO:GetChildren()) do
+        if c:IsA("Frame") and c.Name:match("^Offer_") then
+            local il=c:FindFirstChild("ItemInfo")
+            if il then
+                local show=q=="" or string.find(string.lower(il.Text),q,1,true)
+                c.Visible=show; if show then has=true end
+            end
+        end
+    end
+    if emLbl then
+        emptyO.Visible=(q~="" and not has) or (#chilliOffers==0 and #zlOffers==0)
+        emLbl.Text=q~="" and not has and '🔍  No results for "'..q..'"' or "◈  Waiting for offers..."
+    end
+end
+
+SBox:GetPropertyChangedSignal("Text"):Connect(function() searchQ=SBox.Text; Filter(searchQ) end)
+
+local function refreshDisplay()
+    for _, child in ipairs(PO:GetChildren()) do
+        if child:IsA("Frame") and child.Name:match("^Offer_") then
+            child:Destroy()
+        end
+    end
+    local combined = {}
+    for _,o in ipairs(zlOffers) do table.insert(combined,o) end
+    for _,o in ipairs(chilliOffers) do table.insert(combined,o) end
+    if #combined==0 then
+        emptyO.Visible=true
+        emLbl.Text="◈  Waiting for offers..."
+        PO.CanvasSize=UDim2.new(0,0,0,0)
+        badgeLbl.Text="0"; badge.Visible=false
+        return
+    end
+    emptyO.Visible=false
+    table.sort(combined, function(a,b)
+        return (a.time or 0) > (b.time or 0)
+    end)
+    local order = 1e6
+    for i=1,#combined do
+        local c=MkCard(PO,combined[i])
+        if c then
+            c.LayoutOrder=order
+            order=order-1
+        end
+    end
+    task.defer(function()
+        if loO.Parent then PO.CanvasSize=UDim2.new(0,0,0,loO.AbsoluteContentSize.Y+10) end
+        badgeLbl.Text=tostring(#combined); badge.Visible=#combined>0
+        if searchQ~="" then Filter(searchQ) end
+    end)
+end
+
+local function addZLOffer(data)
+    if not data or not data.username or not data.animal then return end
+    local id = data.id or (data.username.."_"..data.animal.."_"..os.time())
+    for _,o in ipairs(zlOffers) do
+        if o.id and o.id==id then return end
+    end
+    local offer = {
+        host = data.username,
+        username = data.username,
+        item = data.animal,
+        valueText = data.genText or "",
+        valueNumber = tonumber((data.genText or ""):gsub("[^%d.]","")) or 0,
+        id = id,
+        roomId = id,
+        source = "zl",
+        time = data.timestamp or os.time()*1000
+    }
+    table.insert(zlOffers, offer)
+    refreshDisplay()
+end
+
+local function connectZLFinder()
+    if not WebSocket then return end
+    local ok,sock=pcall(WebSocket,"wss://zlfinder.eeuuleyenda.workers.dev/ws")
+    if not ok or not sock then return end
+    zlWs=sock
+    zlWs.OnMessage:Connect(function(raw)
+        local ok2,msg=pcall(function() return HttpService:JSONDecode(raw) end)
+        if not ok2 or not msg then return end
+        if msg.type=="new_trade" and msg.data then
+            task.spawn(addZLOffer, msg.data)
+        elseif msg.type=="new_duel" and msg.data then
+            task.spawn(addZLOffer, msg.data)
+        end
+    end)
+    zlWs.OnClose:Connect(function()
+        zlWs=nil
+        task.delay(5,function() if not zlWs then connectZLFinder() end end)
+    end)
+end
+
+local function WsSend(p)
+    if not ws then return false end
+    return pcall(function() ws:Send(HttpService:JSONEncode(p)) end)
+end
+
+local function PingLoop()
+    spawn(function()
+        while connected and ws do
+            pingT=tick()
+            if not WsSend({type="ping",timestamp=pingT,clientId=my_id}) then
+                connected=false; stLbl.Text="LOST"; Tw(stDot,{BackgroundColor3=G.warn},.3); pingLbl.Text=""; break
+            end
+            task.wait(15)
+        end
+    end)
+end
+
+spawn(function()
+    if not WebSocket then return end
+    local ok,r=pcall(function() return WebSocket("ws://chillihub.pro:8080") end)
+    if not ok then stLbl.Text="FAIL"; return end
+    ws=r
+    ws.OnMessage:Connect(function(msg)
+        local s,d=pcall(function() return HttpService:JSONDecode(msg) end)
+        if not s or not d then return end
+        if d.type=="connect_success" then
+            WsSend({type="identify",name=LP.Name,displayName=LP.DisplayName})
+        elseif d.type=="identify_ok" then
+            connected=true; stLbl.Text="ONLINE"
+            Tw(stDot,{BackgroundColor3=G.a0},.3); Tw(stLbl,{TextColor3=G.a0},.3); PingLoop()
+        elseif d.type=="pong" then
+            local lat=math.floor((tick()-pingT)*1000)
+            pingLbl.Text=lat.."ms"
+            pingLbl.TextColor3=lat<80 and G.a0 or lat<200 and G.warn or G.danger
+        elseif d.type=="wager_list_update" then
+            if d.data then
+                chilliOffers = {}
+                local now = os.time()*1000
+                for _,o in pairs(d.data) do
+                    o.time = o.timestamp or now
+                    table.insert(chilliOffers, o)
+                end
+                refreshDisplay()
+            end
+        end
+    end)
+    ws.OnClose:Connect(function()
+        connected=false; stLbl.Text="CLOSED"
+        Tw(stDot,{BackgroundColor3=G.danger},.3); Tw(stLbl,{TextColor3=G.t2},.3); pingLbl.Text=""
+    end)
+end)
+
+connectZLFinder()

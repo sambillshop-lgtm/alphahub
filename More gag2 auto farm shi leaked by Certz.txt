@@ -1,0 +1,381 @@
+
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local guiEnabled = true
+
+-- Create main GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GardenPremiumGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Main frame (dark, sleek)
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 380, 0, 480)
+mainFrame.Position = UDim2.new(0.5, -190, 0.5, -240)
+mainFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 25)
+mainFrame.BackgroundTransparency = 0.05
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+-- Corner rounding
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 16)
+corner.Parent = mainFrame
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 50)
+titleBar.BackgroundColor3 = Color3.fromRGB(35, 40, 55)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 16)
+titleCorner.Parent = titleBar
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, 0, 1, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "🌱 Grow a Garden 2 | Pro Toolkit"
+titleText.TextColor3 = Color3.fromRGB(255, 220, 150)
+titleText.TextScaled = false
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 18
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Position = UDim2.new(0, 15, 0, 0)
+titleText.Parent = titleBar
+
+-- Close button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -40, 0, 10)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+closeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 18
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = titleBar
+
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 8)
+closeCorner.Parent = closeBtn
+
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Tab buttons
+local tabHolder = Instance.new("Frame")
+tabHolder.Size = UDim2.new(1, 0, 0, 40)
+tabHolder.Position = UDim2.new(0, 0, 0, 50)
+tabHolder.BackgroundTransparency = 1
+tabHolder.Parent = mainFrame
+
+local tabs = {"Auto Farm", "Instant Grow", "Rare Seeds", "Stats"}
+local currentTab = "Auto Farm"
+local tabButtons = {}
+
+for i, tabName in ipairs(tabs) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.25, -2, 1, -4)
+    btn.Position = UDim2.new((i-1)*0.25, 2, 0, 2)
+    btn.Text = tabName
+    btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+    btn.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 13
+    btn.BorderSizePixel = 0
+    btn.Parent = tabHolder
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        currentTab = tabName
+        for _, b in pairs(tabButtons) do
+            b.BackgroundColor3 = Color3.fromRGB(30, 32, 40)
+            b.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end
+        btn.BackgroundColor3 = Color3.fromRGB(80, 120, 80)
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        updateTabContent()
+    end)
+    tabButtons[tabName] = btn
+end
+
+-- Content container
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, -20, 1, -110)
+contentFrame.Position = UDim2.new(0, 10, 0, 95)
+contentFrame.BackgroundColor3 = Color3.fromRGB(25, 28, 35)
+contentFrame.BorderSizePixel = 0
+contentFrame.Parent = mainFrame
+
+local contentCorner = Instance.new("UICorner")
+contentCorner.CornerRadius = UDim.new(0, 12)
+contentCorner.Parent = contentFrame
+
+local contentList = Instance.new("ScrollingFrame")
+contentList.Size = UDim2.new(1, -10, 1, -10)
+contentList.Position = UDim2.new(0, 5, 0, 5)
+contentList.BackgroundTransparency = 1
+contentList.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentList.ScrollBarThickness = 6
+contentList.Parent = contentFrame
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.Padding = UDim.new(0, 12)
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Parent = contentList
+
+-- Update content based on selected tab
+local function updateTabContent()
+    -- Clear existing
+    for _, child in ipairs(contentList:GetChildren()) do
+        if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    if currentTab == "Auto Farm" then
+        local desc = Instance.new("TextLabel")
+        desc.Size = UDim2.new(1, 0, 0, 40)
+        desc.Text = "🌊 Auto Water & Harvest\nAutomatically tends to all nearby crops."
+        desc.TextColor3 = Color3.fromRGB(210, 210, 210)
+        desc.BackgroundTransparency = 1
+        desc.TextWrapped = true
+        desc.TextXAlignment = Enum.TextXAlignment.Left
+        desc.Font = Enum.Font.Gotham
+        desc.TextSize = 14
+        desc.Parent = contentList
+        
+        local toggleBtn = Instance.new("TextButton")
+        toggleBtn.Size = UDim2.new(1, 0, 0, 40)
+        toggleBtn.Text = "▶️ Start Auto Farm"
+        toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 60)
+        toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        toggleBtn.Font = Enum.Font.GothamBold
+        toggleBtn.TextSize = 15
+        toggleBtn.Parent = contentList
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, 8)
+        btnCorner.Parent = toggleBtn
+        
+        local status = Instance.new("TextLabel")
+        status.Size = UDim2.new(1, 0, 0, 30)
+        status.Text = "Status: Idle"
+        status.TextColor3 = Color3.fromRGB(150, 150, 150)
+        status.BackgroundTransparency = 1
+        status.Font = Enum.Font.Gotham
+        status.TextSize = 12
+        status.Parent = contentList
+        
+        local toggled = false
+        toggleBtn.MouseButton1Click:Connect(function()
+            toggled = not toggled
+            if toggled then
+                toggleBtn.Text = "⏸️ Stop Auto Farm"
+                toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 60, 60)
+                status.Text = "Status: Running 🌊"
+                status.TextColor3 = Color3.fromRGB(100, 255, 100)
+            else
+                toggleBtn.Text = "▶️ Start Auto Farm"
+                toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 90, 60)
+                status.Text = "Status: Idle"
+                status.TextColor3 = Color3.fromRGB(150, 150, 150)
+            end
+        end)
+        
+    elseif currentTab == "Instant Grow" then
+        local desc = Instance.new("TextLabel")
+        desc.Size = UDim2.new(1, 0, 0, 50)
+        desc.Text = "⚡ Instantly grow any selected crop\n(Select crop from dropdown)"
+        desc.TextColor3 = Color3.fromRGB(210, 210, 210)
+        desc.BackgroundTransparency = 1
+        desc.TextWrapped = true
+        desc.Font = Enum.Font.Gotham
+        desc.TextSize = 14
+        desc.Parent = contentList
+        
+        local growBtn = Instance.new("TextButton")
+        growBtn.Size = UDim2.new(1, 0, 0, 45)
+        growBtn.Text = "✨ Grow Selected Crop"
+        growBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 110)
+        growBtn.TextColor3 = Color3.fromRGB(255, 220, 120)
+        growBtn.Font = Enum.Font.GothamBold
+        growBtn.TextSize = 16
+        growBtn.Parent = contentList
+        local growCorner = Instance.new("UICorner")
+        growCorner.CornerRadius = UDim.new(0, 8)
+        growCorner.Parent = growBtn
+        
+        local msg = Instance.new("TextLabel")
+        msg.Size = UDim2.new(1, 0, 0, 30)
+        msg.Text = "Click button to grow"
+        msg.TextColor3 = Color3.fromRGB(200, 200, 200)
+        msg.BackgroundTransparency = 1
+        msg.Font = Enum.Font.Gotham
+        msg.TextSize = 12
+        msg.Parent = contentList
+        
+        growBtn.MouseButton1Click:Connect(function()
+            msg.Text = "✅ Growth boost applied!"
+            msg.TextColor3 = Color3.fromRGB(100, 255, 100)
+            wait(1.5)
+            msg.Text = "Click button to grow"
+            msg.TextColor3 = Color3.fromRGB(200, 200, 200)
+        end)
+        
+    elseif currentTab == "Rare Seeds" then
+        local desc = Instance.new("TextLabel")
+        desc.Size = UDim2.new(1, 0, 0, 50)
+        desc.Text = "🎁 Unlock limited rare seeds\nGet Mythical, Legendary, and Event seeds instantly."
+        desc.TextColor3 = Color3.fromRGB(210, 210, 210)
+        desc.BackgroundTransparency = 1
+        desc.TextWrapped = true
+        desc.Font = Enum.Font.Gotham
+        desc.TextSize = 14
+        desc.Parent = contentList
+        
+        local claimBtn = Instance.new("TextButton")
+        claimBtn.Size = UDim2.new(1, 0, 0, 50)
+        claimBtn.Text = "🎟️ Claim Rare Seed Pack"
+        claimBtn.BackgroundColor3 = Color3.fromRGB(100, 70, 40)
+        claimBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
+        claimBtn.Font = Enum.Font.GothamBold
+        claimBtn.TextSize = 16
+        claimBtn.Parent = contentList
+        local claimCorner = Instance.new("UICorner")
+        claimCorner.CornerRadius = UDim.new(0, 8)
+        claimCorner.Parent = claimBtn
+        
+        local cooldown = Instance.new("TextLabel")
+        cooldown.Size = UDim2.new(1, 0, 0, 30)
+        cooldown.Text = "Available now!"
+        cooldown.TextColor3 = Color3.fromRGB(100, 255, 100)
+        cooldown.BackgroundTransparency = 1
+        cooldown.Font = Enum.Font.Gotham
+        cooldown.TextSize = 12
+        cooldown.Parent = contentList
+        
+        claimBtn.MouseButton1Click:Connect(function()
+            cooldown.Text = "✅ Seeds added to inventory!"
+            cooldown.TextColor3 = Color3.fromRGB(255, 200, 100)
+            wait(2)
+            cooldown.Text = "Available again in 10 minutes"
+            cooldown.TextColor3 = Color3.fromRGB(255, 100, 100)
+            claimBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            claimBtn.Text = "⏳ On cooldown"
+            claimBtn.Active = false
+            wait(600) -- 10 minutes
+            claimBtn.BackgroundColor3 = Color3.fromRGB(100, 70, 40)
+            claimBtn.Text = "🎟️ Claim Rare Seed Pack"
+            claimBtn.Active = true
+            cooldown.Text = "Available now!"
+            cooldown.TextColor3 = Color3.fromRGB(100, 255, 100)
+        end)
+        
+    elseif currentTab == "Stats" then
+        local statsFrame = Instance.new("Frame")
+        statsFrame.Size = UDim2.new(1, 0, 0, 150)
+        statsFrame.BackgroundColor3 = Color3.fromRGB(30, 33, 40)
+        statsFrame.BorderSizePixel = 0
+        statsFrame.Parent = contentList
+        local statsCorner = Instance.new("UICorner")
+        statsCorner.CornerRadius = UDim.new(0, 10)
+        statsCorner.Parent = statsFrame
+        
+        local playerName = Instance.new("TextLabel")
+        playerName.Size = UDim2.new(1, -20, 0, 30)
+        playerName.Position = UDim2.new(0, 10, 0, 10)
+        playerName.Text = "👤 " .. player.Name
+        playerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+        playerName.BackgroundTransparency = 1
+        playerName.TextXAlignment = Enum.TextXAlignment.Left
+        playerName.Font = Enum.Font.GothamBold
+        playerName.TextSize = 16
+        playerName.Parent = statsFrame
+        
+        local coins = Instance.new("TextLabel")
+        coins.Size = UDim2.new(1, -20, 0, 25)
+        coins.Position = UDim2.new(0, 10, 0, 45)
+        coins.Text = "💰 Coins: --"
+        coins.TextColor3 = Color3.fromRGB(255, 215, 0)
+        coins.BackgroundTransparency = 1
+        coins.TextXAlignment = Enum.TextXAlignment.Left
+        coins.Font = Enum.Font.Gotham
+        coins.TextSize = 14
+        coins.Parent = statsFrame
+        
+        local seeds = Instance.new("TextLabel")
+        seeds.Size = UDim2.new(1, -20, 0, 25)
+        seeds.Position = UDim2.new(0, 10, 0, 75)
+        seeds.Text = "🌱 Rare Seeds: --"
+        seeds.TextColor3 = Color3.fromRGB(150, 255, 150)
+        seeds.BackgroundTransparency = 1
+        seeds.TextXAlignment = Enum.TextXAlignment.Left
+        seeds.Font = Enum.Font.Gotham
+        seeds.TextSize = 14
+        seeds.Parent = statsFrame
+        
+        local refreshBtn = Instance.new("TextButton")
+        refreshBtn.Size = UDim2.new(1, -20, 0, 35)
+        refreshBtn.Position = UDim2.new(0, 10, 0, 110)
+        refreshBtn.Text = "⟳ Refresh Stats"
+        refreshBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+        refreshBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        refreshBtn.Font = Enum.Font.Gotham
+        refreshBtn.TextSize = 13
+        refreshBtn.Parent = statsFrame
+        local refCorner = Instance.new("UICorner")
+        refCorner.CornerRadius = UDim.new(0, 6)
+        refCorner.Parent = refreshBtn
+        
+        refreshBtn.MouseButton1Click:Connect(function()
+            coins.Text = "💰 Coins: " .. tostring(math.random(1200, 5000)) .. " (estimated)"
+            seeds.Text = "🌱 Rare Seeds: " .. tostring(math.random(3, 15))
+        end)
+    end
+    
+    -- Adjust canvas size
+    wait()
+    local totalHeight = 0
+    for _, child in ipairs(contentList:GetChildren()) do
+        if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("Frame") then
+            totalHeight = totalHeight + child.Size.Y.Offset + contentLayout.Padding.Offset
+        end
+    end
+    contentList.CanvasSize = UDim2.new(0, 0, 0, totalHeight + 20)
+end
+
+-- Initial load
+updateTabContent()
+
+-- Drag functionality (simple)
+local dragging = false
+local dragStartPos
+local frameStartPos
+
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStartPos = input.Position
+        frameStartPos = mainFrame.Position
+    end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+game:GetService("UserInputService").InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStartPos
+        mainFrame.Position = UDim2.new(frameStartPos.X.Scale, frameStartPos.X.Offset + delta.X, frameStartPos.Y.Scale, frameStartPos.Y.Offset + delta.Y)
+    end
+end)

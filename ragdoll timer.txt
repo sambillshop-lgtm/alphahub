@@ -1,0 +1,63 @@
+============================================================
+    -- RAGDOLL TIMER (overhead billboard, Blossom-style decimal countdown)
+    -- ============================================================
+    local _rtTimerActive = false
+
+    local function getRagTimerColor(t)
+        return Color3.fromRGB(80, 220, 80)
+    end
+
+    local function getRagTimerLbl()
+        local char = LP.Character; if not char then return nil end
+        local head = char:FindFirstChild("Head"); if not head then return nil end
+        local bb = head:FindFirstChild("GreenDuelsBB"); if not bb then return nil end
+        return bb:FindFirstChild("RagdollTimerLbl")
+    end
+
+    local function startRagTimerGui()
+        if _rtTimerActive then return end
+        _rtTimerActive = true
+        task.spawn(function()
+            local t = 3.0
+            while t >= 0.0 do
+                local lbl = getRagTimerLbl()
+                if lbl then
+                    lbl.Text = string.format("%.1f", t)
+                    lbl.TextColor3 = getRagTimerColor(t)
+                end
+                task.wait(0.1)
+                t = math.round((t - 0.1) * 10) / 10
+            end
+            local lbl = getRagTimerLbl()
+            if lbl then
+                lbl.Text = "STEAL!"
+                lbl.TextColor3 = Color3.fromRGB(80, 255, 120)
+            end
+            -- Wait until no longer ragdolled
+            repeat task.wait(0.1) until (function()
+                local c = LP.Character
+                local hum = c and c:FindFirstChildOfClass("Humanoid")
+                if not hum then return true end
+                local st = hum:GetState()
+                return st ~= Enum.HumanoidStateType.Physics
+                    and st ~= Enum.HumanoidStateType.Ragdoll
+                    and st ~= Enum.HumanoidStateType.FallingDown
+            end)()
+            local lbl2 = getRagTimerLbl()
+            if lbl2 then lbl2.Text = "" end
+            _rtTimerActive = false
+        end)
+    end
+
+    local function startRagTimerDetection(char)
+        RunService.Heartbeat:Connect(function()
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not hum then return end
+            local st = hum:GetState()
+            if st == Enum.HumanoidStateType.Physics
+            or st == Enum.HumanoidStateType.Ragdoll
+            or st == Enum.HumanoidStateType.FallingDown then
+                startRagTimerGui()
+            end
+        end)
+    end

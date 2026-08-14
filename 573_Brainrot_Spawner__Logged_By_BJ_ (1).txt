@@ -1,0 +1,988 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local Animals = require(ReplicatedStorage:WaitForChild("Datas"):WaitForChild("Animals"))
+local Datas = ReplicatedStorage:WaitForChild("Datas")
+local Rarities = require(Datas:WaitForChild("Rarities"))
+local TraitsData = require(Datas:WaitForChild("Traits"))
+local MutationsData = require(Datas:WaitForChild("Mutations"))
+local GameData = require(Datas:WaitForChild("Game"))
+local SharedAnimals = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Animals"))
+local NumberUtils = require(ReplicatedStorage:WaitForChild("Utils"):WaitForChild("NumberUtils"))
+local Gradients = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Gradients"))
+
+local traitMap = {}
+for id, data in pairs(TraitsData) do
+	traitMap[id] = {name = data.DisplayName or id, mult = data.Multiplier or 0, icon = data.Icon}
+end
+
+local mutationMap = {}
+for name, data in pairs(MutationsData) do
+	local displayName = data.DisplayText or name
+	mutationMap[name] = {
+		name = displayName, mult = data.Multiplier or 0,
+		color = data.MainColor or Color3.new(1,1,1),
+		gradient = data.GradientPreset, rich = data.UseRichText,
+		richDisplay = data.DisplayWithRichText
+	}
+end
+
+local traitList = {}
+for _, data in pairs(traitMap) do table.insert(traitList, data.name) end
+table.sort(traitList)
+
+local mutationList = {"None"}
+for name in pairs(mutationMap) do table.insert(mutationList, name) end
+table.sort(mutationList)
+
+local excludedAnimals = {
+	["Secret Lucky Block"]=true,["Chimpanzini Spiderini"]=true,
+	["Mythic Lucky Block"]=true,["Brainrot God Lucky Block"]=true,
+}
+local animalList = {}
+for name in pairs(Animals) do
+	if not excludedAnimals[name] then table.insert(animalList, name) end
+end
+table.sort(animalList)
+
+local function formatNumber(num)
+	local suffixes = {"","K","M","B","T","Q","Qi","Sx"}
+	local tier = 1
+	while math.abs(num) >= 1000 and tier < #suffixes do
+		num = num / 1000; tier = tier + 1
+	end
+	return num % 1 == 0 and string.format("%d%s", num, suffixes[tier]) or string.format("%.1f%s", num, suffixes[tier])
+end
+
+local function parseCurrency(str)
+	str = str:gsub("<[^>]+>",""):gsub("%$",""):gsub(",",""):gsub("[^%d%.%a]","")
+	local numStr, suffix = str:match("^(%d*%.?%d+)(%a*)")
+	local num = tonumber(numStr) or 0
+	suffix = suffix:upper()
+	local m = {K=1e3,M=1e6,B=1e9,T=1e12,Q=1e15,QI=1e18,SX=1e21}
+	return num * (m[suffix] or 1)
+end
+
+local function getTraitIdByName(traitName)
+	for id, data in pairs(traitMap) do
+		if data.name == traitName then return id end
+	end
+	return nil
+end
+
+local function showCashout(text, isGreen)
+	local lb = PlayerGui:FindFirstChild("LeftBottom")
+	if not lb then return end
+	lb = lb:FindFirstChild("LeftBottom")
+	if not lb then return end
+	local cf = lb:FindFirstChild("Cashout")
+	if not cf or not cf:FindFirstChild("Template") then return end
+	local label = cf.Template:Clone()
+	label.Text = text
+	label.TextColor3 = isGreen and Color3.fromRGB(46,204,113) or Color3.fromRGB(231,76,60)
+	label.Visible = true; label.Parent = cf
+	local ti = TweenInfo.new(5, Enum.EasingStyle.Linear)
+	local tw = TweenService:Create(label, ti, {TextTransparency=1})
+	local sk = label:FindFirstChildOfClass("UIStroke")
+	if sk then TweenService:Create(sk, ti, {Transparency=1}):Play() end
+	tw.Completed:Once(function() label:Destroy() end); tw:Play()
+end
+
+local function hideInventory()
+	pcall(function() game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false) end)
+end
+local function showInventory()
+	pcall(function() game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, true) end)
+end
+
+local function setPlayerSpeed(speed)
+	pcall(function()
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.WalkSpeed = speed end
+	end)
+end
+
+local spawnedAnimals = {}
+local DEFAULT_X, DEFAULT_Y, DEFAULT_Z = 0, 0.5, -0.5
+local grabState = {xOff=DEFAULT_X, yOff=DEFAULT_Y, zOff=DEFAULT_Z}
+local MOVE_STEP = 0.1
+local currentGrabDummy, currentGrabHeartbeat, currentGrabAnim, currentlyGrabbedOriginal, grabAdjustGui = nil,nil,nil,nil,nil
+
+local function destroyGrabUI()
+	if grabAdjustGui then grabAdjustGui:Destroy(); grabAdjustGui = nil end
+end
+
+local function releaseGrab()
+	if currentGrabHeartbeat then currentGrabHeartbeat:Disconnect(); currentGrabHeartbeat = nil end
+	if currentGrabAnim then pcall(function() currentGrabAnim:Stop() end); currentGrabAnim = nil end
+	if currentGrabDummy then currentGrabDummy:Destroy(); currentGrabDummy = nil end
+	currentlyGrabbedOriginal = nil
+	grabState.xOff=DEFAULT_X; grabState.yOff=DEFAULT_Y; grabState.zOff=DEFAULT_Z
+	setPlayerSpeed(16)
+	showInventory(); destroyGrabUI()
+end
+
+local function createGrabUI()
+	destroyGrabUI()
+	local sg = Instance.new("ScreenGui")
+	sg.Name="GrabAdjustUI"; sg.ResetOnSpawn=false
+	sg.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; sg.Parent=CoreGui
+
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.new(0,180,0,200)
+	frame.Position = UDim2.new(1,-196,0.5,-100)
+	frame.BackgroundColor3 = Color3.fromRGB(18,18,22)
+	frame.BorderSizePixel=0; frame.Parent=sg
+	Instance.new("UICorner",frame).CornerRadius=UDim.new(0,8)
+	local fs=Instance.new("UIStroke",frame)
+	fs.Color=Color3.fromRGB(220,40,40); fs.Thickness=1.5
+
+	local titleBar=Instance.new("Frame")
+	titleBar.Size=UDim2.new(1,0,0,26)
+	titleBar.BackgroundColor3=Color3.fromRGB(30,10,10)
+	titleBar.BorderSizePixel=0; titleBar.Parent=frame
+	Instance.new("UICorner",titleBar).CornerRadius=UDim.new(0,8)
+	local tbFix=Instance.new("Frame",titleBar)
+	tbFix.Size=UDim2.new(1,0,0,8); tbFix.Position=UDim2.new(0,0,1,-8)
+	tbFix.BackgroundColor3=Color3.fromRGB(30,10,10); tbFix.BorderSizePixel=0
+
+	local titleLbl=Instance.new("TextLabel",titleBar)
+	titleLbl.Size=UDim2.new(1,-30,1,0); titleLbl.Position=UDim2.new(0,8,0,0)
+	titleLbl.BackgroundTransparency=1; titleLbl.Text="Position"
+	titleLbl.TextColor3=Color3.fromRGB(255,80,80); titleLbl.Font=Enum.Font.GothamBold
+	titleLbl.TextSize=10; titleLbl.TextXAlignment=Enum.TextXAlignment.Left
+
+	local closeGrabBtn=Instance.new("TextButton",titleBar)
+	closeGrabBtn.Size=UDim2.new(0,16,0,16); closeGrabBtn.Position=UDim2.new(1,-20,0.5,-8)
+	closeGrabBtn.BackgroundColor3=Color3.fromRGB(200,30,30); closeGrabBtn.Text="X"
+	closeGrabBtn.TextColor3=Color3.fromRGB(255,255,255); closeGrabBtn.Font=Enum.Font.GothamBold
+	closeGrabBtn.TextSize=8; closeGrabBtn.BorderSizePixel=0
+	Instance.new("UICorner",closeGrabBtn).CornerRadius=UDim.new(0,4)
+	closeGrabBtn.MouseButton1Click:Connect(function() releaseGrab() end)
+
+	local layout=Instance.new("UIListLayout")
+	layout.SortOrder=Enum.SortOrder.LayoutOrder; layout.Padding=UDim.new(0,3); layout.Parent=frame
+	local pad=Instance.new("UIPadding")
+	pad.PaddingTop=UDim.new(0,30); pad.PaddingLeft=UDim.new(0,8)
+	pad.PaddingRight=UDim.new(0,8); pad.PaddingBottom=UDim.new(0,6); pad.Parent=frame
+
+	local speedRow=Instance.new("Frame")
+	speedRow.Size=UDim2.new(1,0,0,22); speedRow.BackgroundTransparency=1; speedRow.Parent=frame
+	local spdLbl=Instance.new("TextLabel",speedRow)
+	spdLbl.Size=UDim2.new(0,44,1,0); spdLbl.BackgroundTransparency=1; spdLbl.Text="Speed:"
+	spdLbl.TextColor3=Color3.fromRGB(180,180,190); spdLbl.Font=Enum.Font.GothamMedium
+	spdLbl.TextSize=9; spdLbl.TextXAlignment=Enum.TextXAlignment.Left
+	local spdBox=Instance.new("TextBox",speedRow)
+	spdBox.Size=UDim2.new(0,55,0,18); spdBox.Position=UDim2.new(0,46,0.5,-9)
+	spdBox.BackgroundColor3=Color3.fromRGB(35,35,40); spdBox.Text=tostring(MOVE_STEP)
+	spdBox.TextColor3=Color3.fromRGB(255,255,255); spdBox.Font=Enum.Font.GothamMedium; spdBox.TextSize=9
+	Instance.new("UICorner",spdBox).CornerRadius=UDim.new(0,4)
+	spdBox.FocusLost:Connect(function()
+		local val=tonumber(spdBox.Text)
+		if val then MOVE_STEP=val else spdBox.Text=tostring(MOVE_STEP) end
+	end)
+
+	local function makeRow(label,axis,defaultVal)
+		local row=Instance.new("Frame")
+		row.Size=UDim2.new(1,0,0,28); row.BackgroundTransparency=1; row.Parent=frame
+		local lbl=Instance.new("TextLabel")
+		lbl.Size=UDim2.new(0,16,1,0); lbl.BackgroundTransparency=1; lbl.Text=label
+		lbl.TextColor3=Color3.fromRGB(40,160,255); lbl.Font=Enum.Font.GothamBold
+		lbl.TextSize=10; lbl.TextXAlignment=Enum.TextXAlignment.Center; lbl.Parent=row
+		local minusBtn=Instance.new("TextButton")
+		minusBtn.Size=UDim2.new(0,22,0,22); minusBtn.Position=UDim2.new(0,18,0.5,-11)
+		minusBtn.BackgroundColor3=Color3.fromRGB(35,35,42); minusBtn.Text="-"
+		minusBtn.TextColor3=Color3.fromRGB(255,80,80); minusBtn.Font=Enum.Font.GothamBold
+		minusBtn.TextSize=11; minusBtn.BorderSizePixel=0; minusBtn.Parent=row
+		Instance.new("UICorner",minusBtn).CornerRadius=UDim.new(0,4)
+		local valLabel=Instance.new("TextLabel")
+		valLabel.Size=UDim2.new(0,48,0,22); valLabel.Position=UDim2.new(0,44,0.5,-11)
+		valLabel.BackgroundTransparency=1; valLabel.Text=string.format("%.1f",grabState[axis.."Off"])
+		valLabel.TextColor3=Color3.fromRGB(255,255,255); valLabel.Font=Enum.Font.GothamMedium
+		valLabel.TextSize=9; valLabel.Parent=row
+		local plusBtn=Instance.new("TextButton")
+		plusBtn.Size=UDim2.new(0,22,0,22); plusBtn.Position=UDim2.new(0,96,0.5,-11)
+		plusBtn.BackgroundColor3=Color3.fromRGB(35,35,42); plusBtn.Text="+"
+		plusBtn.TextColor3=Color3.fromRGB(40,160,255); plusBtn.Font=Enum.Font.GothamBold
+		plusBtn.TextSize=11; plusBtn.BorderSizePixel=0; plusBtn.Parent=row
+		Instance.new("UICorner",plusBtn).CornerRadius=UDim.new(0,4)
+		local resetBtn=Instance.new("TextButton")
+		resetBtn.Size=UDim2.new(0,18,0,18); resetBtn.Position=UDim2.new(0,124,0.5,-9)
+		resetBtn.BackgroundColor3=Color3.fromRGB(180,30,30); resetBtn.Text="R"
+		resetBtn.TextColor3=Color3.fromRGB(255,255,255); resetBtn.Font=Enum.Font.GothamBold
+		resetBtn.TextSize=8; resetBtn.BorderSizePixel=0; resetBtn.Parent=row
+		Instance.new("UICorner",resetBtn).CornerRadius=UDim.new(0,4)
+		local function updateVal() valLabel.Text=string.format("%.1f",grabState[axis.."Off"]) end
+		local holdConn=nil
+		local function startHold(dir)
+			grabState[axis.."Off"]=grabState[axis.."Off"]+(MOVE_STEP*dir); updateVal()
+			holdConn=task.delay(0.4,function()
+				while holdConn do task.wait(0.05); grabState[axis.."Off"]=grabState[axis.."Off"]+(MOVE_STEP*dir); updateVal() end
+			end)
+		end
+		local function stopHold() holdConn=nil end
+		minusBtn.MouseButton1Down:Connect(function() startHold(-1) end)
+		minusBtn.MouseButton1Up:Connect(stopHold); minusBtn.MouseLeave:Connect(stopHold)
+		plusBtn.MouseButton1Down:Connect(function() startHold(1) end)
+		plusBtn.MouseButton1Up:Connect(stopHold); plusBtn.MouseLeave:Connect(stopHold)
+		resetBtn.MouseButton1Click:Connect(function() grabState[axis.."Off"]=defaultVal; updateVal() end)
+		updateVal()
+	end
+	makeRow("X","x",DEFAULT_X); makeRow("Y","y",DEFAULT_Y); makeRow("Z","z",DEFAULT_Z)
+	grabAdjustGui=sg
+end
+
+local function startGrab(animalModel)
+	releaseGrab()
+	local char=LocalPlayer.Character
+	local hrp=char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	currentlyGrabbedOriginal=animalModel; hideInventory()
+	setPlayerSpeed(20)
+	currentGrabDummy=animalModel:Clone()
+	for _,d in ipairs(currentGrabDummy:GetDescendants()) do
+		if d:IsA("ProximityPrompt") or d:IsA("BillboardGui") then d:Destroy()
+		elseif d:IsA("BasePart") then d.Anchored=true; d.CanCollide=false end
+	end
+	currentGrabDummy.Parent=workspace; createGrabUI()
+	local humanoid=char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		pcall(function()
+			local anim=Instance.new("Animation"); anim.AnimationId="rbxassetid://71186871415348"
+			currentGrabAnim=humanoid:LoadAnimation(anim)
+			currentGrabAnim.Priority=Enum.AnimationPriority.Action
+			currentGrabAnim.Looped=true; currentGrabAnim:Play()
+		end)
+	end
+	currentGrabHeartbeat=RunService.Heartbeat:Connect(function()
+		if not currentGrabDummy or not hrp then return releaseGrab() end
+		currentGrabDummy:PivotTo(hrp.CFrame*CFrame.new(grabState.xOff,grabState.yOff,grabState.zOff))
+	end)
+end
+
+local function spawnAnimal(animalName,selectedTraitsRaw,selectedMutationRaw)
+	local animalData=Animals[animalName]
+	if not animalData then return false,"Animal not found" end
+	local selectedTraitIds={}
+	if selectedTraitsRaw then
+		for _,tn in ipairs(selectedTraitsRaw) do
+			local id=getTraitIdByName(tn); if id then table.insert(selectedTraitIds,id) end
+		end
+	end
+	local selectedMutation=nil
+	if selectedMutationRaw and selectedMutationRaw~="None" then
+		for mid,data in pairs(mutationMap) do
+			if data.name==selectedMutationRaw then selectedMutation=mid; break end
+		end
+		if not selectedMutation then selectedMutation=selectedMutationRaw end
+	end
+	local animalModel=ReplicatedStorage.Models.Animals:FindFirstChild(animalName)
+	if not animalModel then return false,"Model not found" end
+	local foundPlot,spawnCFrame,spawnAttachment,claimFrame,hitbox=false,nil,nil,nil,nil
+	local plotsFolder=workspace:FindFirstChild("Plots")
+	if not plotsFolder then return false,"No plots found" end
+	for _,plot in ipairs(plotsFolder:GetChildren()) do
+		local ps=plot:FindFirstChild("PlotSign")
+		if ps and ps:FindFirstChild("SurfaceGui") and ps.SurfaceGui:FindFirstChild("Frame") then
+			local tl=ps.SurfaceGui.Frame:FindFirstChild("TextLabel")
+			if tl then
+				local ot=tl.Text:gsub("^%s*(.-)%s*$","%1")
+				if string.find(ot:lower(),LocalPlayer.Name:lower()) or ot==LocalPlayer.Name or string.find(ot,LocalPlayer.DisplayName or "") then
+					local podiums=plot:FindFirstChild("AnimalPodiums")
+					if podiums then
+						local pList={}
+						for _,c in ipairs(podiums:GetChildren()) do
+							if c:IsA("Model") and tonumber(c.Name) then table.insert(pList,c) end
+						end
+						table.sort(pList,function(a,b) return tonumber(a.Name)<tonumber(b.Name) end)
+						for _,podium in ipairs(pList) do
+							local base=podium:FindFirstChild("Base")
+							if base and base:FindFirstChild("Spawn") then
+								local spawn=base.Spawn
+								local att=spawn:FindFirstChild("Attachment")
+								local hasAnimal=false
+								for _,o in ipairs(spawn:GetChildren()) do
+									if o:IsA("Model") then hasAnimal=true; break end
+								end
+								if not hasAnimal then
+									for _,o in ipairs(podium:GetChildren()) do
+										if o:IsA("Model") and Animals[o.Name] then hasAnimal=true; break end
+									end
+								end
+								if not att and not hasAnimal then
+									spawnCFrame=spawn.CFrame*CFrame.new(0,-1.5,0)
+									spawnAttachment=spawn
+									claimFrame=podium:FindFirstChild("Claim") and podium.Claim:FindFirstChild("Main") and podium.Claim.Main:FindFirstChild("Collect")
+									hitbox=podium:FindFirstChild("Claim") and podium.Claim:FindFirstChild("Hitbox")
+									foundPlot=true; break
+								end
+							end
+						end
+						if foundPlot then break end
+					end
+				end
+			end
+		end
+		if foundPlot then break end
+	end
+	if not foundPlot then return false,"Plot full or not found" end
+	local clonedAnimal=animalModel:Clone()
+	clonedAnimal.Name=animalName; clonedAnimal:PivotTo(spawnCFrame); clonedAnimal.Parent=workspace
+	for _,d in ipairs(clonedAnimal:GetDescendants()) do
+		if d:IsA("BasePart") then d.Anchored=true end
+	end
+	if selectedMutation then SharedAnimals:ApplyMutation(clonedAnimal,animalName,selectedMutation) end
+	if #selectedTraitIds>0 then SharedAnimals:ApplyTraits(clonedAnimal,animalName,selectedTraitIds) end
+	pcall(function()
+		local ac=clonedAnimal:FindFirstChildOfClass("AnimationController") or Instance.new("AnimationController",clonedAnimal)
+		local animator=ac:FindFirstChild("Animator") or Instance.new("Animator",ac)
+		local af2=ReplicatedStorage.Animations.Animals:FindFirstChild(animalName)
+		if af2 and af2:FindFirstChild("Idle") then
+			local track=animator:LoadAnimation(af2.Idle)
+			track.Looped=true; track:AdjustSpeed(af2.Idle:GetAttribute("Speed") or 1); track:Play()
+		end
+	end)
+	pcall(function()
+		local sf=ReplicatedStorage.Sounds:FindFirstChild("Animals")
+		if sf then
+			local s=sf:FindFirstChild(animalName)
+			if s and s:IsA("Sound") then
+				local sc=s:Clone()
+				sc.Parent=clonedAnimal.PrimaryPart or clonedAnimal:FindFirstChildWhichIsA("BasePart")
+				sc:Play(); sc.Ended:Connect(function() sc:Destroy() end)
+			end
+		end
+	end)
+	local attachmentMarker=Instance.new("Attachment")
+	attachmentMarker.Name="Attachment"; attachmentMarker.Parent=spawnAttachment
+	local totalGenRate=SharedAnimals:GetGeneration(animalName,selectedMutation,selectedTraitIds,LocalPlayer)
+	local price=SharedAnimals:GetPrice(animalName,LocalPlayer)
+	local totalGeneration=0; local lastCollectTime=0; local alive=true
+	local isGrabbed=false; local originalVisuals={}
+	local function destroyAnimal()
+		alive=false
+		if currentlyGrabbedOriginal==clonedAnimal then releaseGrab() end
+		if clonedAnimal and clonedAnimal.Parent then clonedAnimal:Destroy() end
+		if attachmentMarker and attachmentMarker.Parent then attachmentMarker:Destroy() end
+		for i,v in ipairs(spawnedAnimals) do
+			if v.model==clonedAnimal then table.remove(spawnedAnimals,i); break end
+		end
+	end
+	pcall(function()
+		local ot=ReplicatedStorage:FindFirstChild("Overheads") and ReplicatedStorage.Overheads:FindFirstChild("AnimalOverhead")
+		local head=clonedAnimal:FindFirstChild("Head") or clonedAnimal.PrimaryPart
+		if ot and head then
+			local oh=ot:Clone(); oh.Name="AnimalOverhead"; oh.Adornee=head; oh.Parent=clonedAnimal
+			oh.AlwaysOnTop=false; oh.MaxDistance=50; oh.StudsOffset=Vector3.new(0,7.5,0)
+			for _,ui in ipairs(oh:GetDescendants()) do
+				if ui:IsA("GuiObject") then ui.Active=false; ui.Selectable=false end
+			end
+			oh.DisplayName.Text=animalData.DisplayName or animalName
+			oh.Price.Text=("$%s"):format(NumberUtils:ToString(price))
+			local rarityInfo=Rarities[animalData.Rarity]
+			oh.Rarity.Text=animalData.Rarity or "Unknown"
+			if rarityInfo then
+				oh.Rarity.TextColor3=rarityInfo.Color
+				if rarityInfo.StrokeColor and oh.Rarity:FindFirstChild("UIStroke") then
+					oh.Rarity.UIStroke.Color=rarityInfo.StrokeColor
+				end
+				if rarityInfo.GradientPreset then
+					pcall(function() Gradients.apply(oh.Rarity,rarityInfo.GradientPreset) end)
+				end
+			end
+			if selectedMutation then
+				local mutInfo=mutationMap[selectedMutation] or mutationMap[selectedMutationRaw]
+				oh.Mutation.Visible=true
+				if mutInfo then
+					oh.Mutation.RichText=mutInfo.rich==true
+					oh.Mutation.Text=mutInfo.rich and mutInfo.richDisplay or mutInfo.name
+					if mutInfo.gradient then
+						oh.Mutation.TextColor3=Color3.new(1,1,1)
+						pcall(function() Gradients.apply(oh.Mutation,mutInfo.gradient) end)
+					else oh.Mutation.TextColor3=mutInfo.color end
+				else oh.Mutation.Text=selectedMutationRaw end
+			else oh.Mutation.Visible=false end
+			oh.Generation.Text=("$%s/s"):format(NumberUtils:ToString(totalGenRate))
+			oh.Generation.Visible=true
+			if #selectedTraitIds>0 then
+				local template=oh.Traits:FindFirstChild("Template")
+				if template then
+					for _,tid in ipairs(selectedTraitIds) do
+						local tdata=traitMap[tid]
+						if tdata then
+							local icon=template:Clone(); icon.Image=tdata.icon; icon.Visible=true; icon.Parent=oh.Traits
+						end
+					end
+					oh.Traits.Visible=true
+				end
+			else oh.Traits.Visible=false end
+		end
+	end)
+	if spawnAttachment and spawnAttachment:IsA("BasePart") then
+		local sellVal=math.ceil(price*(GameData.Animal and GameData.Animal.SellModifier or 0.5))
+		local sellPrompt=Instance.new("ProximityPrompt")
+		sellPrompt.ObjectText=""; sellPrompt.ActionText="Sell: $"..formatNumber(sellVal)
+		sellPrompt.KeyboardKeyCode=Enum.KeyCode.E; sellPrompt.HoldDuration=1.5
+		sellPrompt.MaxActivationDistance=10; sellPrompt.RequiresLineOfSight=false
+		sellPrompt.UIOffset=Vector2.new(0,-40); sellPrompt.Parent=spawnAttachment
+		local grabPrompt=Instance.new("ProximityPrompt")
+		grabPrompt.ObjectText=animalData.DisplayName or animalName; grabPrompt.ActionText="Grab"
+		grabPrompt.KeyboardKeyCode=Enum.KeyCode.F; grabPrompt.HoldDuration=1.5
+		grabPrompt.MaxActivationDistance=10; grabPrompt.RequiresLineOfSight=false
+		grabPrompt.UIOffset=Vector2.new(0,40); grabPrompt.Parent=spawnAttachment
+		grabPrompt.Triggered:Connect(function(player)
+			if player~=LocalPlayer or not alive then return end
+			if isGrabbed then
+				isGrabbed=false
+				if currentlyGrabbedOriginal==clonedAnimal then releaseGrab() end
+				grabPrompt.ActionText="Grab"; sellPrompt.Enabled=true
+				for part,data in pairs(originalVisuals) do
+					if part and part.Parent then part.Transparency=data.Transparency end
+				end
+				local oh=clonedAnimal:FindFirstChild("AnimalOverhead")
+				if oh then
+					if oh:FindFirstChild("DisplayName") then oh.DisplayName.Visible=true end
+					if oh:FindFirstChild("Price") then oh.Price.Visible=true end
+					if oh:FindFirstChild("Rarity") then oh.Rarity.Visible=true end
+					if oh:FindFirstChild("Traits") then oh.Traits.Visible=(#selectedTraitIds>0) end
+					if oh:FindFirstChild("Mutation") then oh.Mutation.Visible=(selectedMutation~=nil) end
+				end
+			else
+				isGrabbed=true; grabPrompt.ActionText="Place Down"; sellPrompt.Enabled=false
+				startGrab(clonedAnimal); originalVisuals={}
+				for _,part in ipairs(clonedAnimal:GetDescendants()) do
+					if part:IsA("BasePart") then
+						originalVisuals[part]={Transparency=part.Transparency}
+						if part.Transparency<1 then part.Transparency=0.5 end
+					end
+				end
+				local oh=clonedAnimal:FindFirstChild("AnimalOverhead")
+				if oh then
+					if oh:FindFirstChild("DisplayName") then oh.DisplayName.Visible=false end
+					if oh:FindFirstChild("Price") then oh.Price.Visible=false end
+					if oh:FindFirstChild("Rarity") then oh.Rarity.Visible=false end
+					if oh:FindFirstChild("Traits") then oh.Traits.Visible=false end
+					if oh:FindFirstChild("Mutation") then oh.Mutation.Visible=false end
+				end
+			end
+		end)
+		sellPrompt.Triggered:Connect(function(player)
+			if player~=LocalPlayer then return end
+			if currentlyGrabbedOriginal==clonedAnimal then releaseGrab() end
+			pcall(function()
+				local cl=PlayerGui.LeftBottom.LeftBottom:FindFirstChild("Currency")
+				if cl and cl:IsA("TextLabel") then cl.Text="$"..formatNumber(parseCurrency(cl.Text)+sellVal) end
+			end)
+			pcall(function()
+				local ls=LocalPlayer:FindFirstChild("leaderstats")
+				local cash=ls and ls:FindFirstChild("Cash")
+				if cash then cash.Value=cash.Value+sellVal end
+			end)
+			showCashout("+$"..formatNumber(sellVal),true)
+			grabPrompt:Destroy(); sellPrompt:Destroy(); destroyAnimal()
+		end)
+	end
+	if claimFrame and hitbox then
+		if claimFrame:IsA("TextLabel") then
+			local pg=claimFrame.Parent and claimFrame.Parent.Parent
+			if pg then pg.Enabled=true end
+			claimFrame.Text="Collect<br/><font color=\"#73ff00\">$0</font>"
+			if hitbox:IsA("BasePart") then hitbox.CanCollide=false; hitbox.CanQuery=true end
+			hitbox.Touched:Connect(function(hit)
+				local pl=Players:GetPlayerFromCharacter(hit.Parent)
+				if pl==LocalPlayer and alive and totalGeneration>0 then
+					local ct=os.time()
+					if ct-lastCollectTime>=1 then
+						lastCollectTime=ct
+						pcall(function()
+							local cl=PlayerGui.LeftBottom.LeftBottom:FindFirstChild("Currency")
+							if cl and cl:IsA("TextLabel") then
+								cl.Text="$"..formatNumber(parseCurrency(cl.Text)+totalGeneration)
+							end
+						end)
+						pcall(function()
+							local ls=LocalPlayer:FindFirstChild("leaderstats")
+							local cash=ls and ls:FindFirstChild("Cash")
+							if cash then cash.Value=cash.Value+totalGeneration end
+						end)
+						showCashout("+$"..formatNumber(totalGeneration),true)
+						totalGeneration=0
+						claimFrame.Text="Collect<br/><font color=\"#73ff00\">$0</font>"
+					end
+				end
+			end)
+			task.spawn(function()
+				while alive and clonedAnimal and clonedAnimal.Parent do
+					task.wait(1); totalGeneration=totalGeneration+totalGenRate
+					pcall(function()
+						claimFrame.Text="Collect<br/><font color=\"#73ff00\">$"..formatNumber(totalGeneration).."</font>"
+					end)
+				end
+			end)
+		end
+	end
+	table.insert(spawnedAnimals,{model=clonedAnimal,marker=attachmentMarker,destroy=destroyAnimal,name=animalName})
+	return true,clonedAnimal
+end
+
+-- ==================== GUI ====================
+
+if CoreGui:FindFirstChild("BrainrotSpawnerGUI") then
+	CoreGui.BrainrotSpawnerGUI:Destroy()
+end
+
+local ScreenGui=Instance.new("ScreenGui")
+ScreenGui.Name="BrainrotSpawnerGUI"; ScreenGui.ResetOnSpawn=false
+ScreenGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling; ScreenGui.Parent=CoreGui
+
+local WHITE = Color3.fromRGB(255,255,255)
+
+local C = {
+	bg          = Color3.fromRGB(14,14,18),
+	header      = Color3.fromRGB(22,8,8),
+	card        = Color3.fromRGB(26,26,32),
+	cardHover   = Color3.fromRGB(36,36,44),
+	text        = WHITE,
+	textDim     = Color3.fromRGB(160,160,175),
+	scrollbar   = Color3.fromRGB(200,40,40),
+	blue        = Color3.fromRGB(30,150,255),
+	blueDark    = Color3.fromRGB(20,100,200),
+	red         = Color3.fromRGB(210,35,35),
+	redDark     = Color3.fromRGB(160,20,20),
+	border      = Color3.fromRGB(200,35,35),
+	dropdownBg  = Color3.fromRGB(20,20,26),
+	tabActive   = Color3.fromRGB(200,30,30),
+	tabInactive = Color3.fromRGB(28,10,10),
+	danger      = Color3.fromRGB(200,30,30),
+	dangerText  = Color3.fromRGB(255,210,210),
+	searchBg    = Color3.fromRGB(28,28,36),
+}
+
+local DropdownOverlay=Instance.new("Frame")
+DropdownOverlay.Name="DropdownOverlay"; DropdownOverlay.Size=UDim2.new(1,0,1,0)
+DropdownOverlay.BackgroundTransparency=1; DropdownOverlay.ZIndex=200; DropdownOverlay.Parent=ScreenGui
+
+local allDropdowns={}
+local function closeAllDropdowns()
+	for _,dd in ipairs(allDropdowns) do dd.list.Visible=false; dd.open=false end
+end
+
+local MainFrame=Instance.new("Frame")
+MainFrame.Name="Main"; MainFrame.Size=UDim2.new(0,220,0,320)
+MainFrame.Position=UDim2.new(0.5,-110,0.5,-160)
+MainFrame.BackgroundColor3=C.bg; MainFrame.BorderSizePixel=0
+MainFrame.ClipsDescendants=true; MainFrame.Parent=ScreenGui
+Instance.new("UICorner",MainFrame).CornerRadius=UDim.new(0,8)
+local ms=Instance.new("UIStroke",MainFrame); ms.Color=C.border; ms.Thickness=1.5
+
+local Header=Instance.new("Frame")
+Header.Size=UDim2.new(1,0,0,28); Header.BackgroundColor3=C.header
+Header.BorderSizePixel=0; Header.ZIndex=5; Header.Parent=MainFrame
+Instance.new("UICorner",Header).CornerRadius=UDim.new(0,8)
+local hf=Instance.new("Frame",Header)
+hf.Size=UDim2.new(1,0,0,8); hf.Position=UDim2.new(0,0,1,-8)
+hf.BackgroundColor3=C.header; hf.BorderSizePixel=0; hf.ZIndex=5
+local sl=Instance.new("Frame",Header)
+sl.Size=UDim2.new(1,-16,0,1); sl.Position=UDim2.new(0,8,1,0)
+sl.BackgroundColor3=C.border; sl.BorderSizePixel=0; sl.ZIndex=5
+
+local Title=Instance.new("TextLabel",Header)
+Title.Size=UDim2.new(1,-52,1,0); Title.Position=UDim2.new(0,10,0,0)
+Title.BackgroundTransparency=1; Title.Text="Brainrot Spawner"
+Title.TextColor3=Color3.fromRGB(255,80,80); Title.Font=Enum.Font.GothamBold
+Title.TextSize=10; Title.TextXAlignment=Enum.TextXAlignment.Left; Title.ZIndex=6
+
+local CloseBtn=Instance.new("TextButton",Header)
+CloseBtn.Size=UDim2.new(0,18,0,18); CloseBtn.Position=UDim2.new(1,-24,0.5,-9)
+CloseBtn.BackgroundColor3=C.red; CloseBtn.Text="X"
+CloseBtn.TextColor3=WHITE; CloseBtn.Font=Enum.Font.GothamBold
+CloseBtn.TextSize=8; CloseBtn.BorderSizePixel=0; CloseBtn.ZIndex=6
+Instance.new("UICorner",CloseBtn).CornerRadius=UDim.new(0,4)
+
+local MinBtn=Instance.new("TextButton",Header)
+MinBtn.Size=UDim2.new(0,18,0,18); MinBtn.Position=UDim2.new(1,-46,0.5,-9)
+MinBtn.BackgroundColor3=C.card; MinBtn.Text="-"
+MinBtn.TextColor3=WHITE; MinBtn.Font=Enum.Font.GothamBold
+MinBtn.TextSize=10; MinBtn.BorderSizePixel=0; MinBtn.ZIndex=6
+Instance.new("UICorner",MinBtn).CornerRadius=UDim.new(0,4)
+
+local TabBar=Instance.new("Frame")
+TabBar.Size=UDim2.new(1,0,0,26); TabBar.Position=UDim2.new(0,0,0,28)
+TabBar.BackgroundColor3=Color3.fromRGB(18,6,6)
+TabBar.BorderSizePixel=0; TabBar.ZIndex=4; TabBar.Parent=MainFrame
+local tabLayout=Instance.new("UIListLayout",TabBar)
+tabLayout.FillDirection=Enum.FillDirection.Horizontal
+tabLayout.SortOrder=Enum.SortOrder.LayoutOrder; tabLayout.Padding=UDim.new(0,2)
+local tabPad=Instance.new("UIPadding",TabBar)
+tabPad.PaddingLeft=UDim.new(0,4); tabPad.PaddingRight=UDim.new(0,4)
+tabPad.PaddingTop=UDim.new(0,3); tabPad.PaddingBottom=UDim.new(0,3)
+
+local tabDivider=Instance.new("Frame")
+tabDivider.Size=UDim2.new(1,0,0,1); tabDivider.Position=UDim2.new(0,0,0,54)
+tabDivider.BackgroundColor3=C.border; tabDivider.BorderSizePixel=0; tabDivider.Parent=MainFrame
+
+local function makePageFrame()
+	local sf=Instance.new("ScrollingFrame")
+	sf.Size=UDim2.new(1,-12,1,-62); sf.Position=UDim2.new(0,6,0,57)
+	sf.BackgroundTransparency=1; sf.BorderSizePixel=0
+	sf.ScrollBarThickness=2; sf.ScrollBarImageColor3=C.scrollbar
+	sf.CanvasSize=UDim2.new(0,0,0,0); sf.AutomaticCanvasSize=Enum.AutomaticSize.Y
+	sf.Visible=false; sf.Parent=MainFrame
+	local ll=Instance.new("UIListLayout",sf)
+	ll.SortOrder=Enum.SortOrder.LayoutOrder; ll.Padding=UDim.new(0,5)
+	local pp=Instance.new("UIPadding",sf)
+	pp.PaddingTop=UDim.new(0,5); pp.PaddingBottom=UDim.new(0,8)
+	return sf
+end
+
+local pageAnimals   = makePageFrame()
+local pageTraits    = makePageFrame()
+local pageMutations = makePageFrame()
+local pageActions   = makePageFrame()
+
+local tabDefs={
+	{name="Animals",  page=pageAnimals},
+	{name="Traits",   page=pageTraits},
+	{name="Mutation", page=pageMutations},
+	{name="Actions",  page=pageActions},
+}
+local activeTab=nil
+local tabButtons={}
+
+local function switchTab(idx)
+	for i,def in ipairs(tabDefs) do
+		def.page.Visible=(i==idx)
+		local btn=tabButtons[i]
+		if i==idx then
+			btn.BackgroundColor3=C.tabActive
+			btn.TextColor3=WHITE
+		else
+			btn.BackgroundColor3=C.tabInactive
+			btn.TextColor3=C.textDim
+		end
+	end
+	closeAllDropdowns(); activeTab=idx
+end
+
+for i,def in ipairs(tabDefs) do
+	local tb=Instance.new("TextButton")
+	tb.Size=UDim2.new(0,46,1,0)
+	tb.BackgroundColor3=C.tabInactive; tb.BorderSizePixel=0
+	tb.Text=def.name; tb.TextColor3=C.textDim
+	tb.Font=Enum.Font.GothamBold; tb.TextSize=8
+	tb.LayoutOrder=i; tb.Parent=TabBar
+	Instance.new("UICorner",tb).CornerRadius=UDim.new(0,4)
+	tabButtons[i]=tb
+	tb.MouseButton1Click:Connect(function() switchTab(i) end)
+end
+
+local function makeDropdown(page, labelText, options, default, callback)
+	local container=Instance.new("Frame")
+	container.Size=UDim2.new(1,0,0,44); container.BackgroundColor3=C.card
+	container.BorderSizePixel=0; container.Parent=page
+	Instance.new("UICorner",container).CornerRadius=UDim.new(0,6)
+	local cs=Instance.new("UIStroke",container); cs.Color=C.border; cs.Thickness=1
+	local cp=Instance.new("UIPadding",container)
+	cp.PaddingLeft=UDim.new(0,7); cp.PaddingRight=UDim.new(0,7); cp.PaddingTop=UDim.new(0,5)
+	local lbl=Instance.new("TextLabel",container)
+	lbl.Size=UDim2.new(1,0,0,11); lbl.BackgroundTransparency=1; lbl.Text=labelText
+	lbl.TextColor3=C.blue; lbl.Font=Enum.Font.GothamBold
+	lbl.TextSize=8; lbl.TextXAlignment=Enum.TextXAlignment.Left
+	local selectedValue=default or options[1] or "None"
+	local dropBtn=Instance.new("TextButton",container)
+	dropBtn.Size=UDim2.new(1,0,0,20); dropBtn.Position=UDim2.new(0,0,0,14)
+	dropBtn.BackgroundColor3=C.dropdownBg; dropBtn.BorderSizePixel=0
+	dropBtn.Text="  "..selectedValue.."  ▾"; dropBtn.TextColor3=WHITE
+	dropBtn.Font=Enum.Font.GothamMedium; dropBtn.TextSize=9
+	dropBtn.TextXAlignment=Enum.TextXAlignment.Left
+	Instance.new("UICorner",dropBtn).CornerRadius=UDim.new(0,4)
+	local bs=Instance.new("UIStroke",dropBtn); bs.Color=C.redDark; bs.Thickness=1
+
+	local listHeight=math.min(#options*20+26,180)
+	local dropList=Instance.new("Frame")
+	dropList.Size=UDim2.new(0,200,0,listHeight); dropList.BackgroundColor3=C.dropdownBg
+	dropList.BorderSizePixel=0; dropList.Visible=false; dropList.ZIndex=201
+	dropList.ClipsDescendants=true; dropList.Parent=DropdownOverlay
+	Instance.new("UICorner",dropList).CornerRadius=UDim.new(0,6)
+	local ls2=Instance.new("UIStroke",dropList); ls2.Color=C.border; ls2.Thickness=1
+
+	local searchBox=Instance.new("TextBox",dropList)
+	searchBox.Size=UDim2.new(1,-8,0,20); searchBox.Position=UDim2.new(0,4,0,3)
+	searchBox.BackgroundColor3=C.searchBg; searchBox.BorderSizePixel=0
+	searchBox.PlaceholderText="Search..."; searchBox.Text=""
+	searchBox.TextColor3=WHITE; searchBox.PlaceholderColor3=C.textDim
+	searchBox.Font=Enum.Font.Gotham; searchBox.TextSize=9
+	searchBox.ClearTextOnFocus=false; searchBox.ZIndex=203
+	Instance.new("UICorner",searchBox).CornerRadius=UDim.new(0,4)
+
+	local scroll=Instance.new("ScrollingFrame",dropList)
+	scroll.Size=UDim2.new(1,0,1,-26); scroll.Position=UDim2.new(0,0,0,26)
+	scroll.BackgroundTransparency=1; scroll.BorderSizePixel=0
+	scroll.ScrollBarThickness=2; scroll.ScrollBarImageColor3=C.scrollbar
+	scroll.CanvasSize=UDim2.new(0,0,0,#options*20)
+	scroll.ClipsDescendants=true; scroll.ZIndex=202
+	Instance.new("UIListLayout",scroll).SortOrder=Enum.SortOrder.LayoutOrder
+
+	local ddEntry={list=dropList,open=false,btn=dropBtn}
+	table.insert(allDropdowns,ddEntry)
+
+	local optionBtns={}
+	for i2,option in ipairs(options) do
+		local ob=Instance.new("TextButton",scroll)
+		ob.Size=UDim2.new(1,0,0,20); ob.BackgroundColor3=C.dropdownBg
+		ob.BorderSizePixel=0; ob.Text="  "..option
+		ob.TextColor3=WHITE; ob.Font=Enum.Font.Gotham
+		ob.TextSize=9; ob.TextXAlignment=Enum.TextXAlignment.Left; ob.LayoutOrder=i2; ob.ZIndex=202
+		ob.MouseEnter:Connect(function() ob.BackgroundColor3=C.cardHover end)
+		ob.MouseLeave:Connect(function() ob.BackgroundColor3=C.dropdownBg end)
+		ob.MouseButton1Click:Connect(function()
+			selectedValue=option
+			dropBtn.Text="  "..option.."  ▾"
+			dropBtn.TextColor3=WHITE
+			dropList.Visible=false; ddEntry.open=false
+			searchBox.Text=""
+			for _,b in ipairs(optionBtns) do b.Visible=true end
+			scroll.CanvasSize=UDim2.new(0,0,0,#options*20)
+			if callback then callback(option) end
+		end)
+		table.insert(optionBtns,ob)
+	end
+
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		local q=searchBox.Text:lower()
+		local count=0
+		for idx2,ob in ipairs(optionBtns) do
+			local match=(q=="" or options[idx2]:lower():find(q,1,true))
+			ob.Visible=match and true or false
+			if match then count=count+1 end
+		end
+		scroll.CanvasSize=UDim2.new(0,0,0,count*20)
+	end)
+
+	dropBtn.MouseButton1Click:Connect(function()
+		local wasOpen=not ddEntry.open; closeAllDropdowns()
+		if wasOpen then
+			local ap=dropBtn.AbsolutePosition; local as2=dropBtn.AbsoluteSize
+			local ss=ScreenGui.AbsoluteSize
+			local xp=ap.X+as2.X+6; local yp=ap.Y
+			if xp+200>ss.X then xp=ap.X-200-6 end
+			if yp+listHeight>ss.Y then yp=ss.Y-listHeight-6 end
+			dropList.Position=UDim2.new(0,xp,0,yp)
+			dropList.Visible=true; ddEntry.open=true
+		end
+	end)
+	return {getValue=function() return selectedValue end}
+end
+
+local function makeMultiDropdown(page,labelText,options,callback)
+	local container=Instance.new("Frame")
+	container.Size=UDim2.new(1,0,0,44); container.BackgroundColor3=C.card
+	container.BorderSizePixel=0; container.Parent=page
+	Instance.new("UICorner",container).CornerRadius=UDim.new(0,6)
+	local cs=Instance.new("UIStroke",container); cs.Color=C.border; cs.Thickness=1
+	local cp=Instance.new("UIPadding",container)
+	cp.PaddingLeft=UDim.new(0,7); cp.PaddingRight=UDim.new(0,7); cp.PaddingTop=UDim.new(0,5)
+	local lbl=Instance.new("TextLabel",container)
+	lbl.Size=UDim2.new(1,0,0,11); lbl.BackgroundTransparency=1; lbl.Text=labelText
+	lbl.TextColor3=C.blue; lbl.Font=Enum.Font.GothamBold
+	lbl.TextSize=8; lbl.TextXAlignment=Enum.TextXAlignment.Left
+	local selectedValues={}
+	local dropBtn=Instance.new("TextButton",container)
+	dropBtn.Size=UDim2.new(1,0,0,20); dropBtn.Position=UDim2.new(0,0,0,14)
+	dropBtn.BackgroundColor3=C.dropdownBg; dropBtn.BorderSizePixel=0
+	dropBtn.Text="  0 Selected  ▾"; dropBtn.TextColor3=WHITE
+	dropBtn.Font=Enum.Font.GothamMedium; dropBtn.TextSize=9
+	dropBtn.TextXAlignment=Enum.TextXAlignment.Left
+	Instance.new("UICorner",dropBtn).CornerRadius=UDim.new(0,4)
+	local bs=Instance.new("UIStroke",dropBtn); bs.Color=C.redDark; bs.Thickness=1
+
+	local listHeight=math.min(#options*20+26,180)
+	local dropList=Instance.new("Frame")
+	dropList.Size=UDim2.new(0,200,0,listHeight); dropList.BackgroundColor3=C.dropdownBg
+	dropList.BorderSizePixel=0; dropList.Visible=false; dropList.ZIndex=201
+	dropList.ClipsDescendants=true; dropList.Parent=DropdownOverlay
+	Instance.new("UICorner",dropList).CornerRadius=UDim.new(0,6)
+	local ls2=Instance.new("UIStroke",dropList); ls2.Color=C.border; ls2.Thickness=1
+
+	local searchBox=Instance.new("TextBox",dropList)
+	searchBox.Size=UDim2.new(1,-8,0,20); searchBox.Position=UDim2.new(0,4,0,3)
+	searchBox.BackgroundColor3=C.searchBg; searchBox.BorderSizePixel=0
+	searchBox.PlaceholderText="Search..."; searchBox.Text=""
+	searchBox.TextColor3=WHITE; searchBox.PlaceholderColor3=C.textDim
+	searchBox.Font=Enum.Font.Gotham; searchBox.TextSize=9
+	searchBox.ClearTextOnFocus=false; searchBox.ZIndex=203
+	Instance.new("UICorner",searchBox).CornerRadius=UDim.new(0,4)
+
+	local scroll=Instance.new("ScrollingFrame",dropList)
+	scroll.Size=UDim2.new(1,0,1,-26); scroll.Position=UDim2.new(0,0,0,26)
+	scroll.BackgroundTransparency=1; scroll.BorderSizePixel=0
+	scroll.ScrollBarThickness=2; scroll.ScrollBarImageColor3=C.scrollbar
+	scroll.CanvasSize=UDim2.new(0,0,0,#options*20)
+	scroll.ClipsDescendants=true; scroll.ZIndex=202
+	Instance.new("UIListLayout",scroll).SortOrder=Enum.SortOrder.LayoutOrder
+
+	local ddEntry={list=dropList,open=false,btn=dropBtn}
+	table.insert(allDropdowns,ddEntry)
+	local optionBtns={}
+	local function updateText()
+		local cnt=0; for _ in pairs(selectedValues) do cnt=cnt+1 end
+		dropBtn.Text="  "..cnt.." Selected  ▾"
+	end
+	for i2,option in ipairs(options) do
+		local ob=Instance.new("TextButton",scroll)
+		ob.Size=UDim2.new(1,0,0,20); ob.BackgroundColor3=C.dropdownBg
+		ob.BorderSizePixel=0; ob.Text="  "..option
+		ob.TextColor3=WHITE; ob.Font=Enum.Font.Gotham
+		ob.TextSize=9; ob.TextXAlignment=Enum.TextXAlignment.Left; ob.LayoutOrder=i2; ob.ZIndex=202
+		optionBtns[option]=ob
+		ob.MouseEnter:Connect(function() ob.BackgroundColor3=C.cardHover end)
+		ob.MouseLeave:Connect(function() ob.BackgroundColor3=C.dropdownBg end)
+		ob.MouseButton1Click:Connect(function()
+			if selectedValues[option] then
+				selectedValues[option]=nil; ob.TextColor3=WHITE
+			else
+				selectedValues[option]=true; ob.TextColor3=C.blue
+			end
+			updateText()
+			if callback then callback(selectedValues) end
+		end)
+	end
+
+	searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+		local q=searchBox.Text:lower()
+		local count=0
+		for _,option in ipairs(options) do
+			local match=(q=="" or option:lower():find(q,1,true))
+			optionBtns[option].Visible=match and true or false
+			if match then count=count+1 end
+		end
+		scroll.CanvasSize=UDim2.new(0,0,0,count*20)
+	end)
+
+	dropBtn.MouseButton1Click:Connect(function()
+		local wasOpen=not ddEntry.open; closeAllDropdowns()
+		if wasOpen then
+			local ap=dropBtn.AbsolutePosition; local as2=dropBtn.AbsoluteSize
+			local ss=ScreenGui.AbsoluteSize
+			local xp=ap.X+as2.X+6; local yp=ap.Y
+			if xp+200>ss.X then xp=ap.X-200-6 end
+			if yp+listHeight>ss.Y then yp=ss.Y-listHeight-6 end
+			dropList.Position=UDim2.new(0,xp,0,yp)
+			dropList.Visible=true; ddEntry.open=true
+		end
+	end)
+	return {
+		getValues=function()
+			local t={}; for k in pairs(selectedValues) do table.insert(t,k) end; return t
+		end,
+		clearValues=function()
+			selectedValues={}; updateText()
+			for opt,btn in pairs(optionBtns) do btn.TextColor3=WHITE end
+			if callback then callback(selectedValues) end
+		end
+	}
+end
+
+local function makeButton(page,text,color,textColor,callback)
+	local btn=Instance.new("TextButton")
+	btn.Size=UDim2.new(1,0,0,26); btn.BackgroundColor3=color or C.blue
+	btn.BorderSizePixel=0; btn.Text=text; btn.TextColor3=textColor or WHITE
+	btn.Font=Enum.Font.GothamBold; btn.TextSize=10; btn.Parent=page
+	Instance.new("UICorner",btn).CornerRadius=UDim.new(0,5)
+	local bs=Instance.new("UIStroke",btn)
+	bs.Color=color==C.red and C.redDark or C.blueDark; bs.Thickness=1
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn,TweenInfo.new(0.1),{BackgroundColor3=Color3.new(
+			math.min(1,(color or C.blue).R+0.08),
+			math.min(1,(color or C.blue).G+0.08),
+			math.min(1,(color or C.blue).B+0.08))}):Play()
+	end)
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn,TweenInfo.new(0.1),{BackgroundColor3=color or C.blue}):Play()
+	end)
+	btn.MouseButton1Click:Connect(function() if callback then callback() end end)
+	return btn
+end
+
+-- ===== BUILD PAGES =====
+local selectedAnimal=""; if animalList[1] then selectedAnimal=animalList[1] end
+local selectedMutation="None"
+local selectedTraitsMulti={}
+
+makeDropdown(pageAnimals,"Select Animal",animalList,animalList[1],function(c) selectedAnimal=c end)
+
+local traitsDD=makeMultiDropdown(pageTraits,"Select Traits",traitList,function(vals)
+	selectedTraitsMulti={}
+	for k in pairs(vals) do table.insert(selectedTraitsMulti,k) end
+end)
+makeButton(pageTraits,"Clear Traits",C.red,Color3.fromRGB(255,210,210),function()
+	traitsDD.clearValues()
+end)
+
+makeDropdown(pageMutations,"Select Mutation",mutationList,"None",function(c) selectedMutation=c end)
+
+makeButton(pageActions,"Spawn Brainrot",C.blue,WHITE,function()
+	if not selectedAnimal or selectedAnimal=="" then return end
+	local mu=(selectedMutation=="None") and nil or selectedMutation
+	local ok,res=spawnAnimal(selectedAnimal,selectedTraitsMulti,mu)
+	if ok then showCashout("Spawned: "..selectedAnimal,true)
+	else showCashout("Error: "..tostring(res),false) end
+end)
+makeButton(pageActions,"Destroy All",C.red,Color3.fromRGB(255,210,210),function()
+	for _,data in ipairs(spawnedAnimals) do pcall(function() data.destroy() end) end
+	spawnedAnimals={}; showCashout("All removed",false)
+end)
+
+switchTab(1)
+
+local dragging,dragStart,startPos2=false,nil,nil
+Header.InputBegan:Connect(function(i)
+	if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+		dragging=true; dragStart=i.Position; startPos2=MainFrame.Position
+	end
+end)
+Header.InputEnded:Connect(function(i)
+	if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+		dragging=false
+	end
+end)
+UserInputService.InputChanged:Connect(function(i)
+	if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+		local d=i.Position-dragStart
+		MainFrame.Position=UDim2.new(startPos2.X.Scale,startPos2.X.Offset+d.X,startPos2.Y.Scale,startPos2.Y.Offset+d.Y)
+	end
+end)
+
+local minimized=false
+local originalSize=MainFrame.Size
+
+MinBtn.MouseButton1Click:Connect(function()
+	minimized=not minimized; closeAllDropdowns()
+	if minimized then
+		TweenService:Create(MainFrame,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(0,220,0,28)}):Play()
+		TabBar.Visible=false; tabDivider.Visible=false
+		for _,def in ipairs(tabDefs) do def.page.Visible=false end
+		MinBtn.Text="+"
+	else
+		TabBar.Visible=true; tabDivider.Visible=true
+		TweenService:Create(MainFrame,TweenInfo.new(0.2,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=originalSize}):Play()
+		switchTab(activeTab or 1); MinBtn.Text="-"
+	end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() releaseGrab(); ScreenGui:Destroy() end)
+
+UserInputService.InputBegan:Connect(function(i,gp)
+	if gp then return end
+	if i.KeyCode==Enum.KeyCode.RightShift then
+		MainFrame.Visible=not MainFrame.Visible
+		if not MainFrame.Visible then closeAllDropdowns() end
+	end
+end)

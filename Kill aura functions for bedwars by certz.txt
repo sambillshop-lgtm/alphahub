@@ -1,0 +1,242 @@
+--[[
+	NON DETECTED KILL AURA FOR KILL AURA FOR BEDWARS LEAKED BY CERTZ
+]]
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+
+_G.Config = {
+	Enabled = true,
+	Targets = {
+		Guardians = true,
+		Titans    = true,
+		Players   = true,
+		Dummies   = true,
+		Ducks     = true,
+		Chickens  = true,
+	},
+	Weapons = {
+        "wood_scythe", "stone_scythe", "iron_scythe", "diamond_scythe", "mythic_scythe",
+        "wood_great_hammer", "stone_great_hammer", "iron_great_hammer", "diamond_great_hammer", "mythic_great_hammer",
+        "wood_dagger", "stone_dagger", "iron_dagger", "diamond_dagger", "mythic_dagger",
+        "wood_gauntlets", "stone_gauntlets", "iron_gauntlets", "diamond_gauntlets", "mythic_gauntlets",
+        "noctium_blade", "noctium_blade_2", "noctium_blade_3", "noctium_blade_4",
+		"wood_dao", "stone_dao", "iron_dao", "diamond_dao", "emerald_dao",
+		"wood_gun_blade", "stone_gun_blade", "iron_gun_blade", "diamond_gun_blade", "emerald_gun_blade",
+		"summoner_claw_1", "summoner_claw_2", "summoner_claw_3", "summoner_claw_4",
+		"wood_sword", "stone_sword", "iron_sword", "diamond_sword", "emerald_sword",
+        "laser_sword", "guards_spear", "mass_hammer", "baguette", "void_sword",
+        "tinkers_wrench", "rageblade", "ice_sword", "frosty_hammer", "wizard_stick", "light_sword",
+	}
+}
+
+local SUMMONER_CLAWS = {
+	summoner_claw_1 = true,
+	summoner_claw_2 = true,
+	summoner_claw_3 = true,
+	summoner_claw_4 = true,
+}
+
+local Guardians = {}
+local Titans    = {}
+local Dummies   = {}
+local Ducks     = {}
+local Chickens  = {}
+
+local function classify(model)
+	if not model:IsA("Model") then return end
+	if model.Name == "Diamond Guardian" then
+		table.insert(Guardians, model)
+	elseif model.Name == "Titan" then
+		table.insert(Titans, model)
+	elseif model.Name:find("Dummy") then
+		table.insert(Dummies, model)
+	elseif model.Name == "Duck" then
+		table.insert(Ducks, model)
+	elseif model.Name == "Chicken" then
+		table.insert(Chickens, model)
+	end
+end
+
+local function removeFrom(tbl, model)
+	for i, v in ipairs(tbl) do
+		if v == model then table.remove(tbl, i) break end
+	end
+end
+
+for _, obj in ipairs(Workspace:GetChildren()) do classify(obj) end
+Workspace.ChildAdded:Connect(classify)
+Workspace.ChildRemoved:Connect(function(obj)
+	removeFrom(Guardians, obj) removeFrom(Titans, obj)
+	removeFrom(Dummies, obj)   removeFrom(Ducks, obj)
+	removeFrom(Chickens, obj)
+end)
+
+local function getRoot(model)
+	return model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+end
+
+local function getClosestTarget()
+	local myChar = LocalPlayer.Character
+	local myRoot = myChar and getRoot(myChar)
+	if not myRoot then return nil end
+
+	local myPos = myRoot.Position
+	local closest, shortest = nil, math.huge
+	local cfg = _G.Config.Targets
+
+	local function check(char)
+		local root = getRoot(char)
+		if root then
+			local dist = (root.Position - myPos).Magnitude
+			if dist < shortest then shortest = dist closest = char end
+		end
+	end
+
+	if cfg.Players then
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player ~= LocalPlayer and player.Character then check(player.Character) end
+		end
+	end
+	if cfg.Guardians then for _, g in ipairs(Guardians) do check(g) end end
+	if cfg.Titans    then for _, t in ipairs(Titans)    do check(t) end end
+	if cfg.Dummies   then for _, d in ipairs(Dummies)   do check(d) end end
+	if cfg.Ducks     then for _, d in ipairs(Ducks)     do check(d) end end
+	if cfg.Chickens  then for _, c in ipairs(Chickens)  do check(c) end end
+
+	return closest
+end
+
+local function getWeapon()
+	local myChar = LocalPlayer.Character
+	if not myChar then return nil end
+
+	local weaponsSet = {}
+	for _, name in ipairs(_G.Config.Weapons) do weaponsSet[name] = true end
+
+	local equippedAccessory = nil
+	for _, child in ipairs(myChar:GetChildren()) do
+		if child:IsA("Accessory") and weaponsSet[child.Name] then
+			equippedAccessory = child
+			break
+		end
+	end
+	if not equippedAccessory then return nil end
+
+	local weaponName = equippedAccessory.Name
+	local invFolder = ReplicatedStorage:FindFirstChild("Inventories")
+	if not invFolder then return nil end
+
+	local inv = invFolder:FindFirstChild(LocalPlayer.Name)
+	if not inv then return nil end
+
+	for _, item in ipairs(inv:GetChildren()) do
+		if item.Name == weaponName then return item end
+	end
+	return nil
+end
+
+local function getEquippedWeaponName()
+	local myChar = LocalPlayer.Character
+	if not myChar then return nil end
+	local weaponsSet = {}
+	for _, name in ipairs(_G.Config.Weapons) do weaponsSet[name] = true end
+	for _, child in ipairs(myChar:GetChildren()) do
+		if child:IsA("Accessory") and weaponsSet[child.Name] then
+			return child.Name
+		end
+	end
+	return nil
+end
+
+local function findRemote(name)
+	local netManaged = ReplicatedStorage
+		:FindFirstChild("rbxts_include")
+		and ReplicatedStorage.rbxts_include
+		:FindFirstChild("node_modules")
+		and ReplicatedStorage.rbxts_include.node_modules
+		:FindFirstChild("@rbxts")
+		and ReplicatedStorage.rbxts_include.node_modules["@rbxts"]
+		:FindFirstChild("net")
+		and ReplicatedStorage.rbxts_include.node_modules["@rbxts"].net
+		:FindFirstChild("out")
+		and ReplicatedStorage.rbxts_include.node_modules["@rbxts"].net.out
+		:FindFirstChild("_NetManaged")
+	if not netManaged then return nil end
+	return netManaged:FindFirstChild(name)
+end
+
+local SwordHit          = findRemote("SwordHit")
+local SummonerClawRemote = findRemote("SummonerClawAttackRequest")
+
+local function attackSummonerClaw(myRoot, targetRoot)
+	if not SummonerClawRemote then return end
+
+	local direction = (targetRoot.Position - myRoot.Position).Unit
+
+	local args = {
+		{
+			clientTime = tick(),
+			direction  = direction,
+			position   = myRoot.Position,
+		}
+	}
+
+	pcall(function()
+		SummonerClawRemote:FireServer(unpack(args))
+	end)
+end
+
+local function attackSword(target, weapon, myRoot, targetRoot)
+	if not SwordHit then return end
+
+	local args = {
+		chargedAttack = { chargeRatio = 0 },
+		entityInstance = target,
+		validate = {
+			selfPosition   = { value = myRoot.Position },
+			targetPosition = { value = targetRoot.Position },
+		},
+		weapon = weapon,
+	}
+
+	pcall(function()
+		SwordHit:FireServer(args)
+	end)
+end
+
+local function attack()
+	local myChar = LocalPlayer.Character
+	if not myChar then return end
+
+	local myRoot = getRoot(myChar)
+	if not myRoot then return end
+
+	local target = getClosestTarget()
+	if not target then return end
+
+	local targetRoot = getRoot(target)
+	if not targetRoot then return end
+
+	local weaponName = getEquippedWeaponName()
+	if not weaponName then return end
+
+	if SUMMONER_CLAWS[weaponName] then
+		attackSummonerClaw(myRoot, targetRoot)
+	else
+		local weapon = getWeapon()
+		if not weapon then return end
+		attackSword(target, weapon, myRoot, targetRoot)
+	end
+end
+
+task.spawn(function()
+	task.wait(2)
+	while true do
+		if _G.Config.Enabled then
+			pcall(attack)
+		end
+		task.wait(0.00001)
+	end
+end)

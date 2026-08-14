@@ -1,0 +1,210 @@
+-- Kingz insta reset by RIP_DZ @5jr5 
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+
+-- Parent to CoreGui (Requires exploit/highest-level executor permissions)
+local Folder = Instance.new("Folder")
+Folder.Name = "KINGzHubUI"
+Folder.Parent = game:GetService("CoreGui")
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KINGzHubReset"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999
+ScreenGui.Parent = Folder
+
+local FRAME_W = 220
+local FRAME_H = 150
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, FRAME_W, 0, FRAME_H)
+Frame.Position = UDim2.new(0.5, -FRAME_W/2, 0.5, -FRAME_H/2)
+Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Frame.BackgroundTransparency = 0.05
+Frame.BorderSizePixel = 0
+Frame.ClipsDescendants = true
+Frame.Parent = ScreenGui
+
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 14)
+
+local stroke = Instance.new("UIStroke", Frame)
+stroke.Color = Color3.fromRGB(60, 60, 60)
+stroke.Thickness = 1.2
+
+-- Title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(0, 130, 0, 22)
+Title.Position = UDim2.new(0, 16, 0, 12)
+Title.BackgroundTransparency = 1
+Title.Text = "KINGz HUB"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 15
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Frame
+
+-- Underline
+local Underline = Instance.new("Frame")
+Underline.Size = UDim2.new(0, 85, 0, 2)
+Underline.Position = UDim2.new(0, 16, 0, 34)
+Underline.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Underline.BorderSizePixel = 0
+Underline.Parent = Frame
+
+Instance.new("UICorner", Underline).CornerRadius = UDim.new(0, 1)
+
+-- Status dot
+local Dot = Instance.new("Frame")
+Dot.Size = UDim2.new(0, 8, 0, 8)
+Dot.Position = UDim2.new(1, -20, 0, 20)
+Dot.AnchorPoint = Vector2.new(0.5, 0.5)
+Dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+Dot.BorderSizePixel = 0
+Dot.Parent = Frame
+
+Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+
+-- RESET Button
+local ResetBtn = Instance.new("TextButton")
+ResetBtn.Size = UDim2.new(1, -32, 0, 42)
+ResetBtn.Position = UDim2.new(0.5, 0, 0, 50)
+ResetBtn.AnchorPoint = Vector2.new(0.5, 0)
+ResetBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ResetBtn.Text = "RESET"
+ResetBtn.Font = Enum.Font.GothamBold
+ResetBtn.TextSize = 15
+ResetBtn.TextColor3 = Color3.fromRGB(20, 20, 20)
+ResetBtn.BorderSizePixel = 0
+ResetBtn.AutoButtonColor = false
+ResetBtn.Parent = Frame
+
+Instance.new("UICorner", ResetBtn).CornerRadius = UDim.new(0, 10)
+
+-- Bind Button
+local BindBtn = Instance.new("TextButton")
+BindBtn.Size = UDim2.new(1, -32, 0, 34)
+BindBtn.Position = UDim2.new(0.5, 0, 0, 100)
+BindBtn.AnchorPoint = Vector2.new(0.5, 0)
+BindBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+BindBtn.Text = "Bind: [Z]"
+BindBtn.Font = Enum.Font.GothamMedium
+BindBtn.TextSize = 12
+BindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+BindBtn.BorderSizePixel = 0
+BindBtn.AutoButtonColor = false
+BindBtn.Parent = Frame
+
+Instance.new("UICorner", BindBtn).CornerRadius = UDim.new(0, 8)
+
+-- Variables
+local keybind = Enum.KeyCode.Z
+local isResetting = false
+local listening = false
+
+-- Dragging
+local dragging = false
+local dragStart = nil
+local frameStart = nil
+
+Frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		frameStart = Frame.Position
+	end
+end)
+
+Frame.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if not dragging then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
+	local delta = input.Position - dragStart
+	local vp = workspace.CurrentCamera.ViewportSize
+	local newX = frameStart.X.Offset + frameStart.X.Scale * vp.X + delta.X
+	local newY = frameStart.Y.Offset + frameStart.Y.Scale * vp.Y + delta.Y
+	newX = math.clamp(newX, 0, vp.X - FRAME_W)
+	newY = math.clamp(newY, 0, vp.Y - FRAME_H)
+	Frame.Position = UDim2.new(0, newX, 0, newY)
+end)
+
+-- Hover effects
+ResetBtn.MouseEnter:Connect(function()
+	TweenService:Create(ResetBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(220, 220, 220)}):Play()
+end)
+ResetBtn.MouseLeave:Connect(function()
+	TweenService:Create(ResetBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+end)
+
+BindBtn.MouseEnter:Connect(function()
+	TweenService:Create(BindBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
+end)
+BindBtn.MouseLeave:Connect(function()
+	TweenService:Create(BindBtn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+end)
+
+-- RESTORED: Void-Teleport Instant Reset
+local function instantReset()
+	if isResetting or not character then return end
+	isResetting = true
+	ResetBtn.Text = "RESETTING..."
+	
+	-- Forcefully teleports your RootPart instantly to absolute infinity
+	-- This forces the server physics engine to drop your health to 0 instantly
+	local hrp = character:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		hrp.LocalTransparencyModifier = 1
+		hrp.CFrame = CFrame.new(999999, 999999, 999999)
+	end
+	
+	character:BreakJoints()
+	
+	local currentHumanoid = character:FindFirstChildOfClass("Humanoid")
+	if currentHumanoid then
+		currentHumanoid.Health = 0
+	end
+	
+	task.wait(0.4)
+	ResetBtn.Text = "RESET"
+	isResetting = false
+end
+
+-- Bind Logic
+BindBtn.MouseButton1Click:Connect(function()
+	if listening then return end
+	listening = true
+	BindBtn.Text = "[Press a key...]"
+	BindBtn.TextColor3 = Color3.fromRGB(120, 120, 120)
+	local conn
+	conn = UserInputService.InputBegan:Connect(function(input, gpe)
+		if gpe then return end
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			keybind = input.KeyCode
+			BindBtn.Text = "Bind: [" .. string.sub(tostring(keybind), 14) .. "]"
+			BindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+			listening = false
+			conn:Disconnect()
+		end
+	end)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if input.KeyCode == keybind then instantReset() end
+end)
+
+ResetBtn.MouseButton1Click:Connect(instantReset)
+
+player.CharacterAdded:Connect(function(newChar)
+	character = newChar
+end)

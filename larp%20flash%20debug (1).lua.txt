@@ -1,0 +1,920 @@
+-- ==================== LARP FLASH DEBUG ====================
+-- PICK selects animal. FLASH runs: hold prompt → block at BLOCK_TRIGGER_TIME → flash at FLASH_ACTIVATE_TIME
+-- Progress bar shows live like the original Kawai script.
+
+local Players           = game:GetService("Players")
+local StarterGui        = game:GetService("StarterGui")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+local VirtualInputManager = Instance.new("VirtualInputManager")
+
+-- ─── Config (mirrors original) ────────────────────────────────────────────────
+local CONFIG = {
+    HOLD_MIN    = 1.3,
+    HOLD_MAX    = 2.6,
+    ENTRY_DELAY = 0.3,
+    COOLDOWN    = 0.05,
+    STEAL_RANGE = 100,
+}
+
+-- ─── Adjustable timings via sliders ──────────────────────────────────────────
+local FLASH_ACTIVATE_TIME = 1.27
+local BLOCK_TRIGGER_TIME  = 0.00
+local BLOCK_CLICK_DELAY   = 0.18
+
+-- ─── Steal state (same shape as original so bar logic is identical) ───────────
+local StealState = {
+    active        = false,
+    startTime     = 0,
+    phase         = "idle",
+    label         = "",
+    lastResult    = "",
+    lastResultTime= 0,
+    totalSteals   = 0,
+    failedSteals  = 0,
+}
+
+local selectedTarget    = nil
+local allAnimalsCache   = {}
+local PromptMemoryCache = {}
+local InternalStealCache= {}
+
+-- ==================== ANIMAL SYNC ====================
+
+local Packages    = ReplicatedStorage:WaitForChild("Packages")
+local Datas       = ReplicatedStorage:WaitForChild("Datas")
+local AnimalsData = require(Datas:WaitForChild("Animals"))
+local plots       = workspace:WaitForChild("Plots")
+
+local syncRemotes = (function()
+    local folder = Packages:WaitForChild("Synchronizer")
+    return {
+        channelFolder = folder:WaitForChild("Channel"),
+        routeRemote   = folder:WaitForChild("CommunicationRoute"),
+        requestData   = folder:FindFirstChild("RequestData"),
+    }
+end)()
+
+local plotAnimalSync = { caches = {}, connections = {} }
+
+local function splitSyncPath(path)
+    if typeof(path) == "table" then return path end
+    local out = {}
+    for part in string.gmatch(tostring(path), "[^%.]+") do
+        table.insert(out, tonumber(part) or part)
+    end
+    return out
+end
+
+local function resolveSyncPath(path, root)
+    local current = root
+    local parent, key = nil, nil
+    for _, part in ipairs(splitSyncPath(path)) do
+        parent = current; key = part
+        current = current and current[part] or nil
+    end
+    return current, parent, key
+end
+
+local function applyPlotSyncDiff(channelName, packet)
+    local cache = plotAnimalSync.caches[channelName]
+    if typeof(cache) ~= "table" then return end
+    local path, action, a, b = packet[1], packet[2], packet[3], packet[4]
+    local current, parent, key = resolveSyncPath(path, cache)
+    if     action == "Changed"            then if parent  then parent[key] = a end
+    elseif action == "ArrayInsert"        then if current then table.insert(current, b, a) end
+    elseif action == "ArrayRemoved"       then if current then table.remove(current, b) end
+    elseif action == "DictionaryInsert"   then if current then current[b] = a end
+    elseif action == "DictionaryRemoved"  then if current then current[b] = nil end
+    end
+end
+
+local function attachPlotChannel(remote)
+    if plotAnimalSync.connections[remote] then return end
+    local channelName = tostring(remote.Name)
+    if not plots:FindFirstChild(channelName) then return end
+    if syncRemotes.requestData and plotAnimalSync.caches[channelName] == nil then
+        local ok, data = pcall(function() return syncRemotes.requestData:InvokeServer(channelName) end)
+        plotAnimalSync.caches[channelName] = (ok and typeof(data) == "table") and data or {}
+    elseif plotAnimalSync.caches[channelName] == nil then
+        plotAnimalSync.caches[channelName] = {}
+    end
+    plotAnimalSync.connections[remote] = remote.OnClientEvent:Connect(function(queue)
+        for _, packet in ipairs(queue) do applyPlotSyncDiff(channelName, packet) end
+    end)
+end
+
+local function detachPlotChannel(channelName)
+    for remote, conn in pairs(plotAnimalSync.connections) do
+        if tostring(remote.Name) == tostring(channelName) then
+            conn:Disconnect()
+            plotAnimalSync.connections[remote] = nil
+            plotAnimalSync.caches[tostring(channelName)] = nil
+            break
+        end
+    end
+end
+
+for _, child in ipairs(syncRemotes.channelFolder:GetChildren()) do
+    if child:IsA("RemoteEvent") then attachPlotChannel(child) end
+end
+syncRemotes.channelFolder.ChildAdded:Connect(function(child)
+    if child:IsA("RemoteEvent") then attachPlotChannel(child) end
+end)
+syncRemotes.routeRemote.OnClientEvent:Connect(function(actions)
+    for _, action in ipairs(actions) do
+        local kind, channelName = action[1], tostring(action[2])
+        if not plots:FindFirstChild(channelName) then continue end
+        if kind == "ListenerAdded" then
+            local remote = syncRemotes.channelFolder:FindFirstChild(channelName)
+            if remote and remote:IsA("RemoteEvent") then attachPlotChannel(remote) end
+        elseif kind == "ListenerRemoved" then
+            detachPlotChannel(channelName)
+        end
+    end
+end)
+
+local function getPlotChannelData(plotName) return plotAnimalSync.caches[plotName] end
+
+local function getPlotOwner(plot)
+    local sign  = plot:FindFirstChild("PlotSign")
+    local frame = sign and sign:FindFirstChild("SurfaceGui") and sign.SurfaceGui:FindFirstChild("Frame")
+    local lbl   = frame and frame:FindFirstChild("TextLabel")
+    if not lbl or lbl.Text == "Empty Base" then return nil end
+    return lbl.Text:gsub("'s [Bb]ase$",""):gsub("%s+$","")
+end
+
+local function isMyBaseAnimal(a)
+    if not a or not a.plot then return false end
+    local plot = plots:FindFirstChild(a.plot)
+    return plot and getPlotOwner(plot) == LocalPlayer.DisplayName
+end
+
+local function scanAllPlots()
+    local newCache = {}
+    for _, plot in ipairs(plots:GetChildren()) do
+        local cache = getPlotChannelData(plot.Name)
+        if not cache then continue end
+        local animalList = cache.AnimalList
+        if typeof(animalList) ~= "table" then continue end
+        for slot, animalData in pairs(animalList) do
+            if type(animalData) == "table" then
+                local animalName = animalData.Index
+                local animalInfo = AnimalsData[animalName]
+                if not animalInfo then continue end
+                table.insert(newCache, {
+                    name = animalInfo.DisplayName or animalName,
+                    plot = plot.Name,
+                    slot = tostring(slot),
+                    uid  = plot.Name .. "_" .. tostring(slot),
+                })
+            end
+        end
+    end
+    allAnimalsCache = newCache
+end
+
+-- ==================== PROXIMITY PROMPT ====================
+
+local function findProximityPromptForAnimal(animalData)
+    if not animalData then return nil end
+    local cached = PromptMemoryCache[animalData.uid]
+    if cached and cached.Parent then return cached end
+    local plot    = workspace.Plots:FindFirstChild(animalData.plot)
+    if not plot   then return nil end
+    local podiums = plot:FindFirstChild("AnimalPodiums")
+    if not podiums then return nil end
+    local podium  = podiums:FindFirstChild(animalData.slot)
+    if not podium  then return nil end
+    local base    = podium:FindFirstChild("Base")
+    if not base    then return nil end
+    local spawn   = base:FindFirstChild("Spawn")
+    if not spawn   then return nil end
+    local attach  = spawn:FindFirstChild("PromptAttachment")
+    if not attach  then return nil end
+    for _, p in ipairs(attach:GetChildren()) do
+        if p:IsA("ProximityPrompt") then
+            PromptMemoryCache[animalData.uid] = p
+            return p
+        end
+    end
+    return nil
+end
+
+local function getAnimalPosition(animalData)
+    local plot    = workspace.Plots:FindFirstChild(animalData.plot)
+    if not plot    then return nil end
+    local podiums = plot:FindFirstChild("AnimalPodiums")
+    if not podiums then return nil end
+    local podium  = podiums:FindFirstChild(animalData.slot)
+    if not podium  then return nil end
+    return podium:GetPivot().Position
+end
+
+local function distToAnimal(animalData)
+    local character = LocalPlayer.Character
+    if not character then return math.huge end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+        or character:FindFirstChild("UpperTorso")
+    if not hrp then return math.huge end
+    local pos = getAnimalPosition(animalData)
+    if not pos then return math.huge end
+    return (hrp.Position - pos).Magnitude
+end
+
+-- ==================== STEAL CALLBACKS (exact copy from original) ====================
+
+local function buildStealCallbacks(prompt)
+    if InternalStealCache[prompt] then return end
+    local data = { holdCallbacks = {}, triggerCallbacks = {}, ready = true }
+    local ok1, conns1 = pcall(getconnections, prompt.PromptButtonHoldBegan)
+    if ok1 and type(conns1) == "table" then
+        for _, conn in ipairs(conns1) do
+            if type(conn.Function) == "function" then
+                table.insert(data.holdCallbacks, conn.Function)
+            end
+        end
+    end
+    local ok2, conns2 = pcall(getconnections, prompt.Triggered)
+    if ok2 and type(conns2) == "table" then
+        for _, conn in ipairs(conns2) do
+            if type(conn.Function) == "function" then
+                table.insert(data.triggerCallbacks, conn.Function)
+            end
+        end
+    end
+    if (#data.holdCallbacks > 0) or (#data.triggerCallbacks > 0) then
+        InternalStealCache[prompt] = data
+    end
+end
+
+-- ==================== FLASH TOOL ====================
+
+local FLASH_TOOL_NAME = "Flash Teleport"
+
+local function getFlashTool()
+    local character = LocalPlayer.Character
+    local backpack  = LocalPlayer:FindFirstChild("Backpack")
+    if character then
+        local t = character:FindFirstChild(FLASH_TOOL_NAME)
+        if t and t:IsA("Tool") then return t, true end
+    end
+    if backpack then
+        local t = backpack:FindFirstChild(FLASH_TOOL_NAME)
+        if t and t:IsA("Tool") then return t, false end
+    end
+    return nil, false
+end
+
+local function equipFlash()
+    local tool, alreadyEquipped = getFlashTool()
+    if not tool then return nil end
+    if alreadyEquipped then return tool end
+    local humanoid = LocalPlayer.Character
+        and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then humanoid:EquipTool(tool); task.wait(0.05) end
+    local equipped = getFlashTool()
+    return equipped
+end
+
+-- ==================== BLOCK LOGIC ====================
+
+local function getNearestPlayer()
+    local character = LocalPlayer.Character
+    local hrp = character and character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local c = p.Character
+            local root = c and c:FindFirstChild("HumanoidRootPart")
+            if root then
+                local dist = (root.Position - hrp.Position).Magnitude
+                if dist < nearestDist then nearestDist = dist; nearest = p end
+            end
+        end
+    end
+    return nearest
+end
+
+local function clickBlockButton()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local vp = cam.ViewportSize
+    local cx = math.floor(vp.X * 0.50) + math.random(-4, 4)
+    local cy = math.floor(vp.Y * 0.57) + math.random(-4, 4)
+    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true,  game, 1)
+    task.wait(0.018)
+    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
+end
+
+local function doBlock(target)
+    if not target then return end
+    pcall(function() StarterGui:SetCore("PromptBlockPlayer", target) end)
+    task.wait(BLOCK_CLICK_DELAY)
+    clickBlockButton()
+end
+
+-- ==================== EXECUTE STEAL (exact logic from original) ====================
+
+local function executeStealAsync(prompt, animalData)
+    local data = InternalStealCache[prompt]
+    if not data or not data.ready then return false end
+    data.ready = false
+
+    local lbl = animalData.name or "Animal"
+    StealState.active    = true
+    StealState.startTime = tick()
+    StealState.phase     = "holding"
+    StealState.label     = lbl
+
+    task.spawn(function()
+        -- equip flash
+        local flashTool = equipFlash()
+
+        -- fire hold callbacks (starts the hold on the proximity prompt)
+        for _, fn in ipairs(data.holdCallbacks) do task.spawn(fn) end
+
+        -- Block fires at BLOCK_TRIGGER_TIME
+        local blockTarget = getNearestPlayer()
+        task.spawn(function()
+            while true do
+                if tick() - StealState.startTime >= BLOCK_TRIGGER_TIME then break end
+                task.wait()
+            end
+            doBlock(blockTarget)
+        end)
+
+        -- Flash fires at FLASH_ACTIVATE_TIME
+        task.spawn(function()
+            while true do
+                local elapsed = tick() - StealState.startTime
+                if elapsed >= FLASH_ACTIVATE_TIME then
+                    local ft = flashTool
+                    if not ft or not ft.Parent or ft.Parent ~= LocalPlayer.Character then
+                        ft = getFlashTool()
+                    end
+                    if ft and ft.Parent == LocalPlayer.Character then
+                        pcall(function() ft:Activate() end)
+                    end
+                    break
+                end
+                task.wait()
+            end
+        end)
+
+        -- Wait for HOLD_MIN then enter range-check loop
+        task.wait(CONFIG.HOLD_MIN)
+        StealState.phase = "waitingRange"
+
+        local alreadyInRange = distToAnimal(animalData) <= CONFIG.STEAL_RANGE
+        local fired = false
+        while true do
+            local elapsed = tick() - StealState.startTime
+            if elapsed > CONFIG.HOLD_MAX then break end
+            if not prompt.Parent then break end
+            if distToAnimal(animalData) <= CONFIG.STEAL_RANGE then
+                if not alreadyInRange then task.wait(CONFIG.ENTRY_DELAY) end
+                for _, fn in ipairs(data.triggerCallbacks) do task.spawn(fn) end
+                fired = true
+                break
+            end
+            task.wait()
+        end
+
+        if fired then
+            StealState.totalSteals = StealState.totalSteals + 1
+            StealState.lastResult  = "Stole " .. lbl
+        else
+            StealState.failedSteals = StealState.failedSteals + 1
+            StealState.lastResult   = "Missed: " .. lbl
+        end
+
+        StealState.active         = false
+        StealState.phase          = "idle"
+        StealState.lastResultTime = tick()
+        task.wait(CONFIG.COOLDOWN)
+        data.ready = true
+    end)
+
+    return true
+end
+
+local function attemptSteal(prompt, animalData)
+    if not prompt or not prompt.Parent then return false end
+    buildStealCallbacks(prompt)
+    if not InternalStealCache[prompt] then return false end
+    return executeStealAsync(prompt, animalData)
+end
+
+-- Main trigger: called when FLASH button pressed
+local function runSequence()
+    if StealState.active then return end
+    if not selectedTarget then
+        print("⚠ No target selected — press PICK first")
+        return
+    end
+    local prompt = PromptMemoryCache[selectedTarget.uid]
+    if not prompt or not prompt.Parent then
+        prompt = findProximityPromptForAnimal(selectedTarget)
+    end
+    if not prompt then
+        print("⚠ Could not find prompt for " .. selectedTarget.name)
+        return
+    end
+    attemptSteal(prompt, selectedTarget)
+end
+
+-- ==================== GUI ====================
+
+local existing = LocalPlayer.PlayerGui:FindFirstChild("LarpFlashDebug")
+if existing then existing:Destroy() end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name           = "LarpFlashDebug"
+screenGui.ResetOnSpawn   = false
+screenGui.IgnoreGuiInset = true
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ── colour palette (black/white) ─────────────────────────────────────────────
+local C = {
+    bg      = Color3.fromRGB(14,  14,  14),
+    hdr     = Color3.fromRGB(28,  28,  28),
+    border  = Color3.fromRGB(200, 200, 200),
+    dim     = Color3.fromRGB(120, 120, 120),
+    text    = Color3.fromRGB(200, 200, 200),
+    white   = Color3.fromRGB(255, 255, 255),
+    fill    = Color3.fromRGB(200, 200, 200),
+    track   = Color3.fromRGB(45,  45,  45),
+}
+
+local function corner(p, r) Instance.new("UICorner", p).CornerRadius = UDim.new(0, r or 8) end
+local function stroke(p, col, t)
+    local s = Instance.new("UIStroke", p)
+    s.Color = col or C.border; s.Thickness = t or 1.5
+end
+
+-- Main frame
+local frame = Instance.new("Frame")
+frame.Size             = UDim2.new(0, 170, 0, 290)
+frame.Position         = UDim2.new(0, 20, 0.34, 0)
+frame.BackgroundColor3 = C.bg
+frame.BorderSizePixel  = 0
+frame.ClipsDescendants = false
+frame.Parent = screenGui
+corner(frame, 12); stroke(frame, C.border, 1.5)
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size             = UDim2.new(1, 0, 0, 26)
+titleBar.BackgroundColor3 = C.hdr
+titleBar.BorderSizePixel  = 0
+titleBar.Parent = frame
+corner(titleBar, 12)
+
+local titleLbl = Instance.new("TextLabel")
+titleLbl.Size               = UDim2.new(1, 0, 1, 0)
+titleLbl.BackgroundTransparency = 1
+titleLbl.Text               = "larp flash debug"
+titleLbl.TextColor3         = C.text
+titleLbl.TextSize           = 10
+titleLbl.Font               = Enum.Font.GothamBold
+titleLbl.TextXAlignment     = Enum.TextXAlignment.Center
+titleLbl.Parent = titleBar
+
+-- Drag
+local dragging, dragStart, startPos
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = input.Position; startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        local d = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X,
+                                   startPos.Y.Scale, startPos.Y.Offset + d.Y)
+    end
+end)
+
+-- Target label
+local targetLbl = Instance.new("TextLabel")
+targetLbl.Size               = UDim2.new(1, -16, 0, 14)
+targetLbl.Position           = UDim2.new(0, 8, 0, 30)
+targetLbl.BackgroundTransparency = 1
+targetLbl.Text               = "No target selected"
+targetLbl.TextColor3         = C.dim
+targetLbl.TextSize           = 9
+targetLbl.Font               = Enum.Font.Gotham
+targetLbl.TextXAlignment     = Enum.TextXAlignment.Left
+targetLbl.TextTruncate       = Enum.TextTruncate.AtEnd
+targetLbl.Parent = frame
+
+-- PICK + FLASH buttons
+local btnRow = Instance.new("Frame")
+btnRow.Size               = UDim2.new(1, -16, 0, 32)
+btnRow.Position           = UDim2.new(0, 8, 0, 48)
+btnRow.BackgroundTransparency = 1
+btnRow.Parent = frame
+
+local pickBtn = Instance.new("TextButton")
+pickBtn.Size             = UDim2.new(0, 52, 1, 0)
+pickBtn.BackgroundColor3 = Color3.fromRGB(38, 38, 38)
+pickBtn.AutoButtonColor  = false
+pickBtn.Text             = "PICK"
+pickBtn.TextColor3       = C.text
+pickBtn.TextSize         = 11
+pickBtn.Font             = Enum.Font.GothamBold
+pickBtn.Parent = btnRow
+corner(pickBtn); stroke(pickBtn, C.dim, 1)
+
+local flashBtn = Instance.new("TextButton")
+flashBtn.Size             = UDim2.new(1, -60, 1, 0)
+flashBtn.Position         = UDim2.new(0, 60, 0, 0)
+flashBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+flashBtn.AutoButtonColor  = false
+flashBtn.Text             = "FLASH"
+flashBtn.TextColor3       = Color3.fromRGB(10, 10, 10)
+flashBtn.TextSize         = 12
+flashBtn.Font             = Enum.Font.GothamBold
+flashBtn.Parent = btnRow
+corner(flashBtn); stroke(flashBtn, Color3.fromRGB(80,80,80), 1)
+
+flashBtn.MouseEnter:Connect(function() flashBtn.BackgroundColor3 = C.white end)
+flashBtn.MouseLeave:Connect(function() flashBtn.BackgroundColor3 = Color3.fromRGB(240,240,240) end)
+flashBtn.MouseButton1Click:Connect(runSequence)
+
+pickBtn.MouseEnter:Connect(function() pickBtn.BackgroundColor3 = Color3.fromRGB(55,55,55) end)
+pickBtn.MouseLeave:Connect(function() pickBtn.BackgroundColor3 = Color3.fromRGB(38,38,38) end)
+
+-- ── Progress bar (same as original Kawai bar) ────────────────────────────────
+local bar = Instance.new("Frame")
+bar.Size             = UDim2.new(1, -16, 0, 28)
+bar.Position         = UDim2.new(0, 8, 0, 86)
+bar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+bar.BorderSizePixel  = 0
+bar.Parent = frame
+corner(bar, 10)
+stroke(bar, Color3.fromRGB(60,60,60), 1)
+
+local inner = Instance.new("Frame")
+inner.Size             = UDim2.new(1, -12, 1, -8)
+inner.Position         = UDim2.new(0, 6, 0, 4)
+inner.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+inner.BorderSizePixel  = 0
+inner.Parent = bar
+corner(inner, 6)
+
+local barFill = Instance.new("Frame")
+barFill.Size             = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = C.fill
+barFill.BorderSizePixel  = 0
+barFill.Parent = inner
+corner(barFill, 6)
+
+local barDot = Instance.new("Frame")
+barDot.Size             = UDim2.new(0, 6, 0, 6)
+barDot.AnchorPoint      = Vector2.new(0, 0.5)
+barDot.Position         = UDim2.new(0, 6, 0.5, 0)
+barDot.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+barDot.BorderSizePixel  = 0
+barDot.ZIndex           = 3
+barDot.Parent = inner
+corner(barDot, 3)
+
+local barLabel = Instance.new("TextLabel")
+barLabel.Size               = UDim2.new(1, -28, 1, 0)
+barLabel.Position           = UDim2.new(0, 18, 0, 0)
+barLabel.BackgroundTransparency = 1
+barLabel.Text               = "IDLE"
+barLabel.TextColor3         = C.dim
+barLabel.TextSize           = 10
+barLabel.Font               = Enum.Font.GothamBold
+barLabel.TextXAlignment     = Enum.TextXAlignment.Center
+barLabel.ZIndex             = 3
+barLabel.Parent = inner
+
+-- ── Slider builder ────────────────────────────────────────────────────────────
+local function makeSlider(yOffset, labelText, minVal, maxVal, initVal, onChange)
+    local row = Instance.new("Frame")
+    row.Size               = UDim2.new(1, -16, 0, 44)
+    row.Position           = UDim2.new(0, 8, 0, yOffset)
+    row.BackgroundTransparency = 1
+    row.Parent = frame
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size             = UDim2.new(0.6, 0, 0, 13)
+    lbl.BackgroundTransparency = 1
+    lbl.Text             = labelText
+    lbl.TextColor3       = Color3.fromRGB(170,170,170)
+    lbl.TextSize         = 9
+    lbl.Font             = Enum.Font.GothamBold
+    lbl.TextXAlignment   = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Size             = UDim2.new(0.4, 0, 0, 13)
+    valLbl.Position         = UDim2.new(0.6, 0, 0, 0)
+    valLbl.BackgroundTransparency = 1
+    valLbl.Text             = string.format("%.2f", initVal)
+    valLbl.TextColor3       = C.white
+    valLbl.TextSize         = 9
+    valLbl.Font             = Enum.Font.GothamBold
+    valLbl.TextXAlignment   = Enum.TextXAlignment.Right
+    valLbl.Parent = row
+
+    local track = Instance.new("Frame")
+    track.Size             = UDim2.new(1, 0, 0, 5)
+    track.Position         = UDim2.new(0, 0, 0, 19)
+    track.BackgroundColor3 = C.track
+    track.BorderSizePixel  = 0
+    track.Parent = row
+    corner(track, 100)
+
+    local fill = Instance.new("Frame")
+    fill.Size            = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3= C.fill
+    fill.BorderSizePixel = 0
+    fill.Parent = track
+    corner(fill, 100)
+
+    local knob = Instance.new("Frame")
+    knob.Size            = UDim2.new(0, 12, 0, 12)
+    knob.AnchorPoint     = Vector2.new(0.5, 0.5)
+    knob.Position        = UDim2.new(0, 0, 0.5, 0)
+    knob.BackgroundColor3= C.white
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+    corner(knob, 100)
+    stroke(knob, Color3.fromRGB(120,120,120), 1)
+
+    local function applyPx(px)
+        local maxW = track.AbsoluteSize.X
+        if maxW <= 0 then return end
+        local c   = math.clamp(px, 0, maxW)
+        local pct = c / maxW
+        local v   = math.floor((minVal + pct*(maxVal-minVal))*100+0.5)/100
+        valLbl.Text   = string.format("%.2f", v)
+        fill.Size     = UDim2.new(0, c, 1, 0)
+        knob.Position = UDim2.new(0, c, 0.5, 0)
+        onChange(v)
+    end
+
+    task.defer(function()
+        task.wait(0.1)
+        applyPx(((initVal-minVal)/(maxVal-minVal)) * track.AbsoluteSize.X)
+    end)
+
+    local drag = false
+    track.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true; applyPx(i.Position.X - track.AbsolutePosition.X)
+        end
+    end)
+    knob.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then drag = true end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement
+                  or i.UserInputType == Enum.UserInputType.Touch) then
+            applyPx(i.Position.X - track.AbsolutePosition.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1
+        or i.UserInputType == Enum.UserInputType.Touch then drag = false end
+    end)
+end
+
+makeSlider(122, "FLASH (s)",          0.50, 3.00, FLASH_ACTIVATE_TIME, function(v) FLASH_ACTIVATE_TIME = v end)
+makeSlider(168, "BLOCK TRIGGER (s)",  0.00, 1.30, BLOCK_TRIGGER_TIME,  function(v) BLOCK_TRIGGER_TIME  = v end)
+makeSlider(214, "BLOCK CLICK (s)",    0.05, 0.40, BLOCK_CLICK_DELAY,   function(v) BLOCK_CLICK_DELAY   = v end)
+
+-- ── Progress bar RenderStepped animation (exact copy from original) ───────────
+local lastFillPct = 0
+RunService.RenderStepped:Connect(function(dt)
+    local active       = StealState.active
+    local justFinished = StealState.lastResultTime > 0
+        and (tick() - StealState.lastResultTime) < 1.5
+    local success = justFinished and string.find(StealState.lastResult, "Stole") ~= nil
+
+    -- dot colour
+    local dotTarget
+    if active then
+        dotTarget = StealState.phase == "waitingRange"
+            and Color3.fromRGB(200, 200, 100)
+            or  Color3.fromRGB(200, 200, 200)
+    elseif justFinished then
+        dotTarget = success
+            and Color3.fromRGB(200, 255, 200)
+            or  Color3.fromRGB(255, 150, 150)
+    elseif selectedTarget then
+        dotTarget = Color3.fromRGB(160, 160, 160)
+    else
+        dotTarget = Color3.fromRGB(60, 60, 60)
+    end
+    barDot.BackgroundColor3 = barDot.BackgroundColor3:Lerp(dotTarget, math.min(dt*8,1))
+
+    -- fill
+    local targetPct, targetCol
+    if active then
+        targetPct = math.clamp((tick()-StealState.startTime)/CONFIG.HOLD_MAX, 0, 1)
+        targetCol = StealState.phase == "waitingRange"
+            and Color3.fromRGB(220, 220, 100)
+            or  Color3.fromRGB(200, 200, 200)
+    elseif justFinished then
+        targetPct = 1
+        targetCol = success
+            and Color3.fromRGB(180, 255, 180)
+            or  Color3.fromRGB(255, 120, 120)
+    else
+        targetPct = 0
+        targetCol = C.fill
+    end
+
+    lastFillPct = lastFillPct + (targetPct - lastFillPct) * math.min(dt*14, 1)
+    barFill.Size             = UDim2.new(lastFillPct, 0, 1, 0)
+    barFill.BackgroundColor3 = barFill.BackgroundColor3:Lerp(targetCol, math.min(dt*8,1))
+
+    -- label
+    if active then
+        local elapsed = tick() - StealState.startTime
+        barLabel.Text      = string.upper(StealState.label) .. "  ·  " .. string.format("%.2fs", elapsed)
+        barLabel.TextColor3= C.white
+    elseif justFinished then
+        barLabel.Text      = string.upper(StealState.lastResult)
+        barLabel.TextColor3= success and Color3.fromRGB(200,255,200) or Color3.fromRGB(255,150,150)
+    else
+        barLabel.Text      = selectedTarget and "READY" or "PICK A TARGET"
+        barLabel.TextColor3= C.dim
+    end
+end)
+
+-- ==================== ANIMAL PICKER PANEL ====================
+
+local listPanel = Instance.new("Frame")
+listPanel.Name             = "ListPanel"
+listPanel.Size             = UDim2.new(0, 220, 0, 220)
+listPanel.Position         = UDim2.new(0, 178, 0, 0)
+listPanel.BackgroundColor3 = C.bg
+listPanel.BorderSizePixel  = 0
+listPanel.Visible          = false
+listPanel.ZIndex           = 20
+listPanel.Parent = frame
+corner(listPanel, 10); stroke(listPanel, C.border, 1.5)
+
+local panelHdr = Instance.new("Frame")
+panelHdr.Size             = UDim2.new(1, 0, 0, 30)
+panelHdr.BackgroundColor3 = C.hdr
+panelHdr.BorderSizePixel  = 0
+panelHdr.ZIndex           = 20
+panelHdr.Parent = listPanel
+corner(panelHdr, 10)
+
+local panelTitle = Instance.new("TextLabel")
+panelTitle.Size               = UDim2.new(1, -36, 1, 0)
+panelTitle.Position           = UDim2.new(0, 10, 0, 0)
+panelTitle.BackgroundTransparency = 1
+panelTitle.Text               = "Pick Animal"
+panelTitle.TextColor3         = C.text
+panelTitle.TextSize           = 11
+panelTitle.Font               = Enum.Font.GothamBold
+panelTitle.TextXAlignment     = Enum.TextXAlignment.Left
+panelTitle.ZIndex             = 20
+panelTitle.Parent = panelHdr
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size               = UDim2.new(0, 26, 0, 20)
+closeBtn.Position           = UDim2.new(1, -30, 0.5, -10)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text               = "✕"
+closeBtn.TextColor3         = C.dim
+closeBtn.TextSize           = 12
+closeBtn.Font               = Enum.Font.GothamBold
+closeBtn.ZIndex             = 20
+closeBtn.Parent = panelHdr
+closeBtn.MouseButton1Click:Connect(function() listPanel.Visible = false end)
+
+local refreshBtn = Instance.new("TextButton")
+refreshBtn.Size             = UDim2.new(1, -16, 0, 20)
+refreshBtn.Position         = UDim2.new(0, 8, 0, 34)
+refreshBtn.BackgroundColor3 = Color3.fromRGB(35,35,35)
+refreshBtn.AutoButtonColor  = false
+refreshBtn.Text             = "⟳  Refresh"
+refreshBtn.TextColor3       = C.dim
+refreshBtn.TextSize         = 9
+refreshBtn.Font             = Enum.Font.GothamBold
+refreshBtn.ZIndex           = 20
+refreshBtn.Parent = listPanel
+corner(refreshBtn, 6)
+
+local scroll = Instance.new("ScrollingFrame")
+scroll.Size                = UDim2.new(1, -16, 1, -60)
+scroll.Position            = UDim2.new(0, 8, 0, 58)
+scroll.BackgroundTransparency = 1
+scroll.BorderSizePixel     = 0
+scroll.ScrollBarThickness  = 3
+scroll.ScrollBarImageColor3= C.dim
+scroll.CanvasSize          = UDim2.new(0,0,0,0)
+scroll.ZIndex              = 20
+scroll.Parent = listPanel
+
+local listLayout = Instance.new("UIListLayout", scroll)
+listLayout.Padding   = UDim.new(0, 4)
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local function buildList()
+    for _, child in ipairs(scroll:GetChildren()) do
+        if not child:IsA("UIListLayout") then child:Destroy() end
+    end
+    scanAllPlots()
+
+    local animals = {}
+    for _, a in ipairs(allAnimalsCache) do
+        if not isMyBaseAnimal(a) then table.insert(animals, a) end
+    end
+
+    if #animals == 0 then
+        local none = Instance.new("TextLabel")
+        none.Size               = UDim2.new(1,0,0,28)
+        none.BackgroundTransparency = 1
+        none.Text               = "No stealable animals found"
+        none.TextColor3         = C.dim
+        none.TextSize           = 9
+        none.Font               = Enum.Font.Gotham
+        none.TextXAlignment     = Enum.TextXAlignment.Center
+        none.ZIndex             = 20
+        none.Parent = scroll
+        scroll.CanvasSize = UDim2.new(0,0,0,32)
+        return
+    end
+
+    for i, animal in ipairs(animals) do
+        local isSel = selectedTarget and selectedTarget.uid == animal.uid
+        local row = Instance.new("TextButton")
+        row.Size             = UDim2.new(1,0,0,28)
+        row.BackgroundColor3 = isSel and Color3.fromRGB(55,55,55) or Color3.fromRGB(30,30,30)
+        row.AutoButtonColor  = false
+        row.Text             = ""
+        row.ZIndex           = 20
+        row.LayoutOrder      = i
+        row.Parent = scroll
+        corner(row, 6)
+        if isSel then stroke(row, C.border, 1) end
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size               = UDim2.new(1,-10,1,0)
+        nameLbl.Position           = UDim2.new(0,6,0,0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.Text               = animal.name .. "  ·  " .. animal.plot
+        nameLbl.TextColor3         = isSel and C.white or C.text
+        nameLbl.TextSize           = 10
+        nameLbl.Font               = Enum.Font.Gotham
+        nameLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        nameLbl.TextTruncate       = Enum.TextTruncate.AtEnd
+        nameLbl.ZIndex             = 20
+        nameLbl.Parent = row
+
+        local cap = animal
+        row.MouseButton1Click:Connect(function()
+            selectedTarget = cap
+            targetLbl.Text      = "▶ " .. cap.name .. " · " .. cap.plot
+            targetLbl.TextColor3= C.text
+            listPanel.Visible   = false
+        end)
+        row.MouseEnter:Connect(function()
+            if not (selectedTarget and selectedTarget.uid == cap.uid) then
+                row.BackgroundColor3 = Color3.fromRGB(42,42,42)
+            end
+        end)
+        row.MouseLeave:Connect(function()
+            if not (selectedTarget and selectedTarget.uid == cap.uid) then
+                row.BackgroundColor3 = Color3.fromRGB(30,30,30)
+            end
+        end)
+    end
+    scroll.CanvasSize = UDim2.new(0,0,0,#animals*32)
+end
+
+refreshBtn.MouseButton1Click:Connect(buildList)
+pickBtn.MouseButton1Click:Connect(function()
+    listPanel.Visible = not listPanel.Visible
+    if listPanel.Visible then buildList() end
+end)
+
+task.spawn(function() while task.wait(5) do scanAllPlots() end end)
+scanAllPlots()
+
+print("✅ larp flash debug — PICK animal → FLASH to steal + block + flash with live bar")

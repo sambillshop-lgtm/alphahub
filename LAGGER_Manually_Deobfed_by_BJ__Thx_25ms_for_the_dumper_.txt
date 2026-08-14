@@ -1,0 +1,469 @@
+--This File Is From discord.gg/THUpmjpfm2
+--Check @imguy_6677 Bio For Sources
+
+-- Ricks Lagger | Fixed Mobile Edition
+-- Keybind: Press 'V' to toggle
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+if not player then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    player = Players.LocalPlayer
+end
+
+-- Settings
+local config = {
+    threads = 120,
+    bursts = 1,
+    delay = 0.3,
+    active = false
+}
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RicksLagger"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Fixed GUI Size at 200
+local guiSize = 200
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, guiSize, 0, guiSize * 1.35)
+mainFrame.Position = UDim2.new(0.5, -guiSize/2, 0.5, -(guiSize * 1.35)/2)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+mainFrame.ClipsDescendants = true
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 10)
+mainCorner.Parent = mainFrame
+
+-- Title Bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 32)
+titleBar.BackgroundTransparency = 1
+titleBar.Parent = mainFrame
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -60, 1, 0)
+title.Position = UDim2.new(0, 8, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "Ricks Lagger"
+title.TextColor3 = Color3.fromRGB(0, 200, 255)
+title.TextSize = 12
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = titleBar
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -30, 0, 4)
+closeBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.TextSize = 13
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = titleBar
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 5)
+closeCorner.Parent = closeBtn
+
+-- Keybind Indicator
+local keybindFrame = Instance.new("Frame")
+keybindFrame.Size = UDim2.new(0.9, 0, 0, 28)
+keybindFrame.Position = UDim2.new(0.05, 0, 0, 38)
+keybindFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+keybindFrame.BorderSizePixel = 0
+keybindFrame.Parent = mainFrame
+local keybindCorner = Instance.new("UICorner")
+keybindCorner.CornerRadius = UDim.new(0, 6)
+keybindCorner.Parent = keybindFrame
+
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Size = UDim2.new(1, 0, 1, 0)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "🔑 Press V to toggle"
+keybindLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+keybindLabel.TextSize = 10
+keybindLabel.Font = Enum.Font.Gotham
+keybindLabel.Parent = keybindFrame
+
+-- Toggle Switch Frame
+local toggleFrame = Instance.new("Frame")
+toggleFrame.Size = UDim2.new(0.9, 0, 0, 45)
+toggleFrame.Position = UDim2.new(0.05, 0, 0, 72)
+toggleFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+toggleFrame.BorderSizePixel = 0
+toggleFrame.Parent = mainFrame
+local toggleCorner = Instance.new("UICorner")
+toggleCorner.CornerRadius = UDim.new(0, 6)
+toggleCorner.Parent = toggleFrame
+
+local toggleLabel = Instance.new("TextLabel")
+toggleLabel.Size = UDim2.new(0.5, 0, 1, 0)
+toggleLabel.Position = UDim2.new(0, 8, 0, 0)
+toggleLabel.BackgroundTransparency = 1
+toggleLabel.Text = "LAGGER"
+toggleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleLabel.TextSize = 12
+toggleLabel.Font = Enum.Font.GothamBold
+toggleLabel.TextXAlignment = Enum.TextXAlignment.Left
+toggleLabel.TextYAlignment = Enum.TextYAlignment.Center
+toggleLabel.Parent = toggleFrame
+
+local switchBtn = Instance.new("Frame")
+switchBtn.Size = UDim2.new(0, 48, 0, 26)
+switchBtn.Position = UDim2.new(1, -56, 0.5, -13)
+switchBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+switchBtn.BorderSizePixel = 0
+switchBtn.Parent = toggleFrame
+local switchCorner = Instance.new("UICorner")
+switchCorner.CornerRadius = UDim.new(1, 0)
+switchCorner.Parent = switchBtn
+
+local knob = Instance.new("Frame")
+knob.Size = UDim2.new(0, 22, 0, 22)
+knob.Position = UDim2.new(0, 2, 0.5, -11)
+knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+knob.BorderSizePixel = 0
+knob.Parent = switchBtn
+local knobCorner = Instance.new("UICorner")
+knobCorner.CornerRadius = UDim.new(1, 0)
+knobCorner.Parent = knob
+
+local switchClick = Instance.new("TextButton")
+switchClick.Size = UDim2.new(1, 0, 1, 0)
+switchClick.BackgroundTransparency = 1
+switchClick.Text = ""
+switchClick.Parent = switchBtn
+
+-- Settings Panel
+local settingsFrame = Instance.new("Frame")
+settingsFrame.Size = UDim2.new(0.9, 0, 0, 100)
+settingsFrame.Position = UDim2.new(0.05, 0, 0, 124)
+settingsFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+settingsFrame.BorderSizePixel = 0
+settingsFrame.Parent = mainFrame
+local settingsCorner = Instance.new("UICorner")
+settingsCorner.CornerRadius = UDim.new(0, 6)
+settingsCorner.Parent = settingsFrame
+
+-- Helper to create settings rows
+local function createSetting(parent, y, text, val, minVal, maxVal, step, isNum)
+    local rowFrame = Instance.new("Frame")
+    rowFrame.Size = UDim2.new(1, 0, 0, 28)
+    rowFrame.Position = UDim2.new(0, 0, 0, y)
+    rowFrame.BackgroundTransparency = 1
+    rowFrame.Parent = parent
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.5, 0, 1, 0)
+    label.Position = UDim2.new(0, 8, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(180, 180, 210)
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = rowFrame
+    
+    local valueFrame = Instance.new("Frame")
+    valueFrame.Size = UDim2.new(0, 42, 0, 22)
+    valueFrame.Position = UDim2.new(0.55, 0, 0, 3)
+    valueFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    valueFrame.BorderSizePixel = 0
+    valueFrame.Parent = rowFrame
+    local valCorner = Instance.new("UICorner")
+    valCorner.CornerRadius = UDim.new(0, 5)
+    valCorner.Parent = valueFrame
+    
+    local valueLabel = Instance.new("TextLabel")
+    valueLabel.Size = UDim2.new(1, 0, 1, 0)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = isNum and tostring(val) or string.format("%.0f", val)
+    valueLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+    valueLabel.TextSize = 10
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.Parent = valueFrame
+    
+    local minus = Instance.new("TextButton")
+    minus.Size = UDim2.new(0, 24, 0, 22)
+    minus.Position = UDim2.new(0.74, 0, 0, 3)
+    minus.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    minus.Text = "-"
+    minus.TextColor3 = Color3.fromRGB(255, 100, 100)
+    minus.TextSize = 16
+    minus.Font = Enum.Font.GothamBold
+    minus.Parent = rowFrame
+    local minusCorner = Instance.new("UICorner")
+    minusCorner.CornerRadius = UDim.new(0, 5)
+    minusCorner.Parent = minus
+    
+    local plus = Instance.new("TextButton")
+    plus.Size = UDim2.new(0, 24, 0, 22)
+    plus.Position = UDim2.new(0.84, 0, 0, 3)
+    plus.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    plus.Text = "+"
+    plus.TextColor3 = Color3.fromRGB(100, 255, 100)
+    plus.TextSize = 16
+    plus.Font = Enum.Font.GothamBold
+    plus.Parent = rowFrame
+    local plusCorner = Instance.new("UICorner")
+    plusCorner.CornerRadius = UDim.new(0, 5)
+    plusCorner.Parent = plus
+    
+    local current = val
+    
+    local function update()
+        if isNum then
+            valueLabel.Text = tostring(current)
+        else
+            valueLabel.Text = string.format("%.0f", current)
+        end
+    end
+    
+    minus.MouseButton1Click:Connect(function()
+        current = math.max(minVal, current - step)
+        if not isNum then current = math.floor(current) end
+        update()
+        if active then
+            stopLagger()
+            startLagger()
+        end
+    end)
+    
+    plus.MouseButton1Click:Connect(function()
+        current = math.min(maxVal, current + step)
+        if not isNum then current = math.floor(current) end
+        update()
+        if active then
+            stopLagger()
+            startLagger()
+        end
+    end)
+    
+    return function() return current end
+end
+
+local getThreads = createSetting(settingsFrame, 6, "THREADS", 120, 10, 999999, 10, true)
+local getBursts = createSetting(settingsFrame, 38, "BURSTS", 1, 1, 999999, 1, true)
+local getDelay = createSetting(settingsFrame, 70, "DELAY(ms)", 300, 50, 2000, 50, false)
+
+-- Status Frame
+local statusFrame = Instance.new("Frame")
+statusFrame.Size = UDim2.new(0.9, 0, 0, 30)
+statusFrame.Position = UDim2.new(0.05, 0, 0, 232)
+statusFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+statusFrame.BorderSizePixel = 0
+statusFrame.Parent = mainFrame
+local statusCorner = Instance.new("UICorner")
+statusCorner.CornerRadius = UDim.new(0, 6)
+statusCorner.Parent = statusFrame
+
+local statusLight = Instance.new("Frame")
+statusLight.Size = UDim2.new(0, 7, 0, 7)
+statusLight.Position = UDim2.new(0, 10, 0.5, -3.5)
+statusLight.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+statusLight.BorderSizePixel = 0
+statusLight.Parent = statusFrame
+local lightCorner = Instance.new("UICorner")
+lightCorner.CornerRadius = UDim.new(1, 0)
+lightCorner.Parent = statusLight
+
+local statusText = Instance.new("TextLabel")
+statusText.Size = UDim2.new(1, -25, 1, 0)
+statusText.Position = UDim2.new(0, 22, 0, 0)
+statusText.BackgroundTransparency = 1
+statusText.Text = "INACTIVE"
+statusText.TextColor3 = Color3.fromRGB(180, 180, 210)
+statusText.TextSize = 10
+statusText.Font = Enum.Font.GothamBold
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.Parent = statusFrame
+
+-- Lagger logic
+local active = false
+local stopFlag = false
+local remoteEvent, remoteFunction
+
+local function updateUI()
+    if active then
+        switchBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+        local tween = TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(1, -24, 0.5, -11)})
+        tween:Play()
+        statusLight.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+        statusText.Text = "ACTIVE ⚡"
+        statusText.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        switchBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+        local tween = TweenService:Create(knob, TweenInfo.new(0.15), {Position = UDim2.new(0, 2, 0.5, -11)})
+        tween:Play()
+        statusLight.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        statusText.Text = "INACTIVE"
+        statusText.TextColor3 = Color3.fromRGB(180, 180, 210)
+    end
+end
+
+local function startLagger()
+    if active then return end
+    
+    active = true
+    stopFlag = false
+    updateUI()
+    
+    local threads = getThreads()
+    local bursts = getBursts()
+    local delay = getDelay() / 1000
+    
+    pcall(function()
+        local network = game:GetService("NetworkClient")
+        if network and network.SetOutgoingKBPSLimit then
+            network:SetOutgoingKBPSLimit(1)
+        end
+    end)
+    
+    remoteEvent = Instance.new("RemoteEvent")
+    remoteFunction = Instance.new("RemoteFunction")
+    
+    for i = 1, threads do
+        if stopFlag then break end
+        task.spawn(function()
+            while not stopFlag do
+                pcall(function()
+                    remoteEvent:FireServer()
+                    remoteFunction:InvokeServer()
+                    HttpService:JSONEncode("0xd4d210c2b40ac628" .. math.random())
+                    
+                    local rrs = ReplicatedStorage:FindFirstChild("RobloxReplicatedStorage")
+                    if rrs and rrs.SetPlayerBlockList then
+                        rrs.SetPlayerBlockList:FireServer()
+                    end
+                end)
+                task.wait(delay)
+            end
+        end)
+    end
+    
+    for i = 1, bursts do
+        if stopFlag then break end
+        task.spawn(function()
+            while not stopFlag do
+                pcall(function()
+                    local camera = workspace.CurrentCamera
+                    if camera then
+                        camera.FieldOfView = 70 + math.random(-3, 3)
+                    end
+                end)
+                task.wait(delay * 2)
+            end
+        end)
+    end
+end
+
+local function stopLagger()
+    if not active then return end
+    
+    active = false
+    stopFlag = true
+    updateUI()
+    
+    pcall(function()
+        local network = game:GetService("NetworkClient")
+        if network and network.SetOutgoingKBPSLimit then
+            network:SetOutgoingKBPSLimit(0)
+        end
+    end)
+    
+    if remoteEvent then remoteEvent:Destroy() end
+    if remoteFunction then remoteFunction:Destroy() end
+end
+
+local function toggleLagger()
+    if active then
+        stopLagger()
+    else
+        startLagger()
+    end
+end
+
+-- Button connections
+switchClick.MouseButton1Click:Connect(toggleLagger)
+
+closeBtn.MouseButton1Click:Connect(function()
+    stopLagger()
+    screenGui:Destroy()
+end)
+
+-- KEYBIND: V to toggle (WORKING)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- CTRL to hide/show GUI
+    if input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.RightControl then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+    
+    -- V key to toggle lagger
+    if input.KeyCode == Enum.KeyCode.V then
+        toggleLagger()
+    end
+end)
+
+-- Auto update settings when changed
+local oldThreads, oldBursts, oldDelay = getThreads(), getBursts(), getDelay()
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if active then
+            local newThreads = getThreads()
+            local newBursts = getBursts()
+            local newDelay = getDelay()
+            if newThreads ~= oldThreads or newBursts ~= oldBursts or newDelay ~= oldDelay then
+                oldThreads, oldBursts, oldDelay = newThreads, newBursts, newDelay
+                stopLagger()
+                startLagger()
+            end
+        end
+    end
+end)
+
+-- Cleanup
+player.AncestryChanged:Connect(function()
+    if not player.Parent then
+        stopLagger()
+    end
+end)
+
+-- Startup notification
+local notify = Instance.new("Frame")
+notify.Size = UDim2.new(0, 200, 0, 35)
+notify.Position = UDim2.new(0.5, -100, 0, -45)
+notify.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+notify.BorderSizePixel = 0
+notify.Parent = screenGui
+local notifyCorner = Instance.new("UICorner")
+notifyCorner.CornerRadius = UDim.new(0, 8)
+notifyCorner.Parent = notify
+
+local notifyText = Instance.new("TextLabel")
+notifyText.Size = UDim2.new(1, 0, 1, 0)
+notifyText.BackgroundTransparency = 1
+notifyText.Text = "⚡ Ricks Lagger | Press V to toggle"
+notifyText.TextColor3 = Color3.fromRGB(0, 200, 255)
+notifyText.TextSize = 10
+notifyText.Font = Enum.Font.GothamBold
+notifyText.Parent = notify
+
+local tween = TweenService:Create(notify, TweenInfo.new(0.3), {Position = UDim2.new(0.5, -100, 0, 15)})
+tween:Play()
+task.wait(2.5)
+local tweenOut = TweenService:Create(notify, TweenInfo.new(0.3), {Position = UDim2.new(0.5, -100, 0, -45)})
+tweenOut:Play()
+tweenOut.Completed:Connect(function() notify:Destroy() end)

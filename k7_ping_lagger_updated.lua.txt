@@ -1,0 +1,238 @@
+-- // k7 ping lagger //
+-- // Updated Asset: rbxassetid://114782221998545 //
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
+local lp               = Players.LocalPlayer
+
+-- ── State ─────────────────────────────────────────────────────
+local enabled  = false
+local lagConn  = nil
+local lagConn2 = nil
+local lagConn3 = nil
+
+-- Power levels
+local POWERS = { 
+    LOW  = 0.18, 
+    MID  = 0.55, 
+    HIGH = 1.0, 
+    NUKE = 2.0 
+}
+local POWER_ORDER = {"LOW", "MID", "HIGH", "NUKE"}
+local powerIdx = 1 
+local delay_s  = POWERS[POWER_ORDER[powerIdx]]
+
+-- ── UI Creation ────────────────────────────────────────────────
+local ScreenGui = Instance.new("ScreenGui")
+local MainFrame = Instance.new("Frame")
+local UICorner = Instance.new("UICorner")
+local UIStroke = Instance.new("UIStroke")
+local ImageOverlay = Instance.new("ImageLabel")
+
+local Title = Instance.new("TextLabel")
+local StatusContainer = Instance.new("Frame")
+local StatusLabel = Instance.new("TextLabel")
+
+local ToggleButton = Instance.new("TextButton")
+local PowerButton = Instance.new("TextButton")
+
+-- ScreenGui Setup
+ScreenGui.Name = "k7_ping_lagger"
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Main Frame
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(5, 5, 5) 
+MainFrame.Position = UDim2.new(0.5, -125, 0.5, -100)
+MainFrame.Size = UDim2.new(0, 250, 0, 200)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.ClipsDescendants = true
+
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+UIStroke.Parent = MainFrame
+UIStroke.Color = Color3.fromRGB(30, 30, 30)
+UIStroke.Thickness = 2
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- Custom Image Overlay (Updated Asset ID)
+ImageOverlay.Name = "ImageOverlay"
+ImageOverlay.Parent = MainFrame
+ImageOverlay.BackgroundTransparency = 1
+ImageOverlay.Position = UDim2.new(0, 0, 0, 0)
+ImageOverlay.Size = UDim2.new(1, 0, 1, 0)
+ImageOverlay.Image = "rbxassetid://114782221998545"
+ImageOverlay.ImageTransparency = 0.88
+ImageOverlay.ScaleType = Enum.ScaleType.Fit
+ImageOverlay.ZIndex = 0
+
+-- Title
+Title.Name = "Title"
+Title.Parent = MainFrame
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 0, 0, 12)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "k7 ping lagger"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 16
+Title.ZIndex = 2
+
+-- Status Section
+StatusContainer.Name = "StatusContainer"
+StatusContainer.Parent = MainFrame
+StatusContainer.BackgroundTransparency = 1
+StatusContainer.Position = UDim2.new(0, 0, 0, 42)
+StatusContainer.Size = UDim2.new(1, 0, 0, 20)
+StatusContainer.ZIndex = 2
+
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Parent = StatusContainer
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Size = UDim2.new(1, 0, 1, 0)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "SYSTEM: STANDBY"
+StatusLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+StatusLabel.TextSize = 11
+
+-- Toggle Button
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Parent = MainFrame
+ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+ToggleButton.Position = UDim2.new(0.1, 0, 0.42, 0)
+ToggleButton.Size = UDim2.new(0.8, 0, 0, 42)
+ToggleButton.Font = Enum.Font.GothamBold
+ToggleButton.Text = "ACTIVATE"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.TextSize = 14
+ToggleButton.ZIndex = 2
+
+local TBCorner = Instance.new("UICorner")
+TBCorner.CornerRadius = UDim.new(0, 8)
+TBCorner.Parent = ToggleButton
+
+local TBStroke = Instance.new("UIStroke")
+TBStroke.Parent = ToggleButton
+TBStroke.Color = Color3.fromRGB(40, 40, 40)
+TBStroke.Thickness = 1
+
+-- Power Button
+PowerButton.Name = "PowerButton"
+PowerButton.Parent = MainFrame
+PowerButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+PowerButton.Position = UDim2.new(0.1, 0, 0.68, 0)
+PowerButton.Size = UDim2.new(0.8, 0, 0, 42)
+PowerButton.Font = Enum.Font.GothamBold
+PowerButton.Text = "POWER: LOW (180ms)"
+PowerButton.TextColor3 = Color3.fromRGB(150, 255, 150) 
+PowerButton.TextSize = 13
+PowerButton.ZIndex = 2
+
+local PBCorner = Instance.new("UICorner")
+PBCorner.CornerRadius = UDim.new(0, 8)
+PBCorner.Parent = PowerButton
+
+local PBStroke = Instance.new("UIStroke")
+PBStroke.Parent = PowerButton
+PBStroke.Color = Color3.fromRGB(40, 40, 40)
+PBStroke.Thickness = 1
+
+-- ── Engine ────────────────────────────────────────────────────
+
+local function stopLoop()
+    if lagConn  then lagConn:Disconnect()  lagConn = nil end
+    if lagConn2 then lagConn2:Disconnect() lagConn2 = nil end
+    if lagConn3 then lagConn3:Disconnect() lagConn3 = nil end
+end
+
+local function startLoop()
+    stopLoop()
+    
+    local function lag()
+        local start = os.clock()
+        while os.clock() - start < delay_s do
+            -- Intensive busy-wait
+        end
+    end
+    
+    lagConn = RunService.Heartbeat:Connect(lag)
+    if powerIdx >= 3 then
+        lagConn2 = RunService.Stepped:Connect(lag)
+    end
+    if powerIdx == 4 then
+        lagConn3 = RunService.RenderStepped:Connect(lag)
+    end
+end
+
+-- ── UI Interaction ────────────────────────────────────────────
+
+local function updateUI()
+    if enabled then
+        ToggleButton.Text = "ABORT"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 15, 15)
+        TBStroke.Color = Color3.fromRGB(150, 0, 0)
+        StatusLabel.Text = "SYSTEM: OVERLOADING"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+        startLoop()
+    else
+        ToggleButton.Text = "ACTIVATE"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        TBStroke.Color = Color3.fromRGB(40, 40, 40)
+        StatusLabel.Text = "SYSTEM: STANDBY"
+        StatusLabel.TextColor3 = Color3.fromRGB(100, 100, 100)
+        stopLoop()
+    end
+end
+
+ToggleButton.MouseButton1Click:Connect(function()
+    enabled = not enabled
+    updateUI()
+end)
+
+PowerButton.MouseButton1Click:Connect(function()
+    powerIdx = powerIdx + 1
+    if powerIdx > #POWER_ORDER then powerIdx = 1 end
+    
+    local mode = POWER_ORDER[powerIdx]
+    delay_s = POWERS[mode]
+    
+    if mode == "LOW" then
+        PowerButton.Text = "POWER: LOW (180ms)"
+        PowerButton.TextColor3 = Color3.fromRGB(150, 255, 150)
+        PBStroke.Color = Color3.fromRGB(0, 100, 0)
+    elseif mode == "MID" then
+        PowerButton.Text = "POWER: MID"
+        PowerButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+        PBStroke.Color = Color3.fromRGB(40, 40, 40)
+    elseif mode == "HIGH" then
+        PowerButton.Text = "POWER: HIGH"
+        PowerButton.TextColor3 = Color3.fromRGB(255, 150, 0)
+        PBStroke.Color = Color3.fromRGB(100, 50, 0)
+    elseif mode == "NUKE" then
+        PowerButton.Text = "POWER: NUKE"
+        PowerButton.TextColor3 = Color3.fromRGB(255, 0, 0)
+        PBStroke.Color = Color3.fromRGB(150, 0, 0)
+    end
+    
+    if enabled then
+        startLoop()
+    end
+end)
+
+-- Hotkey 'V'
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.V then
+        enabled = not enabled
+        updateUI()
+    end
+end)
+
+print("k7 ping lagger Updated Successfully.")

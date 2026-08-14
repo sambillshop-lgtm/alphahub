@@ -1,0 +1,115 @@
+local Players = game:GetService('Players')
+local UserInputService = game:GetService('UserInputService')
+local Lighting = game:GetService('Lighting')
+local Workspace = game:GetService('Workspace')
+local HttpService = game:GetService('HttpService')
+
+local player = Players.LocalPlayer
+local PlayerGui = player:WaitForChild('PlayerGui')
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "7TY_UI"
+ScreenGui.Parent = PlayerGui
+ScreenGui.ResetOnSpawn = false
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.Size = UDim2.new(0, 220, 0, 120)
+MainFrame.Position = UDim2.new(0.5, -110, 0.5, -60)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 60, 20)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true 
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.Parent = MainFrame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Parent = MainFrame
+UIStroke.Color = Color3.fromRGB(120, 255, 120)
+UIStroke.Thickness = 2
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundTransparency = 1
+Title.Text = "7TY ANTI LAG"
+Title.TextColor3 = Color3.fromRGB(150, 255, 150)
+Title.TextSize = 14
+Title.Font = Enum.Font.GothamBold
+
+local AntiLagBtn = Instance.new("TextButton")
+AntiLagBtn.Parent = MainFrame
+AntiLagBtn.Size = UDim2.new(0, 180, 0, 32)
+AntiLagBtn.Position = UDim2.new(0.5, -90, 0, 35)
+AntiLagBtn.BorderSizePixel = 0
+AntiLagBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AntiLagBtn.TextSize = 16
+AntiLagBtn.Font = Enum.Font.GothamBold
+AntiLagBtn.Text = "ANTI LAG: OFF"
+AntiLagBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+
+local AntiLagCorner = Instance.new("UICorner")
+AntiLagCorner.CornerRadius = UDim.new(0, 10)
+AntiLagCorner.Parent = AntiLagBtn
+
+local UltraBtn = Instance.new("TextButton")
+UltraBtn.Parent = MainFrame
+UltraBtn.Size = UDim2.new(0, 180, 0, 32)
+UltraBtn.Position = UDim2.new(0.5, -90, 0, 75)
+UltraBtn.BorderSizePixel = 0
+UltraBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UltraBtn.TextSize = 16
+UltraBtn.Font = Enum.Font.GothamBold
+UltraBtn.Text = "ULTRA MODE: OFF"
+UltraBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40)
+
+local UltraCorner = Instance.new("UICorner")
+UltraCorner.CornerRadius = UDim.new(0, 10)
+UltraCorner.Parent = UltraBtn
+
+local function SaveConfig(antiLag, ultra)
+    local config = {
+        AntiLag = antiLag,
+        UltraMode = ultra
+    }
+    writefile('7TY_Config.json', HttpService:JSONEncode(config))
+end
+
+AntiLagBtn.MouseButton1Click:Connect(function()
+    AntiLagBtn.Text = "ANTI LAG: ON"
+    AntiLagBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 60)
+    
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 1e9
+    Workspace.StreamingEnabled = false
+    
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("ParticleEmitter") or v:IsA("PointLight") then
+            v.Enabled = false
+        end
+    end
+    SaveConfig(true, false)
+end)
+
+UltraBtn.MouseButton1Click:Connect(function()
+    UltraBtn.Text = "ULTRA MODE: ON"
+    UltraBtn.BackgroundColor3 = Color3.fromRGB(60, 180, 60)
+    
+    settings().Rendering.QualityLevel = 1
+    Lighting.GlobalShadows = false
+    Lighting.Brightness = 0
+    Lighting.FogEnd = 1e9
+    
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("Decal") then
+            v.Transparency = 1
+        elseif v:IsA("ParticleEmitter") or v:IsA("PointLight") then
+            v.Enabled = false
+        end
+    end
+    SaveConfig(true, true)
+end)

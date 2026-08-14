@@ -1,0 +1,398 @@
+-- // ARENA SPEED BYPASS — By @Atlanta.rar//
+-- // 1 (Services) //
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+
+-- // 2 (Player + state) //
+local lp = Players.LocalPlayer
+local activated = false
+local keybind = Enum.KeyCode.B
+local waitingForKey = false
+local power = 97000
+local lagAmount = 0.12
+local lagConn = nil
+local frameSkipCounter = 0
+
+-- // 3 (Map power to lag amount) //
+local function applyPower(val)
+	power = math.clamp(val, 10000, 500000)
+	local t = (power - 10000) / 490000
+	lagAmount = t * 0.5
+end
+
+applyPower(power)
+
+-- // 4 (Start / stop lag - optimized) //
+local function startLag()
+	if lagConn then lagConn:Disconnect() end
+
+	lagConn = RunService.RenderStepped:Connect(function()
+		if not activated then return end
+		if lagAmount > 0 then
+			frameSkipCounter = frameSkipCounter + 1
+			if frameSkipCounter % 3 == 0 then
+				local t = tick()
+				while tick() - t < lagAmount * 0.5 do end
+			end
+		end
+	end)
+end
+
+local function stopLag()
+	activated = false
+	if lagConn then lagConn:Disconnect(); lagConn = nil end
+	frameSkipCounter = 0
+end
+
+-- // 5 (Cleanup) //
+if CoreGui:FindFirstChild("Arena_Speed_Bypass") then
+	CoreGui.Arena_Speed_Bypass:Destroy()
+end
+
+-- // 6 (ScreenGui) //
+local gui = Instance.new("ScreenGui")
+gui.Name = "Arena_Speed_Bypass"
+gui.ResetOnSpawn = false
+gui.Parent = CoreGui
+
+-- // 7 (Main Frame - Glassmorphism style) //
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 220, 0, 0)
+main.Position = UDim2.new(0.5, -110, 0.5, -150)
+main.BackgroundColor3 = Color3.fromRGB(20, 10, 35)
+main.BackgroundTransparency = 0.15
+main.BorderSizePixel = 0
+main.Active = true
+main.Draggable = true
+main.ClipsDescendants = true
+main.Parent = gui
+
+-- Glass effect background
+local glass = Instance.new("UIGradient")
+glass.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(30, 15, 50)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(15, 5, 30))
+})
+glass.Parent = main
+
+-- Violet glow border
+local border = Instance.new("UIStroke")
+border.Thickness = 2
+border.Color = Color3.fromRGB(160, 80, 255)
+border.Transparency = 0.3
+border.Parent = main
+
+-- Glow effect
+local glow = Instance.new("UIGradient")
+glow.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(160, 80, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 40, 200))
+})
+glow.Parent = border
+
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+TweenService:Create(main, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+	Size = UDim2.new(0, 220, 0, 310)
+}):Play()
+
+-- // 8 (Header with icon) //
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 60)
+header.BackgroundColor3 = Color3.fromRGB(100, 40, 200)
+header.BackgroundTransparency = 0.3
+header.BorderSizePixel = 0
+header.Parent = main
+
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+
+local headerGlow = Instance.new("UIGradient")
+headerGlow.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(160, 80, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 40, 200))
+})
+headerGlow.Parent = header
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Position = UDim2.new(0, 0, 0, 8)
+title.BackgroundTransparency = 1
+title.Text = "✦ ARENA SPEED ✦"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 16
+title.Parent = header
+
+-- Subtitle
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, 0, 0, 20)
+subtitle.Position = UDim2.new(0, 0, 0, 38)
+subtitle.BackgroundTransparency = 1
+subtitle.Text = "BYPASS v2"
+subtitle.TextColor3 = Color3.fromRGB(200, 180, 255)
+subtitle.Font = Enum.Font.GothamMedium
+subtitle.TextSize = 11
+subtitle.Parent = header
+
+-- // 9 (Status indicator - animated) //
+local statusFrame = Instance.new("Frame")
+statusFrame.Size = UDim2.new(0.85, 0, 0, 45)
+statusFrame.Position = UDim2.new(0.075, 0, 0, 75)
+statusFrame.BackgroundColor3 = Color3.fromRGB(25, 15, 40)
+statusFrame.BorderSizePixel = 0
+statusFrame.Parent = main
+
+Instance.new("UICorner", statusFrame).CornerRadius = UDim.new(0, 8)
+
+local statusBorder = Instance.new("UIStroke")
+statusBorder.Thickness = 1.5
+statusBorder.Color = Color3.fromRGB(160, 80, 255)
+statusBorder.Transparency = 0.5
+statusBorder.Parent = statusFrame
+
+-- Status dot
+local statusDot = Instance.new("Frame")
+statusDot.Size = UDim2.new(0, 10, 0, 10)
+statusDot.Position = UDim2.new(0.08, 0, 0.5, -5)
+statusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+statusDot.BorderSizePixel = 0
+statusDot.Parent = statusFrame
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = statusDot
+
+-- Status text
+local statusText = Instance.new("TextLabel")
+statusText.Size = UDim2.new(0.6, 0, 1, 0)
+statusText.Position = UDim2.new(0.2, 0, 0, 0)
+statusText.BackgroundTransparency = 1
+statusText.Text = "DISABLED"
+statusText.TextColor3 = Color3.fromRGB(255, 100, 100)
+statusText.Font = Enum.Font.GothamBold
+statusText.TextSize = 14
+statusText.TextXAlignment = Enum.TextXAlignment.Left
+statusText.Parent = statusFrame
+
+-- Toggle button (on status frame)
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.3, 0, 0.7, 0)
+toggleBtn.Position = UDim2.new(0.65, 0, 0.15, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(160, 80, 255)
+toggleBtn.Text = "OFF"
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 13
+toggleBtn.BorderSizePixel = 0
+toggleBtn.AutoButtonColor = false
+toggleBtn.Parent = statusFrame
+
+Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 6)
+
+-- // 10 (Info grid) //
+local infoFrame = Instance.new("Frame")
+infoFrame.Size = UDim2.new(0.85, 0, 0, 120)
+infoFrame.Position = UDim2.new(0.075, 0, 0, 135)
+infoFrame.BackgroundTransparency = 1
+infoFrame.Parent = main
+
+-- Version
+local versionLabel = Instance.new("TextLabel")
+versionLabel.Size = UDim2.new(0.5, 0, 0, 30)
+versionLabel.Position = UDim2.new(0, 0, 0, 0)
+versionLabel.BackgroundTransparency = 1
+versionLabel.Text = "VERSION"
+versionLabel.TextColor3 = Color3.fromRGB(160, 140, 200)
+versionLabel.Font = Enum.Font.GothamMedium
+versionLabel.TextSize = 10
+versionLabel.TextXAlignment = Enum.TextXAlignment.Left
+versionLabel.Parent = infoFrame
+
+local versionValue = Instance.new("TextLabel")
+versionValue.Size = UDim2.new(0.5, 0, 0, 25)
+versionValue.Position = UDim2.new(0, 0, 0, 15)
+versionValue.BackgroundTransparency = 1
+versionValue.Text = "V2"
+versionValue.TextColor3 = Color3.fromRGB(200, 180, 255)
+versionValue.Font = Enum.Font.GothamBold
+versionValue.TextSize = 16
+versionValue.TextXAlignment = Enum.TextXAlignment.Left
+versionValue.Parent = infoFrame
+
+-- Power
+local powerLabel = Instance.new("TextLabel")
+powerLabel.Size = UDim2.new(0.5, 0, 0, 30)
+powerLabel.Position = UDim2.new(0.5, 0, 0, 0)
+powerLabel.BackgroundTransparency = 1
+powerLabel.Text = "POWER"
+powerLabel.TextColor3 = Color3.fromRGB(160, 140, 200)
+powerLabel.Font = Enum.Font.GothamMedium
+powerLabel.TextSize = 10
+powerLabel.TextXAlignment = Enum.TextXAlignment.Left
+powerLabel.Parent = infoFrame
+
+local powerValue = Instance.new("TextButton")
+powerValue.Size = UDim2.new(0.5, 0, 0, 25)
+powerValue.Position = UDim2.new(0.5, 0, 0, 15)
+powerValue.BackgroundTransparency = 1
+powerValue.Text = tostring(power)
+powerValue.TextColor3 = Color3.fromRGB(200, 180, 255)
+powerValue.Font = Enum.Font.GothamBold
+powerValue.TextSize = 16
+powerValue.TextXAlignment = Enum.TextXAlignment.Left
+powerValue.BorderSizePixel = 0
+powerValue.AutoButtonColor = false
+powerValue.Parent = infoFrame
+
+-- Keybind
+local keyLabel = Instance.new("TextLabel")
+keyLabel.Size = UDim2.new(0.5, 0, 0, 30)
+keyLabel.Position = UDim2.new(0, 0, 0, 55)
+keyLabel.BackgroundTransparency = 1
+keyLabel.Text = "KEYBIND"
+keyLabel.TextColor3 = Color3.fromRGB(160, 140, 200)
+keyLabel.Font = Enum.Font.GothamMedium
+keyLabel.TextSize = 10
+keyLabel.TextXAlignment = Enum.TextXAlignment.Left
+keyLabel.Parent = infoFrame
+
+local keyValue = Instance.new("TextButton")
+keyValue.Size = UDim2.new(0.5, 0, 0, 25)
+keyValue.Position = UDim2.new(0, 0, 0, 70)
+keyValue.BackgroundTransparency = 1
+keyValue.Text = keybind.Name
+keyValue.TextColor3 = Color3.fromRGB(200, 180, 255)
+keyValue.Font = Enum.Font.GothamBold
+keyValue.TextSize = 16
+keyValue.TextXAlignment = Enum.TextXAlignment.Left
+keyValue.BorderSizePixel = 0
+keyValue.AutoButtonColor = false
+keyValue.Parent = infoFrame
+
+-- Status
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.5, 0, 0, 30)
+statusLabel.Position = UDim2.new(0.5, 0, 0, 55)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "STATUS"
+statusLabel.TextColor3 = Color3.fromRGB(160, 140, 200)
+statusLabel.Font = Enum.Font.GothamMedium
+statusLabel.TextSize = 10
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = infoFrame
+
+local statusValue = Instance.new("TextLabel")
+statusValue.Size = UDim2.new(0.5, 0, 0, 25)
+statusValue.Position = UDim2.new(0.5, 0, 0, 70)
+statusValue.BackgroundTransparency = 1
+statusValue.Text = "● OFF"
+statusValue.TextColor3 = Color3.fromRGB(255, 50, 50)
+statusValue.Font = Enum.Font.GothamBold
+statusValue.TextSize = 14
+statusValue.TextXAlignment = Enum.TextXAlignment.Left
+statusValue.Parent = infoFrame
+
+-- // 11 (Power input) //
+local powerInput = Instance.new("TextBox")
+powerInput.Size = UDim2.new(0.4, 0, 0, 25)
+powerInput.Position = UDim2.new(0.5, 0, 0, 15)
+powerInput.BackgroundColor3 = Color3.fromRGB(30, 15, 50)
+powerInput.Text = tostring(power)
+powerInput.TextColor3 = Color3.fromRGB(200, 180, 255)
+powerInput.Font = Enum.Font.GothamBold
+powerInput.TextSize = 16
+powerInput.TextXAlignment = Enum.TextXAlignment.Left
+powerInput.BorderSizePixel = 0
+powerInput.ClearTextOnFocus = false
+powerInput.Visible = false
+powerInput.Parent = infoFrame
+
+Instance.new("UICorner", powerInput).CornerRadius = UDim.new(0, 4)
+
+-- // 12 (Click handlers) //
+powerValue.MouseButton1Click:Connect(function()
+	powerValue.Visible = false
+	powerInput.Visible = true
+	powerInput:CaptureFocus()
+end)
+
+powerInput.FocusLost:Connect(function()
+	local val = tonumber(powerInput.Text)
+	if val then
+		applyPower(val)
+		powerInput.Text = tostring(power)
+		powerValue.Text = tostring(power)
+	else
+		powerInput.Text = tostring(power)
+		powerValue.Text = tostring(power)
+	end
+	powerValue.Visible = true
+	powerInput.Visible = false
+end)
+
+keyValue.MouseButton1Click:Connect(function()
+	waitingForKey = true
+	keyValue.Text = "..."
+	keyValue.TextColor3 = Color3.fromRGB(255, 100, 100)
+end)
+
+-- // 13 (Toggle logic) //
+local function toggle()
+	if not activated then
+		activated = true
+		toggleBtn.Text = "ON"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+		statusDot.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
+		statusText.Text = "ACTIVE"
+		statusText.TextColor3 = Color3.fromRGB(0, 255, 100)
+		statusValue.Text = "● ON"
+		statusValue.TextColor3 = Color3.fromRGB(0, 255, 100)
+		statusBorder.Color = Color3.fromRGB(0, 200, 100)
+		startLag()
+	else
+		stopLag()
+		toggleBtn.Text = "OFF"
+		toggleBtn.BackgroundColor3 = Color3.fromRGB(160, 80, 255)
+		statusDot.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+		statusText.Text = "DISABLED"
+		statusText.TextColor3 = Color3.fromRGB(255, 100, 100)
+		statusValue.Text = "● OFF"
+		statusValue.TextColor3 = Color3.fromRGB(255, 50, 50)
+		statusBorder.Color = Color3.fromRGB(160, 80, 255)
+	end
+end
+
+toggleBtn.MouseButton1Click:Connect(toggle)
+
+-- // 14 (Input listener) //
+UserInputService.InputBegan:Connect(function(input, gpe)
+	if gpe then return end
+	if waitingForKey then
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			keybind = input.KeyCode
+			keyValue.Text = keybind.Name
+			keyValue.TextColor3 = Color3.fromRGB(200, 180, 255)
+			waitingForKey = false
+		end
+		return
+	end
+	if input.KeyCode == keybind then
+		toggle()
+	end
+end)
+
+-- // 15 (Re-apply on respawn) //
+lp.CharacterAdded:Connect(function()
+	task.wait(1)
+	if activated then
+		stopLag()
+		activated = true
+		startLag()
+	end
+end)
+
+-- // 16 (End) //

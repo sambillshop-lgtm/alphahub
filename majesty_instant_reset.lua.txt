@@ -1,0 +1,365 @@
+--[[
+    this retard skidded off a script and make it worse
+    from discord.gg/rNvAU6cjVB
+]]
+
+--  Amir Hub Instant Reset Full Source
+-- ─────────────────────────────────────
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+-- ──────────────────────────────────────────────
+--  Services
+-- ──────────────────────────────────────────────
+
+local players            = game:GetService("Players")
+local replicated_storage = game:GetService("ReplicatedStorage")
+local tween_service      = game:GetService("TweenService")
+local user_input_service = game:GetService("UserInputService")
+
+-- ──────────────────────────────────────────────
+--  Local player / character
+-- ──────────────────────────────────────────────
+
+local local_player = players.LocalPlayer
+if not local_player.Character then local_player.CharacterAdded:Wait() end
+
+local player_gui = local_player:WaitForChild("PlayerGui")
+
+-- ──────────────────────────────────────────────
+--  Constants
+-- ──────────────────────────────────────────────
+
+local GUID = "f888ee6e-c86d-46e1-93d7-0639d6635d42"
+
+-- ──────────────────────────────────────────────
+--  State
+-- ──────────────────────────────────────────────
+
+local auto_reset_enabled  = true   -- on by default
+local reset_remote        = nil    -- captured via hookfunction
+local insta_reset_cooldown = false
+
+-- ──────────────────────────────────────────────
+--  Remote capture (hookfunction)
+-- ──────────────────────────────────────────────
+
+local orig_fire
+orig_fire = hookfunction(Instance.new("RemoteEvent").FireServer, newcclosure(function(self, ...)
+    if not reset_remote and type(self.Name) == "string" and self.Name:sub(1, 3) == "RE/" then
+        reset_remote = self
+    end
+    return orig_fire(self, ...)
+end))
+
+-- ──────────────────────────────────────────────
+--  Core reset function
+-- ──────────────────────────────────────────────
+
+local function insta_reset()
+    if insta_reset_cooldown then return end
+    if not reset_remote then return end
+
+    insta_reset_cooldown = true
+    local old_char = local_player.Character
+
+    task.spawn(function()
+        while local_player.Character == old_char do
+            pcall(function()
+                reset_remote:FireServer(GUID, local_player, "balloon")
+            end)
+            task.wait()
+        end
+        insta_reset_cooldown = false
+    end)
+end
+
+-- ──────────────────────────────────────────────
+--  Balloon auto-reset listener
+-- ──────────────────────────────────────────────
+
+for _, obj in ipairs(replicated_storage:GetDescendants()) do
+    if obj:IsA("RemoteEvent") then
+        obj.OnClientEvent:Connect(function(...)
+            if not auto_reset_enabled then return end
+            for _, arg in ipairs({...}) do
+                if type(arg) == "string" and arg:lower():find("jump higher") then
+                    insta_reset()
+                end
+            end
+        end)
+    end
+end
+
+replicated_storage.DescendantAdded:Connect(function(obj)
+    if obj:IsA("RemoteEvent") then
+        obj.OnClientEvent:Connect(function(...)
+            if not auto_reset_enabled then return end
+            for _, arg in ipairs({...}) do
+                if type(arg) == "string" and arg:lower():find("jump higher") then
+                    insta_reset()
+                end
+            end
+        end)
+    end
+end)
+
+-- ──────────────────────────────────────────────
+--  Tween helper
+-- ──────────────────────────────────────────────
+
+local function tween(instance, duration, props, style, direction)
+    tween_service:Create(instance, TweenInfo.new(
+        duration  or 0.2,
+        style     or Enum.EasingStyle.Quad,
+        direction or Enum.EasingDirection.Out
+    ), props):Play()
+end
+
+-- ──────────────────────────────────────────────
+--  Build GUI
+-- ──────────────────────────────────────────────
+
+local screen_gui        = Instance.new("ScreenGui")
+screen_gui.Name         = "AmirResetGUI"
+screen_gui.ResetOnSpawn = false
+screen_gui.Parent       = player_gui
+
+-- ── Main Frame ──────────────────────────────
+
+local main_frame                 = Instance.new("Frame")
+main_frame.Name                  = "MainFrame"
+main_frame.Position              = UDim2.new(0.5, -72, 0.03, 0)
+main_frame.Size                  = UDim2.new(0, 145, 0, 95)
+main_frame.BackgroundColor3      = Color3.fromRGB(10, 10, 10)
+main_frame.BorderSizePixel       = 0
+main_frame.Parent                = screen_gui
+
+local main_corner                = Instance.new("UICorner")
+main_corner.CornerRadius         = UDim.new(0, 14)
+main_corner.Parent               = main_frame
+
+local main_stroke                = Instance.new("UIStroke")
+main_stroke.Color                = Color3.fromRGB(40, 40, 40)
+main_stroke.Parent               = main_frame
+
+-- ── Title ───────────────────────────────────
+
+local title_label                = Instance.new("TextLabel")
+title_label.Name                 = "TitleLabel"
+title_label.Text                 = "Amir Reset"
+title_label.TextColor3           = Color3.fromRGB(235, 235, 235)
+title_label.TextSize             = 14
+title_label.Font                 = Enum.Font.GothamBold
+title_label.FontFace             = Font.new(
+    "rbxasset://fonts/families/GothamSSm.json",
+    Enum.FontWeight.Bold,
+    Enum.FontStyle.Normal
+)
+title_label.Position             = UDim2.new(0, 0, 0, 5)
+title_label.Size                 = UDim2.new(1, 0, 0, 16)
+title_label.BackgroundTransparency = 1
+title_label.Parent               = main_frame
+
+-- ── Divider ─────────────────────────────────
+
+local divider                    = Instance.new("Frame")
+divider.Name                     = "Divider"
+divider.Position                 = UDim2.new(0, 8, 0, 23)
+divider.Size                     = UDim2.new(1, -16, 0, 1)
+divider.BackgroundColor3         = Color3.fromRGB(36, 36, 36)
+divider.BorderSizePixel          = 0
+divider.Parent                   = main_frame
+
+-- ──────────────────────────────────────────────
+--  Auto Reset Toggle
+-- ──────────────────────────────────────────────
+
+local auto_reset_btn             = Instance.new("TextButton")
+auto_reset_btn.Name              = "AutoResetBtn"
+auto_reset_btn.Text              = ""
+auto_reset_btn.Position          = UDim2.new(0, 8, 0, 28)
+auto_reset_btn.Size              = UDim2.new(1, -16, 0, 24)
+auto_reset_btn.BackgroundColor3  = Color3.fromRGB(8, 24, 12)   -- starts ON
+auto_reset_btn.BorderSizePixel   = 0
+auto_reset_btn.Parent            = main_frame
+
+local auto_reset_corner          = Instance.new("UICorner")
+auto_reset_corner.CornerRadius   = UDim.new(0, 7)
+auto_reset_corner.Parent         = auto_reset_btn
+
+local auto_reset_stroke          = Instance.new("UIStroke")
+auto_reset_stroke.Color          = Color3.fromRGB(25, 80, 40)  -- starts ON
+auto_reset_stroke.Parent         = auto_reset_btn
+
+local auto_reset_label           = Instance.new("TextLabel")
+auto_reset_label.Name            = "AutoResetLabel"
+auto_reset_label.Text            = "Auto Reset on Balloon"
+auto_reset_label.TextColor3      = Color3.fromRGB(140, 140, 140)
+auto_reset_label.TextSize        = 9
+auto_reset_label.Font            = Enum.Font.Gotham
+auto_reset_label.FontFace        = Font.new(
+    "rbxasset://fonts/families/GothamSSm.json",
+    Enum.FontWeight.Regular,
+    Enum.FontStyle.Normal
+)
+auto_reset_label.TextXAlignment  = Enum.TextXAlignment.Left
+auto_reset_label.Position        = UDim2.new(0, 7, 0, 0)
+auto_reset_label.Size            = UDim2.new(1, -36, 1, 0)
+auto_reset_label.BackgroundTransparency = 1
+auto_reset_label.Parent          = auto_reset_btn
+
+-- Toggle track
+local toggle_track               = Instance.new("Frame")
+toggle_track.Name                = "ToggleTrack"
+toggle_track.Position            = UDim2.new(1, -30, 0.5, -6)
+toggle_track.Size                = UDim2.new(0, 24, 0, 13)
+toggle_track.BackgroundColor3    = Color3.fromRGB(34, 197, 94) -- starts ON
+toggle_track.BorderSizePixel     = 0
+toggle_track.Parent              = auto_reset_btn
+
+local toggle_track_corner        = Instance.new("UICorner")
+toggle_track_corner.CornerRadius = UDim.new(1, 0)
+toggle_track_corner.Parent       = toggle_track
+
+-- Toggle knob
+local toggle_knob                = Instance.new("Frame")
+toggle_knob.Name                 = "ToggleKnob"
+toggle_knob.Position             = UDim2.new(0, 13, 0.5, -4)  -- starts ON
+toggle_knob.Size                 = UDim2.new(0, 9, 0, 9)
+toggle_knob.BackgroundColor3     = Color3.fromRGB(200, 200, 200)
+toggle_knob.BorderSizePixel      = 0
+toggle_knob.Parent               = toggle_track
+
+local toggle_knob_corner         = Instance.new("UICorner")
+toggle_knob_corner.CornerRadius  = UDim.new(1, 0)
+toggle_knob_corner.Parent        = toggle_knob
+
+-- ──────────────────────────────────────────────
+--  Reset Now Button
+-- ──────────────────────────────────────────────
+
+local reset_now_btn              = Instance.new("TextButton")
+reset_now_btn.Name               = "ResetNowBtn"
+reset_now_btn.Text               = "⚡  RESET NOW"
+reset_now_btn.TextColor3         = Color3.fromRGB(255, 255, 255)
+reset_now_btn.TextSize           = 10
+reset_now_btn.Font               = Enum.Font.GothamBold
+reset_now_btn.FontFace           = Font.new(
+    "rbxasset://fonts/families/GothamSSm.json",
+    Enum.FontWeight.Bold,
+    Enum.FontStyle.Normal
+)
+reset_now_btn.Position           = UDim2.new(0, 8, 0, 57)
+reset_now_btn.Size               = UDim2.new(1, -16, 0, 24)
+reset_now_btn.BackgroundColor3   = Color3.fromRGB(0, 0, 0)
+reset_now_btn.BorderSizePixel    = 0
+reset_now_btn.Parent             = main_frame
+
+local reset_now_corner           = Instance.new("UICorner")
+reset_now_corner.CornerRadius    = UDim.new(0, 7)
+reset_now_corner.Parent          = reset_now_btn
+
+local reset_now_stroke           = Instance.new("UIStroke")
+reset_now_stroke.Color           = Color3.fromRGB(55, 55, 55)
+reset_now_stroke.Parent          = reset_now_btn
+
+-- ── Watermark ───────────────────────────────
+
+local watermark                  = Instance.new("TextLabel")
+watermark.Name                   = "Watermark"
+watermark.Text                   = ".gg/sourceshubs"
+watermark.TextColor3             = Color3.fromRGB(60, 60, 60)
+watermark.TextSize               = 9
+watermark.Font                   = Enum.Font.Gotham
+watermark.FontFace               = Font.new(
+    "rbxasset://fonts/families/GothamSSm.json",
+    Enum.FontWeight.Regular,
+    Enum.FontStyle.Normal
+)
+watermark.Position               = UDim2.new(0, 0, 0, 83)
+watermark.Size                   = UDim2.new(1, 0, 0, 10)
+watermark.BackgroundTransparency = 1
+watermark.Parent                 = main_frame
+
+-- ──────────────────────────────────────────────
+--  Toggle animation + logic
+-- ──────────────────────────────────────────────
+
+local function set_auto_reset(enabled)
+    auto_reset_enabled = enabled
+    if enabled then
+        tween(auto_reset_btn,    0.2,  { BackgroundColor3 = Color3.fromRGB(8, 24, 12)   })
+        tween(auto_reset_stroke, 0.2,  { Color            = Color3.fromRGB(25, 80, 40)  })
+        tween(toggle_track,      0.2,  { BackgroundColor3 = Color3.fromRGB(34, 197, 94) })
+        tween(toggle_knob,       0.18, { Position         = UDim2.new(0, 13, 0.5, -4)  },
+            Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    else
+        tween(auto_reset_btn,    0.2,  { BackgroundColor3 = Color3.fromRGB(18, 18, 18)  })
+        tween(auto_reset_stroke, 0.2,  { Color            = Color3.fromRGB(50, 50, 50)  })
+        tween(toggle_track,      0.2,  { BackgroundColor3 = Color3.fromRGB(50, 49, 50)  })
+        tween(toggle_knob,       0.18, { Position         = UDim2.new(0, 2, 0.5, -4)   },
+            Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    end
+end
+
+auto_reset_btn.MouseButton1Click:Connect(function()
+    set_auto_reset(not auto_reset_enabled)
+end)
+
+-- ──────────────────────────────────────────────
+--  Reset Now button — real + visual feedback
+-- ──────────────────────────────────────────────
+
+reset_now_btn.MouseButton1Click:Connect(function()
+    tween(reset_now_btn, 0.08, { BackgroundColor3 = Color3.fromRGB(30, 30, 30) })
+    task.delay(0.15, function()
+        tween(reset_now_btn, 0.15, { BackgroundColor3 = Color3.fromRGB(0, 0, 0) })
+    end)
+    insta_reset()
+end)
+
+reset_now_btn.MouseEnter:Connect(function()
+    tween(reset_now_stroke, 0.15, { Color = Color3.fromRGB(90, 90, 90) })
+end)
+reset_now_btn.MouseLeave:Connect(function()
+    tween(reset_now_stroke, 0.15, { Color = Color3.fromRGB(55, 55, 55) })
+end)
+
+-- ──────────────────────────────────────────────
+--  Dragging (main frame)
+-- ──────────────────────────────────────────────
+
+local dragging   = false
+local drag_start = nil
+local start_pos  = nil
+
+main_frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging   = true
+        drag_start = input.Position
+        start_pos  = main_frame.Position
+    end
+end)
+
+main_frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+user_input_service.InputChanged:Connect(function(input)
+    if not dragging then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseMovement
+    and input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+    local delta = input.Position - drag_start
+    main_frame.Position = UDim2.new(
+        start_pos.X.Scale,
+        start_pos.X.Offset + delta.X,
+        start_pos.Y.Scale,
+        start_pos.Y.Offset + delta.Y
+    )
+end)

