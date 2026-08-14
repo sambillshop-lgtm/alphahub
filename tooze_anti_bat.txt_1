@@ -1,0 +1,704 @@
+-- TooZe Anti Bat - Standalone GUI Recreation
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local LP = Players.LocalPlayer
+
+-- State
+local isAntiBatOn = false
+local isInfJumpOn = false
+local antiBatConn = nil
+local infJumpConn = nil
+
+-- ============================================================
+-- GUI CREATION - EXACT RECREATION
+-- ============================================================
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "TooZeAntiBat"
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = LP:WaitForChild("PlayerGui")
+
+-- Main Frame (rounded rectangle with dark background)
+local frame = Instance.new("Frame")
+frame.Name = "MainFrame"
+frame.Size = UDim2.new(0, 200, 0, 140)
+frame.Position = UDim2.new(0.5, -100, 0.5, -70)
+frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45) -- Dark gray background
+frame.BorderSizePixel = 0
+frame.Parent = sg
+
+-- Rounded corners (14px radius like image)
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 14)
+corner.Parent = frame
+
+-- Subtle stroke/border
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(80, 80, 80)
+stroke.Thickness = 1
+stroke.Transparency = 0.3
+stroke.Parent = frame
+
+-- ============================================================
+-- TITLE BAR
+-- ============================================================
+
+-- "TooZe Anti Bat" title at top
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -20, 0, 28)
+title.Position = UDim2.new(0, 10, 0, 8)
+title.BackgroundTransparency = 1
+title.Text = "TooZe Anti Bat"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = frame
+
+-- Pink/Magenta dot indicator in top right corner
+local statusDot = Instance.new("Frame")
+statusDot.Name = "StatusDot"
+statusDot.Size = UDim2.new(0, 8, 0, 8)
+statusDot.Position = UDim2.new(1, -16, 0, 14)
+statusDot.BackgroundColor3 = Color3.fromRGB(255, 100, 200) -- Pink/magenta
+statusDot.BorderSizePixel = 0
+statusDot.Parent = frame
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = statusDot
+
+-- ============================================================
+-- CONTENT AREA (3 rows)
+-- ============================================================
+
+local contentY = 38
+local rowHeight = 32
+
+-- Row 1: Anti-Bat
+local antiBatRow = Instance.new("Frame")
+antiBatRow.Name = "AntiBatRow"
+antiBatRow.Size = UDim2.new(1, -20, 0, rowHeight)
+antiBatRow.Position = UDim2.new(0, 10, 0, contentY)
+antiBatRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60) -- Slightly lighter gray
+antiBatRow.BorderSizePixel = 0
+antiBatRow.Parent = frame
+
+local antiBatCorner = Instance.new("UICorner")
+antiBatCorner.CornerRadius = UDim.new(0, 8)
+antiBatCorner.Parent = antiBatRow
+
+local antiBatLabel = Instance.new("TextLabel")
+antiBatLabel.Name = "Label"
+antiBatLabel.Size = UDim2.new(0.6, 0, 1, 0)
+antiBatLabel.Position = UDim2.new(0, 12, 0, 0)
+antiBatLabel.BackgroundTransparency = 1
+antiBatLabel.Text = "Anti-Bat : OFF"
+antiBatLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+antiBatLabel.Font = Enum.Font.Gotham
+antiBatLabel.TextSize = 12
+antiBatLabel.TextXAlignment = Enum.TextXAlignment.Left
+antiBatLabel.Parent = antiBatRow
+
+-- Row 2: InfJump
+local infJumpRow = Instance.new("Frame")
+infJumpRow.Name = "InfJumpRow"
+infJumpRow.Size = UDim2.new(1, -20, 0, rowHeight)
+infJumpRow.Position = UDim2.new(0, 10, 0, contentY + rowHeight + 4)
+infJumpRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+infJumpRow.BorderSizePixel = 0
+infJumpRow.Parent = frame
+
+local infJumpCorner = Instance.new("UICorner")
+infJumpCorner.CornerRadius = UDim.new(0, 8)
+infJumpCorner.Parent = infJumpRow
+
+local infJumpLabel = Instance.new("TextLabel")
+infJumpLabel.Name = "Label"
+infJumpLabel.Size = UDim2.new(0.6, 0, 1, 0)
+infJumpLabel.Position = UDim2.new(0, 12, 0, 0)
+infJumpLabel.BackgroundTransparency = 1
+infJumpLabel.Text = "InfJump : OFF"
+infJumpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+infJumpLabel.Font = Enum.Font.Gotham
+infJumpLabel.TextSize = 12
+infJumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+infJumpLabel.Parent = infJumpRow
+
+-- Row 3: Toggle Keybind
+local keybindRow = Instance.new("Frame")
+keybindRow.Name = "KeybindRow"
+keybindRow.Size = UDim2.new(1, -20, 0, rowHeight)
+keybindRow.Position = UDim2.new(0, 10, 0, contentY + (rowHeight + 4) * 2)
+keybindRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+keybindRow.BorderSizePixel = 0
+keybindRow.Parent = frame
+
+local keybindCorner = Instance.new("UICorner")
+keybindCorner.CornerRadius = UDim.new(0, 8)
+keybindCorner.Parent = keybindRow
+
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Name = "Label"
+keybindLabel.Size = UDim2.new(0.5, 0, 1, 0)
+keybindLabel.Position = UDim2.new(0, 12, 0, 0)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Toggle Keybind :"
+keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindLabel.Font = Enum.Font.Gotham
+keybindLabel.TextSize = 12
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.Parent = keybindRow
+
+-- Y key button (purple/magenta)
+local keybindBtn = Instance.new("TextButton")
+keybindBtn.Name = "KeybindBtn"
+keybindBtn.Size = UDim2.new(0, 28, 0, 22)
+keybindBtn.Position = UDim2.new(1, -38, 0.5, -11)
+keybindBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 220) -- Purple/magenta
+keybindBtn.BorderSizePixel = 0
+keybindBtn.Text = "Y"
+keybindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindBtn.Font = Enum.Font.GothamBold
+keybindBtn.TextSize = 11
+keybindBtn.Parent = keybindRow
+
+local keybindBtnCorner = Instance.new("UICorner")
+keybindBtnCorner.CornerRadius = UDim.new(0, 6)
+keybindBtnCorner.Parent = keybindBtn
+
+-- ============================================================
+-- BOTTOM INFO (faded text)
+-- ============================================================
+
+local infoText = Instance.new("TextLabel")
+infoText.Name = "InfoText"
+infoText.Size = UDim2.new(1, -20, 0, 16)
+infoText.Position = UDim2.new(0, 10, 1, -22)
+infoText.BackgroundTransparency = 1
+infoText.Text = "Anti Bat  |  Power: 4000  |  InfJump"
+infoText.TextColor3 = Color3.fromRGB(150, 150, 150) -- Faded gray
+infoText.Font = Enum.Font.Gotham
+infoText.TextSize = 9
+infoText.TextXAlignment = Enum.TextXAlignment.Center
+infoText.Parent = frame
+
+-- Discord link (faded pink)
+local discordText = Instance.new("TextLabel")
+discordText.Name = "Discord"
+discordText.Size = UDim2.new(1, -20, 0, 14)
+discordText.Position = UDim2.new(0, 10, 1, -8)
+discordText.BackgroundTransparency = 1
+discordText.Text = "discord.gg/adapt"
+discordText.TextColor3 = Color3.fromRGB(200, 120, 180) -- Faded pink
+discordText.Font = Enum.Font.Gotham
+discordText.TextSize = 8
+discordText.TextXAlignment = Enum.TextXAlignment.Center
+discordText.Parent = frame
+
+-- ============================================================
+-- DRAGGING
+-- ============================================================
+
+local dragging, dragStart, frameStart = false, nil, nil
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        frameStart = frame.Position
+    end
+end)
+
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+    end
+end)
+
+-- ============================================================
+-- ANTI BAT LOGIC
+-- ============================================================
+
+local function startAntiBat()
+    local char = LP.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    if antiBatConn then antiBatConn:Disconnect() end
+    
+    antiBatConn = RunService.Heartbeat:Connect(function()
+        if not root or not root.Parent then return end
+        -- Apply random high velocity to prevent being hit
+        local randomAngle = math.random() * 2 * math.pi
+        local power = 4000 -- Power from the info text
+        root.Velocity = Vector3.new(
+            math.cos(randomAngle) * power,
+            root.Velocity.Y,
+            math.sin(randomAngle) * power
+        )
+        -- Reset next frame to avoid detection
+        RunService.RenderStepped:Wait()
+        if root and root.Parent then
+            root.Velocity = Vector3.new(0, root.Velocity.Y, 0)
+        end
+    end)
+end
+
+local function stopAntiBat()
+    if antiBatConn then
+        antiBatConn:Disconnect()
+        antiBatConn = nil
+    end
+end
+
+local function startInfJump()
+    if infJumpConn then infJumpConn:Disconnect() end
+    
+    infJumpConn = UserInputService.JumpRequest:Connect(function()
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum:GetState() ~= Enum.HumanoidStateType.Dead then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end)
+end
+
+local function stopInfJump()
+    if infJumpConn then
+        infJumpConn:Disconnect()
+        infJumpConn = nil
+    end
+end
+
+-- ============================================================
+-- TOGGLE FUNCTIONALITY
+-- ============================================================
+
+local function updateVisuals()
+    -- Update labels
+    antiBatLabel.Text = isAntiBatOn and "Anti-Bat : ON" or "Anti-Bat : OFF"
+    infJumpLabel.Text = isInfJumpOn and "InfJump : ON" or "InfJump : OFF"
+    
+    -- Update row colors (green tint when on)
+    antiBatRow.BackgroundColor3 = isAntiBatOn and Color3.fromRGB(50, 70, 50) or Color3.fromRGB(60, 60, 60)
+    infJumpRow.BackgroundColor3 = isInfJumpOn and Color3.fromRGB(50, 70, 50) or Color3.fromRGB(60, 60, 60)
+    
+    -- Update status dot
+    statusDot.BackgroundColor3 = (isAntiBatOn or isInfJumpOn) and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 200)
+end
+
+local function toggleAll()
+    isAntiBatOn = not isAntiBatOn
+    isInfJumpOn = isAntiBatOn -- Both toggle together based on image logic
+    
+    if isAntiBatOn then
+        startAntiBat()
+        startInfJump()
+    else
+        stopAntiBat()
+        stopInfJump()
+    end
+    
+    updateVisuals()
+end
+
+-- Click on rows to toggle
+antiBatRow.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleAll()
+    end
+end)
+
+infJumpRow.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleAll()
+    end
+end)
+
+-- Y keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Y then
+        toggleAll()
+    end
+end)
+
+-- Reconnect on respawn
+LP.CharacterAdded:Connect(function()
+    if isAntiBatOn then
+        stopAntiBat()
+        task.wait(0.3)
+        startAntiBat()
+    end
+end)
+
+-- Initial visual update
+updateVisuals()
+
+print("TooZe Anti Bat loaded | Press Y to toggle")
+
+
+local LP = Players.LocalPlayer
+
+-- State
+local isAntiBatOn = false
+local isInfJumpOn = false
+local antiBatConn = nil
+local infJumpConn = nil
+
+-- ============================================================
+-- GUI CREATION - EXACT RECREATION
+-- ============================================================
+
+local sg = Instance.new("ScreenGui")
+sg.Name = "TooZeAntiBat"
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+sg.Parent = LP:WaitForChild("PlayerGui")
+
+-- Main Frame (rounded rectangle with dark background)
+local frame = Instance.new("Frame")
+frame.Name = "MainFrame"
+frame.Size = UDim2.new(0, 200, 0, 140)
+frame.Position = UDim2.new(0.5, -100, 0.5, -70)
+frame.BackgroundColor3 = Color3.fromRGB(45, 45, 45) -- Dark gray background
+frame.BorderSizePixel = 0
+frame.Parent = sg
+
+-- Rounded corners (14px radius like image)
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 14)
+corner.Parent = frame
+
+-- Subtle stroke/border
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(80, 80, 80)
+stroke.Thickness = 1
+stroke.Transparency = 0.3
+stroke.Parent = frame
+
+-- ============================================================
+-- TITLE BAR
+-- ============================================================
+
+-- "TooZe Anti Bat" title at top
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.Size = UDim2.new(1, -20, 0, 28)
+title.Position = UDim2.new(0, 10, 0, 8)
+title.BackgroundTransparency = 1
+title.Text = "TooZe Anti Bat"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = frame
+
+-- Pink/Magenta dot indicator in top right corner
+local statusDot = Instance.new("Frame")
+statusDot.Name = "StatusDot"
+statusDot.Size = UDim2.new(0, 8, 0, 8)
+statusDot.Position = UDim2.new(1, -16, 0, 14)
+statusDot.BackgroundColor3 = Color3.fromRGB(255, 100, 200) -- Pink/magenta
+statusDot.BorderSizePixel = 0
+statusDot.Parent = frame
+
+local dotCorner = Instance.new("UICorner")
+dotCorner.CornerRadius = UDim.new(1, 0)
+dotCorner.Parent = statusDot
+
+-- ============================================================
+-- CONTENT AREA (3 rows)
+-- ============================================================
+
+local contentY = 38
+local rowHeight = 32
+
+-- Row 1: Anti-Bat
+local antiBatRow = Instance.new("Frame")
+antiBatRow.Name = "AntiBatRow"
+antiBatRow.Size = UDim2.new(1, -20, 0, rowHeight)
+antiBatRow.Position = UDim2.new(0, 10, 0, contentY)
+antiBatRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60) -- Slightly lighter gray
+antiBatRow.BorderSizePixel = 0
+antiBatRow.Parent = frame
+
+local antiBatCorner = Instance.new("UICorner")
+antiBatCorner.CornerRadius = UDim.new(0, 8)
+antiBatCorner.Parent = antiBatRow
+
+local antiBatLabel = Instance.new("TextLabel")
+antiBatLabel.Name = "Label"
+antiBatLabel.Size = UDim2.new(0.6, 0, 1, 0)
+antiBatLabel.Position = UDim2.new(0, 12, 0, 0)
+antiBatLabel.BackgroundTransparency = 1
+antiBatLabel.Text = "Anti-Bat : OFF"
+antiBatLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+antiBatLabel.Font = Enum.Font.Gotham
+antiBatLabel.TextSize = 12
+antiBatLabel.TextXAlignment = Enum.TextXAlignment.Left
+antiBatLabel.Parent = antiBatRow
+
+-- Row 2: InfJump
+local infJumpRow = Instance.new("Frame")
+infJumpRow.Name = "InfJumpRow"
+infJumpRow.Size = UDim2.new(1, -20, 0, rowHeight)
+infJumpRow.Position = UDim2.new(0, 10, 0, contentY + rowHeight + 4)
+infJumpRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+infJumpRow.BorderSizePixel = 0
+infJumpRow.Parent = frame
+
+local infJumpCorner = Instance.new("UICorner")
+infJumpCorner.CornerRadius = UDim.new(0, 8)
+infJumpCorner.Parent = infJumpRow
+
+local infJumpLabel = Instance.new("TextLabel")
+infJumpLabel.Name = "Label"
+infJumpLabel.Size = UDim2.new(0.6, 0, 1, 0)
+infJumpLabel.Position = UDim2.new(0, 12, 0, 0)
+infJumpLabel.BackgroundTransparency = 1
+infJumpLabel.Text = "InfJump : OFF"
+infJumpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+infJumpLabel.Font = Enum.Font.Gotham
+infJumpLabel.TextSize = 12
+infJumpLabel.TextXAlignment = Enum.TextXAlignment.Left
+infJumpLabel.Parent = infJumpRow
+
+-- Row 3: Toggle Keybind
+local keybindRow = Instance.new("Frame")
+keybindRow.Name = "KeybindRow"
+keybindRow.Size = UDim2.new(1, -20, 0, rowHeight)
+keybindRow.Position = UDim2.new(0, 10, 0, contentY + (rowHeight + 4) * 2)
+keybindRow.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+keybindRow.BorderSizePixel = 0
+keybindRow.Parent = frame
+
+local keybindCorner = Instance.new("UICorner")
+keybindCorner.CornerRadius = UDim.new(0, 8)
+keybindCorner.Parent = keybindRow
+
+local keybindLabel = Instance.new("TextLabel")
+keybindLabel.Name = "Label"
+keybindLabel.Size = UDim2.new(0.5, 0, 1, 0)
+keybindLabel.Position = UDim2.new(0, 12, 0, 0)
+keybindLabel.BackgroundTransparency = 1
+keybindLabel.Text = "Toggle Keybind :"
+keybindLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindLabel.Font = Enum.Font.Gotham
+keybindLabel.TextSize = 12
+keybindLabel.TextXAlignment = Enum.TextXAlignment.Left
+keybindLabel.Parent = keybindRow
+
+-- Y key button (purple/magenta)
+local keybindBtn = Instance.new("TextButton")
+keybindBtn.Name = "KeybindBtn"
+keybindBtn.Size = UDim2.new(0, 28, 0, 22)
+keybindBtn.Position = UDim2.new(1, -38, 0.5, -11)
+keybindBtn.BackgroundColor3 = Color3.fromRGB(180, 100, 220) -- Purple/magenta
+keybindBtn.BorderSizePixel = 0
+keybindBtn.Text = "Y"
+keybindBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindBtn.Font = Enum.Font.GothamBold
+keybindBtn.TextSize = 11
+keybindBtn.Parent = keybindRow
+
+local keybindBtnCorner = Instance.new("UICorner")
+keybindBtnCorner.CornerRadius = UDim.new(0, 6)
+keybindBtnCorner.Parent = keybindBtn
+
+-- ============================================================
+-- BOTTOM INFO (faded text)
+-- ============================================================
+
+local infoText = Instance.new("TextLabel")
+infoText.Name = "InfoText"
+infoText.Size = UDim2.new(1, -20, 0, 16)
+infoText.Position = UDim2.new(0, 10, 1, -22)
+infoText.BackgroundTransparency = 1
+infoText.Text = "Anti Bat  |  Power: 4000  |  InfJump"
+infoText.TextColor3 = Color3.fromRGB(150, 150, 150) -- Faded gray
+infoText.Font = Enum.Font.Gotham
+infoText.TextSize = 9
+infoText.TextXAlignment = Enum.TextXAlignment.Center
+infoText.Parent = frame
+
+-- Discord link (faded pink)
+local discordText = Instance.new("TextLabel")
+discordText.Name = "Discord"
+discordText.Size = UDim2.new(1, -20, 0, 14)
+discordText.Position = UDim2.new(0, 10, 1, -8)
+discordText.BackgroundTransparency = 1
+discordText.Text = "discord.gg/adapt"
+discordText.TextColor3 = Color3.fromRGB(200, 120, 180) -- Faded pink
+discordText.Font = Enum.Font.Gotham
+discordText.TextSize = 8
+discordText.TextXAlignment = Enum.TextXAlignment.Center
+discordText.Parent = frame
+
+-- ============================================================
+-- DRAGGING
+-- ============================================================
+
+local dragging, dragStart, frameStart = false, nil, nil
+
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        frameStart = frame.Position
+    end
+end)
+
+frame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+    end
+end)
+
+-- ============================================================
+-- ANTI BAT LOGIC
+-- ============================================================
+
+local function startAntiBat()
+    local char = LP.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    if antiBatConn then antiBatConn:Disconnect() end
+    
+    antiBatConn = RunService.Heartbeat:Connect(function()
+        if not root or not root.Parent then return end
+        -- Apply random high velocity to prevent being hit
+        local randomAngle = math.random() * 2 * math.pi
+        local power = 4000 -- Power from the info text
+        root.Velocity = Vector3.new(
+            math.cos(randomAngle) * power,
+            root.Velocity.Y,
+            math.sin(randomAngle) * power
+        )
+        -- Reset next frame to avoid detection
+        RunService.RenderStepped:Wait()
+        if root and root.Parent then
+            root.Velocity = Vector3.new(0, root.Velocity.Y, 0)
+        end
+    end)
+end
+
+local function stopAntiBat()
+    if antiBatConn then
+        antiBatConn:Disconnect()
+        antiBatConn = nil
+    end
+end
+
+local function startInfJump()
+    if infJumpConn then infJumpConn:Disconnect() end
+    
+    infJumpConn = UserInputService.JumpRequest:Connect(function()
+        local char = LP.Character
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum:GetState() ~= Enum.HumanoidStateType.Dead then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end)
+end
+
+local function stopInfJump()
+    if infJumpConn then
+        infJumpConn:Disconnect()
+        infJumpConn = nil
+    end
+end
+
+-- ============================================================
+-- TOGGLE FUNCTIONALITY
+-- ============================================================
+
+local function updateVisuals()
+    -- Update labels
+    antiBatLabel.Text = isAntiBatOn and "Anti-Bat : ON" or "Anti-Bat : OFF"
+    infJumpLabel.Text = isInfJumpOn and "InfJump : ON" or "InfJump : OFF"
+    
+    -- Update row colors (green tint when on)
+    antiBatRow.BackgroundColor3 = isAntiBatOn and Color3.fromRGB(50, 70, 50) or Color3.fromRGB(60, 60, 60)
+    infJumpRow.BackgroundColor3 = isInfJumpOn and Color3.fromRGB(50, 70, 50) or Color3.fromRGB(60, 60, 60)
+    
+    -- Update status dot
+    statusDot.BackgroundColor3 = (isAntiBatOn or isInfJumpOn) and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 100, 200)
+end
+
+local function toggleAll()
+    isAntiBatOn = not isAntiBatOn
+    isInfJumpOn = isAntiBatOn -- Both toggle together based on image logic
+    
+    if isAntiBatOn then
+        startAntiBat()
+        startInfJump()
+    else
+        stopAntiBat()
+        stopInfJump()
+    end
+    
+    updateVisuals()
+end
+
+-- Click on rows to toggle
+antiBatRow.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleAll()
+    end
+end)
+
+infJumpRow.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleAll()
+    end
+end)
+
+-- Y keybind
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.Y then
+        toggleAll()
+    end
+end)
+
+-- Reconnect on respawn
+LP.CharacterAdded:Connect(function()
+    if isAntiBatOn then
+        stopAntiBat()
+        task.wait(0.3)
+        startAntiBat()
+    end
+end)
+
+-- Initial visual update
+updateVisuals()
+
+print("TooZe Anti Bat loaded | Press Y to toggle")
