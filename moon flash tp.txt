@@ -1,0 +1,895 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+local Config = {
+    flashEnabled = true,
+    giantEnabled = false
+}
+
+local triggerPercent = 0.91
+local sliderDragging = false
+local activePrompts = {}
+
+local function activateFlashAndPotion()
+    local char = Player.Character
+    if not char then return end
+    
+    local backpack = Player:FindFirstChild("Backpack")
+    
+    if Config.flashEnabled then
+        local flash = char:FindFirstChild("Flash Teleport") or (backpack and backpack:FindFirstChild("Flash Teleport"))
+        if flash then
+            flash.Parent = char
+            task.spawn(function()
+                flash:Activate()
+                task.wait(0.08)
+            end)
+        end
+    end
+    
+    if Config.giantEnabled then
+        local giant = char:FindFirstChild("Giant Potion") or (backpack and backpack:FindFirstChild("Giant Potion"))
+        if giant then
+            giant.Parent = char
+            task.spawn(function()
+                giant:Activate()
+            end)
+        end
+    end
+end
+
+-- ============================================================
+-- MAIN UI - moon Flash TP
+-- ============================================================
+local MainUI = PlayerGui:FindFirstChild("CrazyFlashMain_UI")
+if MainUI then MainUI:Destroy() end
+
+local TpUI = PlayerGui:FindFirstChild("CrazyFlashTP_UI")
+if TpUI then TpUI:Destroy() end
+
+-- Main Control Panel
+local MainScreen = Instance.new("ScreenGui")
+MainScreen.Name = "CrazyFlashMain_UI"
+MainScreen.ResetOnSpawn = false
+MainScreen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+MainScreen.Parent = PlayerGui
+
+local MainWindow = Instance.new("Frame")
+MainWindow.Name = "MainWindow"
+MainWindow.Size = UDim2.new(0, 240, 0, 240)
+MainWindow.Position = UDim2.new(0.5, -120, 0.5, -120)
+MainWindow.BackgroundColor3 = Color3.fromRGB(24, 20, 30)
+MainWindow.BorderSizePixel = 0
+MainWindow.ClipsDescendants = true
+MainWindow.Active = true
+MainWindow.Parent = MainScreen
+Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 14)
+
+-- Glow outline
+local MainGlow = Instance.new("Frame")
+MainGlow.Size = UDim2.new(1, 12, 1, 12)
+MainGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+MainGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+MainGlow.BorderSizePixel = 0
+MainGlow.BackgroundTransparency = 0.85
+MainGlow.ZIndex = 0
+MainGlow.Parent = MainWindow
+Instance.new("UICorner", MainGlow).CornerRadius = UDim.new(0, 18)
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Thickness = 1.5
+MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MainStroke.Color = Color3.fromRGB(255, 95, 195)
+MainStroke.Transparency = 0.6
+MainStroke.Parent = MainWindow
+
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 170)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(255, 90, 190)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(255, 70, 170)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 210))
+})
+MainGradient.Rotation = 45
+MainGradient.Parent = MainStroke
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 42)
+TitleBar.BackgroundTransparency = 1
+TitleBar.Parent = MainWindow
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Text = "moon Flash TP"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 14
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Size = UDim2.new(1, -60, 0, 40)
+Title.Position = UDim2.new(0, 14, 0, 2)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.BackgroundTransparency = 1
+Title.Parent = TitleBar
+
+local TitleSub = Instance.new("TextLabel")
+TitleSub.Text = "Best Flash TP"
+TitleSub.Font = Enum.Font.GothamMedium
+TitleSub.TextSize = 8
+TitleSub.TextColor3 = Color3.fromRGB(215, 200, 220)
+TitleSub.TextTransparency = 0.4
+TitleSub.Size = UDim2.new(1, -60, 0, 14)
+TitleSub.Position = UDim2.new(0, 14, 0, 22)
+TitleSub.TextXAlignment = Enum.TextXAlignment.Left
+TitleSub.BackgroundTransparency = 1
+TitleSub.Parent = TitleBar
+
+-- Close Button
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseBtn"
+CloseButton.Text = "×"
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 18
+CloseButton.TextColor3 = Color3.fromRGB(180, 160, 180)
+CloseButton.Size = UDim2.new(0, 28, 0, 28)
+CloseButton.Position = UDim2.new(1, -36, 0, 7)
+CloseButton.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+CloseButton.BorderSizePixel = 0
+CloseButton.Parent = TitleBar
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 8)
+
+local CloseStroke = Instance.new("UIStroke")
+CloseStroke.Color = Color3.fromRGB(255, 95, 195)
+CloseStroke.Thickness = 1
+CloseStroke.Transparency = 0.4
+CloseStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+CloseStroke.Parent = CloseButton
+
+-- Discord Link
+local DiscordLink = Instance.new("TextLabel")
+DiscordLink.Name = "DiscordLink"
+DiscordLink.Text = "discord.gg/mdWUQUDRJ"
+DiscordLink.Font = Enum.Font.GothamBold
+DiscordLink.TextSize = 9
+DiscordLink.TextColor3 = Color3.fromRGB(255, 120, 210)
+DiscordLink.Size = UDim2.new(1, -20, 0, 14)
+DiscordLink.Position = UDim2.new(0, 10, 1, -18)
+DiscordLink.BackgroundTransparency = 1
+DiscordLink.Parent = MainWindow
+DiscordLink.ZIndex = 2
+
+local Divider = Instance.new("Frame")
+Divider.Name = "Divider"
+Divider.Size = UDim2.new(0.9, 0, 0, 1)
+Divider.Position = UDim2.new(0.05, 0, 0, 44)
+Divider.BackgroundColor3 = Color3.fromRGB(255, 95, 195)
+Divider.BackgroundTransparency = 0.5
+Divider.BorderSizePixel = 0
+Divider.Parent = MainWindow
+
+-- Container
+local Container = Instance.new("Frame")
+Container.Name = "Container"
+Container.Size = UDim2.new(1, 0, 1, -52)
+Container.Position = UDim2.new(0, 0, 0, 48)
+Container.BackgroundTransparency = 1
+Container.Parent = MainWindow
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 7)
+ListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = Container
+
+-- ============================================================
+-- TOGGLE: Auto Flash
+-- ============================================================
+local FlashRow = Instance.new("Frame")
+FlashRow.Name = "AutoFlashRow"
+FlashRow.Size = UDim2.new(0.9, 0, 0, 30)
+FlashRow.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+FlashRow.BorderSizePixel = 0
+FlashRow.LayoutOrder = 1
+FlashRow.Parent = Container
+Instance.new("UICorner", FlashRow).CornerRadius = UDim.new(0, 8)
+
+local FlashRowStroke = Instance.new("UIStroke")
+FlashRowStroke.Color = Color3.fromRGB(255, 95, 195)
+FlashRowStroke.Thickness = 1
+FlashRowStroke.Transparency = 0.3
+FlashRowStroke.Parent = FlashRow
+
+local FlashText = Instance.new("TextLabel")
+FlashText.Text = "Auto Flash"
+FlashText.Font = Enum.Font.GothamBold
+FlashText.TextSize = 11
+FlashText.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlashText.TextXAlignment = Enum.TextXAlignment.Left
+FlashText.Size = UDim2.new(0.7, 0, 1, 0)
+FlashText.Position = UDim2.new(0.05, 0, 0, 0)
+FlashText.BackgroundTransparency = 1
+FlashText.Parent = FlashRow
+
+local FlashButton = Instance.new("TextButton")
+FlashButton.Text = ""
+FlashButton.Size = UDim2.new(0, 36, 0, 18)
+FlashButton.Position = UDim2.new(0.95, -36, 0.5, -9)
+FlashButton.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+FlashButton.BorderSizePixel = 0
+FlashButton.Parent = FlashRow
+Instance.new("UICorner", FlashButton).CornerRadius = UDim.new(1, 0)
+
+local FlashButtonStroke = Instance.new("UIStroke")
+FlashButtonStroke.Color = Color3.fromRGB(255, 95, 195)
+FlashButtonStroke.Thickness = 1
+FlashButtonStroke.Transparency = 0.4
+FlashButtonStroke.Parent = FlashButton
+
+local FlashIndicator = Instance.new("Frame")
+FlashIndicator.Size = UDim2.new(0, 14, 0, 14)
+FlashIndicator.Position = UDim2.new(0, 2, 0, 2)
+FlashIndicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+FlashIndicator.BorderSizePixel = 0
+FlashIndicator.Parent = FlashButton
+Instance.new("UICorner", FlashIndicator).CornerRadius = UDim.new(1, 0)
+
+local FlashGlow = Instance.new("Frame")
+FlashGlow.Size = UDim2.new(1, 6, 1, 6)
+FlashGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+FlashGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+FlashGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+FlashGlow.BorderSizePixel = 0
+FlashGlow.BackgroundTransparency = 0.85
+FlashGlow.Parent = FlashIndicator
+Instance.new("UICorner", FlashGlow).CornerRadius = UDim.new(1, 0)
+
+if Config.flashEnabled then
+    FlashIndicator.Position = UDim2.new(0, 20, 0, 2)
+    FlashButton.BackgroundColor3 = Color3.fromRGB(80, 60, 75)
+    FlashButtonStroke.Color = Color3.fromRGB(255, 70, 170)
+    FlashButtonStroke.Transparency = 0
+end
+
+FlashButton.MouseButton1Click:Connect(function()
+    Config.flashEnabled = not Config.flashEnabled
+    
+    if Config.flashEnabled then
+        TweenService:Create(FlashIndicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0, 20, 0, 2)
+        }):Play()
+        TweenService:Create(FlashButton, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(80, 60, 75)
+        }):Play()
+        TweenService:Create(FlashButtonStroke, TweenInfo.new(0.2), {
+            Color = Color3.fromRGB(255, 70, 170),
+            Transparency = 0
+        }):Play()
+    else
+        TweenService:Create(FlashIndicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0, 2, 0, 2)
+        }):Play()
+        TweenService:Create(FlashButton, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+        }):Play()
+        TweenService:Create(FlashButtonStroke, TweenInfo.new(0.2), {
+            Color = Color3.fromRGB(255, 95, 195),
+            Transparency = 0.4
+        }):Play()
+    end
+end)
+
+-- ============================================================
+-- TOGGLE: Auto Giant Potion
+-- ============================================================
+local PotionRow = Instance.new("Frame")
+PotionRow.Name = "AutoPotionRow"
+PotionRow.Size = UDim2.new(0.9, 0, 0, 30)
+PotionRow.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+PotionRow.BorderSizePixel = 0
+PotionRow.LayoutOrder = 2
+PotionRow.Parent = Container
+Instance.new("UICorner", PotionRow).CornerRadius = UDim.new(0, 8)
+
+local PotionRowStroke = Instance.new("UIStroke")
+PotionRowStroke.Color = Color3.fromRGB(255, 95, 195)
+PotionRowStroke.Thickness = 1
+PotionRowStroke.Transparency = 0.3
+PotionRowStroke.Parent = PotionRow
+
+local PotionText = Instance.new("TextLabel")
+PotionText.Text = "Auto Giant Potion"
+PotionText.Font = Enum.Font.GothamBold
+PotionText.TextSize = 11
+PotionText.TextColor3 = Color3.fromRGB(255, 255, 255)
+PotionText.TextXAlignment = Enum.TextXAlignment.Left
+PotionText.Size = UDim2.new(0.7, 0, 1, 0)
+PotionText.Position = UDim2.new(0.05, 0, 0, 0)
+PotionText.BackgroundTransparency = 1
+PotionText.Parent = PotionRow
+
+local PotionButton = Instance.new("TextButton")
+PotionButton.Text = ""
+PotionButton.Size = UDim2.new(0, 36, 0, 18)
+PotionButton.Position = UDim2.new(0.95, -36, 0.5, -9)
+PotionButton.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+PotionButton.BorderSizePixel = 0
+PotionButton.Parent = PotionRow
+Instance.new("UICorner", PotionButton).CornerRadius = UDim.new(1, 0)
+
+local PotionButtonStroke = Instance.new("UIStroke")
+PotionButtonStroke.Color = Color3.fromRGB(255, 95, 195)
+PotionButtonStroke.Thickness = 1
+PotionButtonStroke.Transparency = 0.4
+PotionButtonStroke.Parent = PotionButton
+
+local PotionIndicator = Instance.new("Frame")
+PotionIndicator.Size = UDim2.new(0, 14, 0, 14)
+PotionIndicator.Position = UDim2.new(0, 2, 0, 2)
+PotionIndicator.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+PotionIndicator.BorderSizePixel = 0
+PotionIndicator.Parent = PotionButton
+Instance.new("UICorner", PotionIndicator).CornerRadius = UDim.new(1, 0)
+
+local PotionGlow = Instance.new("Frame")
+PotionGlow.Size = UDim2.new(1, 6, 1, 6)
+PotionGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+PotionGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+PotionGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+PotionGlow.BorderSizePixel = 0
+PotionGlow.BackgroundTransparency = 0.85
+PotionGlow.Parent = PotionIndicator
+Instance.new("UICorner", PotionGlow).CornerRadius = UDim.new(1, 0)
+
+if Config.giantEnabled then
+    PotionIndicator.Position = UDim2.new(0, 20, 0, 2)
+    PotionButton.BackgroundColor3 = Color3.fromRGB(80, 60, 75)
+    PotionButtonStroke.Color = Color3.fromRGB(255, 70, 170)
+    PotionButtonStroke.Transparency = 0
+end
+
+PotionButton.MouseButton1Click:Connect(function()
+    Config.giantEnabled = not Config.giantEnabled
+    
+    if Config.giantEnabled then
+        TweenService:Create(PotionIndicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0, 20, 0, 2)
+        }):Play()
+        TweenService:Create(PotionButton, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(80, 60, 75)
+        }):Play()
+        TweenService:Create(PotionButtonStroke, TweenInfo.new(0.2), {
+            Color = Color3.fromRGB(255, 70, 170),
+            Transparency = 0
+        }):Play()
+    else
+        TweenService:Create(PotionIndicator, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+            Position = UDim2.new(0, 2, 0, 2)
+        }):Play()
+        TweenService:Create(PotionButton, TweenInfo.new(0.2), {
+            BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+        }):Play()
+        TweenService:Create(PotionButtonStroke, TweenInfo.new(0.2), {
+            Color = Color3.fromRGB(255, 95, 195),
+            Transparency = 0.4
+        }):Play()
+    end
+end)
+
+-- ============================================================
+-- BUTTON: Auto Align
+-- ============================================================
+local AutoAlignRow = Instance.new("Frame")
+AutoAlignRow.Name = "AutoAlignRow"
+AutoAlignRow.Size = UDim2.new(0.9, 0, 0, 30)
+AutoAlignRow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+AutoAlignRow.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+AutoAlignRow.BorderSizePixel = 0
+AutoAlignRow.LayoutOrder = 3
+AutoAlignRow.Parent = Container
+Instance.new("UICorner", AutoAlignRow).CornerRadius = UDim.new(0, 8)
+
+local AlignStroke = Instance.new("UIStroke")
+AlignStroke.Color = Color3.fromRGB(255, 95, 195)
+AlignStroke.Thickness = 1
+AlignStroke.Transparency = 0.3
+AlignStroke.Parent = AutoAlignRow
+
+local AlignButton = Instance.new("TextButton")
+AlignButton.Text = "Auto Align"
+AlignButton.Font = Enum.Font.GothamBold
+AlignButton.TextSize = 11
+AlignButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+AlignButton.Size = UDim2.new(1, 0, 1, 0)
+AlignButton.BackgroundTransparency = 1
+AlignButton.Parent = AutoAlignRow
+
+AlignButton.MouseButton1Click:Connect(function()
+    local character = Player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    local targetPos = root.Position + Vector3.new(0, 2, 0)
+    local lookVec = root.CFrame.LookVector
+    workspace.CurrentCamera.CFrame = CFrame.new(targetPos, targetPos + lookVec) * CFrame.Angles(math.rad(45), 0, 0)
+end)
+
+-- Hover effect for align button
+AlignButton.MouseEnter:Connect(function()
+    TweenService:Create(AutoAlignRow, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(40, 30, 48)
+    }):Play()
+end)
+AlignButton.MouseLeave:Connect(function()
+    TweenService:Create(AutoAlignRow, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+    }):Play()
+end)
+
+-- ============================================================
+-- SLIDER: Trigger %
+-- ============================================================
+local SliderRow = Instance.new("Frame")
+SliderRow.Name = "SliderRow"
+SliderRow.Size = UDim2.new(0.9, 0, 0, 44)
+SliderRow.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+SliderRow.BorderSizePixel = 0
+SliderRow.LayoutOrder = 4
+SliderRow.Parent = Container
+Instance.new("UICorner", SliderRow).CornerRadius = UDim.new(0, 8)
+
+local SliderStroke = Instance.new("UIStroke")
+SliderStroke.Color = Color3.fromRGB(255, 95, 195)
+SliderStroke.Thickness = 1
+SliderStroke.Transparency = 0.3
+SliderStroke.Parent = SliderRow
+
+local TriggerLabel = Instance.new("TextLabel")
+TriggerLabel.Size = UDim2.new(1, 0, 0, 15)
+TriggerLabel.Position = UDim2.new(0.05, 0, 0, 4)
+TriggerLabel.BackgroundTransparency = 1
+TriggerLabel.Text = "TRIGGER: 91%"
+TriggerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TriggerLabel.Font = Enum.Font.GothamBold
+TriggerLabel.TextSize = 11
+TriggerLabel.TextXAlignment = Enum.TextXAlignment.Left
+TriggerLabel.Parent = SliderRow
+
+local SliderTrack = Instance.new("Frame")
+SliderTrack.Size = UDim2.new(0.9, 0, 0, 6)
+SliderTrack.Position = UDim2.new(0.05, 0, 0, 26)
+SliderTrack.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+SliderTrack.BorderSizePixel = 0
+SliderTrack.Parent = SliderRow
+Instance.new("UICorner", SliderTrack).CornerRadius = UDim.new(1, 0)
+
+local SliderTrackStroke = Instance.new("UIStroke")
+SliderTrackStroke.Color = Color3.fromRGB(255, 95, 195)
+SliderTrackStroke.Thickness = 1
+SliderTrackStroke.Transparency = 0.3
+SliderTrackStroke.Parent = SliderTrack
+
+local SliderFill = Instance.new("Frame")
+SliderFill.Size = UDim2.new(0.91, 0, 1, 0)
+SliderFill.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+SliderFill.BorderSizePixel = 0
+SliderFill.Parent = SliderTrack
+Instance.new("UICorner", SliderFill).CornerRadius = UDim.new(1, 0)
+
+local SliderFillGlow = Instance.new("Frame")
+SliderFillGlow.Size = UDim2.new(1, 0, 1.8, 0)
+SliderFillGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+SliderFillGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+SliderFillGlow.BackgroundColor3 = Color3.fromRGB(255, 120, 210)
+SliderFillGlow.BorderSizePixel = 0
+SliderFillGlow.BackgroundTransparency = 0.7
+SliderFillGlow.Parent = SliderFill
+Instance.new("UICorner", SliderFillGlow).CornerRadius = UDim.new(1, 0)
+
+local SliderKnob = Instance.new("TextButton")
+SliderKnob.Size = UDim2.new(0, 16, 0, 16)
+SliderKnob.Position = UDim2.new(0.91, 0, 0.5, 0)
+SliderKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+SliderKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SliderKnob.BorderSizePixel = 0
+SliderKnob.Text = ""
+SliderKnob.Parent = SliderTrack
+Instance.new("UICorner", SliderKnob).CornerRadius = UDim.new(1, 0)
+
+local KnobGlow = Instance.new("Frame")
+KnobGlow.Size = UDim2.new(1, 8, 1, 8)
+KnobGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+KnobGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+KnobGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+KnobGlow.BorderSizePixel = 0
+KnobGlow.BackgroundTransparency = 0.75
+KnobGlow.Parent = SliderKnob
+Instance.new("UICorner", KnobGlow).CornerRadius = UDim.new(1, 0)
+
+local function updateSliderUI(percent)
+    triggerPercent = math.clamp(percent, 0, 1)
+    SliderFill.Size = UDim2.new(triggerPercent, 0, 1, 0)
+    SliderKnob.Position = UDim2.new(triggerPercent, 0, 0.5, 0)
+    TriggerLabel.Text = "TRIGGER: " .. math.floor(triggerPercent * 100) .. "%"
+end
+
+SliderKnob.MouseButton1Down:Connect(function() sliderDragging = true end)
+
+SliderTrack.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        sliderDragging = true
+        local trackPos = SliderTrack.AbsolutePosition.X
+        local trackSize = SliderTrack.AbsoluteSize.X
+        local percent = math.clamp((input.Position.X - trackPos) / trackSize, 0, 1)
+        updateSliderUI(percent)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if sliderDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local trackPos = SliderTrack.AbsolutePosition.X
+        local trackSize = SliderTrack.AbsoluteSize.X
+        local percent = math.clamp((input.Position.X - trackPos) / trackSize, 0, 1)
+        updateSliderUI(percent)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        sliderDragging = false
+    end
+end)
+
+-- ============================================================
+-- BOTTOM PROGRESS BAR
+-- ============================================================
+local BottomWindow = Instance.new("Frame")
+BottomWindow.Name = "BottomWindow"
+BottomWindow.Size = UDim2.new(0, 220, 0, 44)
+BottomWindow.Position = UDim2.new(0.5, -110, 1, -120)
+BottomWindow.BackgroundColor3 = Color3.fromRGB(24, 20, 30)
+BottomWindow.BorderSizePixel = 0
+BottomWindow.Active = true
+BottomWindow.Parent = MainScreen
+Instance.new("UICorner", BottomWindow).CornerRadius = UDim.new(0, 10)
+
+local BottomGlow = Instance.new("Frame")
+BottomGlow.Size = UDim2.new(1, 12, 1, 12)
+BottomGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+BottomGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+BottomGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+BottomGlow.BorderSizePixel = 0
+BottomGlow.BackgroundTransparency = 0.85
+BottomGlow.ZIndex = 0
+BottomGlow.Parent = BottomWindow
+Instance.new("UICorner", BottomGlow).CornerRadius = UDim.new(0, 14)
+
+local BottomStroke = Instance.new("UIStroke")
+BottomStroke.Thickness = 1.5
+BottomStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+BottomStroke.Color = Color3.fromRGB(255, 95, 195)
+BottomStroke.Transparency = 0.5
+BottomStroke.Parent = BottomWindow
+
+local BottomGradient = Instance.new("UIGradient")
+BottomGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 170)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 90, 190)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 210))
+})
+BottomGradient.Rotation = 45
+BottomGradient.Parent = BottomStroke
+
+local BarTitle = Instance.new("TextLabel")
+BarTitle.Name = "BarTitle"
+BarTitle.Text = "Flash TP"
+BarTitle.Font = Enum.Font.GothamBold
+BarTitle.TextSize = 9
+BarTitle.TextColor3 = Color3.fromRGB(215, 200, 220)
+BarTitle.TextXAlignment = Enum.TextXAlignment.Left
+BarTitle.Size = UDim2.new(0.5, 0, 0, 14)
+BarTitle.Position = UDim2.new(0.06, 0, 0, 3)
+BarTitle.BackgroundTransparency = 1
+BarTitle.Parent = BottomWindow
+
+local BarPercent = Instance.new("TextLabel")
+BarPercent.Name = "BarPercent"
+BarPercent.Text = "0%"
+BarPercent.Font = Enum.Font.GothamBold
+BarPercent.TextSize = 10
+BarPercent.TextColor3 = Color3.fromRGB(255, 120, 210)
+BarPercent.TextXAlignment = Enum.TextXAlignment.Right
+BarPercent.Size = UDim2.new(0.4, 0, 0, 14)
+BarPercent.Position = UDim2.new(0.54, 0, 0, 3)
+BarPercent.BackgroundTransparency = 1
+BarPercent.Parent = BottomWindow
+
+local ProgressBgBar = Instance.new("Frame")
+ProgressBgBar.Name = "ProgressBarBg"
+ProgressBgBar.Size = UDim2.new(0.88, 0, 0, 6)
+ProgressBgBar.Position = UDim2.new(0.06, 0, 0, 24)
+ProgressBgBar.BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+ProgressBgBar.BorderSizePixel = 0
+ProgressBgBar.Parent = BottomWindow
+Instance.new("UICorner", ProgressBgBar).CornerRadius = UDim.new(0, 4)
+
+local ProgressFillBar = Instance.new("Frame")
+ProgressFillBar.Name = "ProgressFill"
+ProgressFillBar.Size = UDim2.new(0, 0, 1, 0)
+ProgressFillBar.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+ProgressFillBar.BorderSizePixel = 0
+ProgressFillBar.Parent = ProgressBgBar
+Instance.new("UICorner", ProgressFillBar).CornerRadius = UDim.new(0, 4)
+
+local ProgressFillBarGlow = Instance.new("Frame")
+ProgressFillBarGlow.Size = UDim2.new(1, 0, 2, 0)
+ProgressFillBarGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+ProgressFillBarGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+ProgressFillBarGlow.BackgroundColor3 = Color3.fromRGB(255, 120, 210)
+ProgressFillBarGlow.BorderSizePixel = 0
+ProgressFillBarGlow.BackgroundTransparency = 0.7
+ProgressFillBarGlow.Parent = ProgressFillBar
+Instance.new("UICorner", ProgressFillBarGlow).CornerRadius = UDim.new(0, 6)
+
+-- ============================================================
+-- PROXIMITY PROMPT HANDLER
+-- ============================================================
+ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
+    if not Config.flashEnabled and not Config.giantEnabled then return end
+    if activePrompts[prompt] then return end
+    
+    activePrompts[prompt] = true
+    local startTime = os.clock()
+    local fired = false
+    
+    ProgressFillBar.Size = UDim2.new(0, 0, 1, 0)
+    BarPercent.Text = "0%"
+    
+    local connection
+    connection = RunService.PreRender:Connect(function()
+        if not prompt or not prompt.Parent then
+            connection:Disconnect()
+            activePrompts[prompt] = nil
+            ProgressFillBar.Size = UDim2.new(0, 0, 1, 0)
+            BarPercent.Text = "0%"
+            return
+        end
+        
+        local progress = math.clamp((os.clock() - startTime) / prompt.HoldDuration, 0, 1)
+        local progressPercent = math.floor(progress * 100)
+        
+        ProgressFillBar.Size = UDim2.new(progress, 0, 1, 0)
+        BarPercent.Text = progressPercent .. "%"
+        
+        if not fired and progress >= triggerPercent then
+            fired = true
+            connection:Disconnect()
+            activePrompts[prompt] = nil
+            activateFlashAndPotion()
+            
+            task.delay(0.25, function()
+                TweenService:Create(ProgressFillBar, TweenInfo.new(0.35, Enum.EasingStyle.Quad), {
+                    Size = UDim2.new(0, 0, 1, 0)
+                }):Play()
+                BarPercent.Text = "0%"
+            end)
+        end
+    end)
+    
+    prompt.PromptButtonHoldEnded:Connect(function()
+        if not fired then
+            connection:Disconnect()
+            activePrompts[prompt] = nil
+            TweenService:Create(ProgressFillBar, TweenInfo.new(0.3), {
+                Size = UDim2.new(0, 0, 1, 0)
+            }):Play()
+            BarPercent.Text = "0%"
+        end
+    end)
+end)
+
+-- ============================================================
+-- TOP STATS BAR
+-- ============================================================
+local TpScreen = Instance.new("ScreenGui")
+TpScreen.Name = "CrazyFlashTP_UI"
+TpScreen.ResetOnSpawn = false
+TpScreen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+TpScreen.Parent = PlayerGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 200, 0, 48)
+MainFrame.Position = UDim2.new(0.5, -100, 0, 10)
+MainFrame.BackgroundColor3 = Color3.fromRGB(24, 20, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = TpScreen
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+local MainFrameGlow = Instance.new("Frame")
+MainFrameGlow.Size = UDim2.new(1, 12, 1, 12)
+MainFrameGlow.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrameGlow.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrameGlow.BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+MainFrameGlow.BorderSizePixel = 0
+MainFrameGlow.BackgroundTransparency = 0.85
+MainFrameGlow.ZIndex = 0
+MainFrameGlow.Parent = MainFrame
+Instance.new("UICorner", MainFrameGlow).CornerRadius = UDim.new(0, 16)
+
+local MainFrameStroke = Instance.new("UIStroke")
+MainFrameStroke.Thickness = 1.5
+MainFrameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MainFrameStroke.Color = Color3.fromRGB(255, 95, 195)
+MainFrameStroke.Transparency = 0.5
+MainFrameStroke.Parent = MainFrame
+
+local MainFrameGradient = Instance.new("UIGradient")
+MainFrameGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 70, 170)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 90, 190)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 120, 210))
+})
+MainFrameGradient.Rotation = 45
+MainFrameGradient.Parent = MainFrameStroke
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "TitleLabel"
+TitleLabel.Text = "moon Flash TP"
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextSize = 13
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TitleLabel.Size = UDim2.new(1, 0, 0.3, 0)
+TitleLabel.Position = UDim2.new(0, 0, 0.08, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Parent = MainFrame
+
+local CreditsLabel = Instance.new("TextLabel")
+CreditsLabel.Name = "CreditsLabel"
+CreditsLabel.Text = "discord.gg/avahub"
+CreditsLabel.Font = Enum.Font.GothamMedium
+CreditsLabel.TextSize = 9
+CreditsLabel.TextColor3 = Color3.fromRGB(255, 120, 210)
+CreditsLabel.Size = UDim2.new(1, 0, 0.2, 0)
+CreditsLabel.Position = UDim2.new(0, 0, 0.35, 0)
+CreditsLabel.BackgroundTransparency = 1
+CreditsLabel.Parent = MainFrame
+
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Name = "StatsLabel"
+StatsLabel.Text = "FPS: ...  PING: ...ms"
+StatsLabel.Font = Enum.Font.GothamBold
+StatsLabel.TextSize = 11
+StatsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+StatsLabel.Size = UDim2.new(1, 0, 0.25, 0)
+StatsLabel.Position = UDim2.new(0, 0, 0.65, 0)
+StatsLabel.BackgroundTransparency = 1
+StatsLabel.Parent = MainFrame
+
+local fpsCounter = 0
+local frameCount = 0
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    fpsCounter = fpsCounter + 1 / deltaTime
+    frameCount = frameCount + 1
+end)
+
+task.spawn(function()
+    while StatsLabel and StatsLabel.Parent do
+        if frameCount > 0 then
+            local fps = math.floor(fpsCounter / frameCount)
+            local ping = math.floor(Player:GetNetworkPing() * 1000)
+            StatsLabel.Text = string.format("FPS: %d  PING: %dms", fps or 0, ping or 0)
+        end
+        fpsCounter = 0
+        frameCount = 0
+        task.wait(0.5)
+    end
+end)
+
+local Gradients = {MainGradient, BottomGradient, MainFrameGradient}
+local RotationSpeed = 0.5
+
+RunService.RenderStepped:Connect(function()
+    for _, gradient in ipairs(Gradients) do
+        if gradient and gradient.Parent then
+            gradient.Rotation = (gradient.Rotation + RotationSpeed) % 360
+        end
+    end
+end)
+
+-- ============================================================
+-- WINDOW DRAGGING
+-- ============================================================
+local DragHandle = Instance.new("Frame")
+DragHandle.Name = "DragHandle"
+DragHandle.Size = UDim2.new(1, 0, 0, 40)
+DragHandle.BackgroundTransparency = 1
+DragHandle.Parent = MainWindow
+
+local dragStartPos = nil
+local dragStartMouse = nil
+local windowDragging = false
+local dragConnection = nil
+
+DragHandle.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        windowDragging = true
+        dragStartMouse = UserInputService:GetMouseLocation()
+        dragStartPos = MainWindow.Position
+        
+        if dragConnection then dragConnection:Disconnect() end
+        
+        dragConnection = RunService.RenderStepped:Connect(function()
+            if windowDragging then
+                local mousePos = UserInputService:GetMouseLocation()
+                local delta = mousePos - dragStartMouse
+                MainWindow.Position = UDim2.new(
+                    dragStartPos.X.Scale,
+                    dragStartPos.X.Offset + delta.X,
+                    dragStartPos.Y.Scale,
+                    dragStartPos.Y.Offset + delta.Y
+                )
+            end
+        end)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        windowDragging = false
+        if dragConnection then
+            dragConnection:Disconnect()
+            dragConnection = nil
+        end
+    end
+end)
+
+CloseButton.MouseButton1Click:Connect(function()
+    MainScreen:Destroy()
+    if TpScreen and TpScreen.Parent then
+        TpScreen:Destroy()
+    end
+end)
+
+-- ============================================================
+-- HOVER EFFECTS FOR ROWS
+-- ============================================================
+local rows = {FlashRow, PotionRow, SliderRow}
+for _, row in ipairs(rows) do
+    if row then
+        row.MouseEnter:Connect(function()
+            TweenService:Create(row, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(40, 30, 48)
+            }):Play()
+        end)
+        row.MouseLeave:Connect(function()
+            TweenService:Create(row, TweenInfo.new(0.15), {
+                BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+            }):Play()
+        end)
+    end
+end
+
+-- Close button hover
+CloseButton.MouseEnter:Connect(function()
+    TweenService:Create(CloseButton, TweenInfo.new(0.15), {
+        BackgroundColor3 = Color3.fromRGB(255, 70, 170)
+    }):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.15), {
+        TextColor3 = Color3.fromRGB(255, 255, 255)
+    }):Play()
+end)
+CloseButton.MouseLeave:Connect(function()
+    TweenService:Create(CloseButton, TweenInfo.new(0.15), {
+        BackgroundColor3 = Color3.fromRGB(34, 26, 40)
+    }):Play()
+    TweenService:Create(CloseButton, TweenInfo.new(0.15), {
+        TextColor3 = Color3.fromRGB(180, 160, 180)
+    }):Play()
+end)

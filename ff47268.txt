@@ -1,0 +1,418 @@
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local LP = Players.LocalPlayer
+local G = (getgenv and getgenv()) or _G
+
+G.AutoSnipeEnabled = false
+G.ServerHopEnabled = G.ServerHopEnabled or false
+G.__SnipeRun = (G.__SnipeRun or 0) + 1
+local myToken = G.__SnipeRun
+local TARGET_PLACE_ID = 109983668079237
+
+local setStatus, setState, setHopState
+local OFF_COLOR = Color3.fromRGB(58, 58, 72)
+local ON_COLOR = Color3.fromRGB(255, 180, 55)
+local ACCENT_A = Color3.fromRGB(255, 170, 0)
+local ACCENT_B = Color3.fromRGB(255, 215, 60)
+local MUTED = Color3.fromRGB(140, 140, 158)
+
+local function corner(o, r)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r)
+	c.Parent = o
+end
+
+local function tween(o, t, p)
+	TweenService:Create(o, TweenInfo.new(t, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), p):Play()
+end
+
+local function getRoot()
+	local char = LP.Character
+	return char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("UpperTorso"))
+end
+
+local function getHumanoid()
+	local char = LP.Character
+	return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function equipCoil()
+	local char = LP.Character
+	local backpack = LP:FindFirstChild("Backpack")
+	if not char or not backpack then return end
+	if char:FindFirstChild("Coil Combo") or char:FindFirstChild("Speed Coil") then
+		return
+	end
+	local coil = backpack:FindFirstChild("Coil Combo") or backpack:FindFirstChild("Speed Coil")
+	if not coil then
+		for _, item in ipairs(backpack:GetChildren()) do
+			if item:IsA("Tool") and item.Name:lower():find("coil") then
+				coil = item
+				break
+			end
+		end
+	end
+	local hum = getHumanoid()
+	if coil and hum then
+		hum:EquipTool(coil)
+	end
+end
+
+local function touchHoney(honeyModel)
+	local root = getRoot()
+	if not root then return end
+	local touchPart = honeyModel.PrimaryPart or honeyModel:FindFirstChildWhichIsA("BasePart")
+	if not touchPart then return end
+	if firetouchinterest then
+		firetouchinterest(root, touchPart, 0)
+		task.wait(0.02)
+		firetouchinterest(root, touchPart, 1)
+	end
+end
+
+local function collectHoneyInstance(honey)
+	if not honey or not honey.Parent then return end
+	local root = getRoot()
+	local hum = getHumanoid()
+	if not root then return end
+	local pos = honey:GetPivot().Position
+	equipCoil()
+	if hum then
+		hum:MoveTo(pos)
+		local reached = false
+		local conn = hum.MoveToFinished:Connect(function()
+			reached = true
+		end)
+
+		local t0 = os.clock()
+		local lastPos = root.Position
+		local lastCheckTime = os.clock()
+		while G.AutoSnipeEnabled and not reached and honey.Parent and (os.clock() - t0 < 6) do
+			if (root.Position - pos).Magnitude < 4 then
+				break
+			end
+			if os.clock() - lastCheckTime >= 1.5 then
+				local distMoved = (root.Position - lastPos).Magnitude
+				if distMoved < 1.0 then
+					conn:Disconnect()
+					if hum then
+						hum.Health = 0
+					end
+					break
+				end
+				lastPos = root.Position
+				lastCheckTime = os.clock()
+			end
+			task.wait(0.05)
+		end
+		if conn.Connected then
+			conn:Disconnect()
+		end
+		touchHoney(honey)
+	end
+end
+
+local function hopToSmallServer()
+	setStatus("Hopping to small server...", Color3.fromRGB(255, 100, 100))
+	local success = pcall(function()
+		local url = ("https://games.roblox.com/v1/games/%d/servers/0?sortOrder=Asc&limit=100"):format(TARGET_PLACE_ID)
+		local raw = game:HttpGet(url)
+		local body = HttpService:JSONDecode(raw)
+
+		if body and body.data then
+			for _, server in ipairs(body.data) do
+				if server.playing and server.playing < server.maxPlayers and server.id ~= game.JobId then
+					TeleportService:TeleportToPlaceInstance(TARGET_PLACE_ID, server.id, LP)
+					return
+				end
+			end
+		end
+	end)
+
+	if not success then
+		TeleportService:Teleport(TARGET_PLACE_ID, LP)
+	end
+end
+
+local function processSnipeQueue()
+	task.spawn(function()
+		while G.AutoSnipeEnabled and myToken == G.__SnipeRun do
+			local honeys = {}
+			for _, obj in ipairs(Workspace:GetChildren()) do
+				if obj.Name == "Honey" then
+					table.insert(honeys, obj)
+				end
+			end
+			if #honeys > 0 then
+				setStatus(("Sniping (%d left)"):format(#honeys), ON_COLOR)
+				for _, honey in ipairs(honeys) do
+					if not G.AutoSnipeEnabled or myToken ~= G.__SnipeRun then
+						break
+					end
+					if honey.Parent then
+						collectHoneyInstance(honey)
+					end
+				end
+			else
+				if G.ServerHopEnabled then
+					hopToSmallServer()
+					break
+				else
+					setStatus("Idle", MUTED)
+					task.wait(0.3)
+				end
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
+-- GUI
+if G.__SnipeGui then
+	pcall(function()
+		G.__SnipeGui:Destroy()
+	end)
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "BeeMerchantSniperGUI"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.IgnoreGuiInset = true
+pcall(function()
+	if syn and syn.protect_gui then
+		syn.protect_gui(gui)
+	end
+end)
+pcall(function()
+	if protectgui then
+		protectgui(gui)
+	end
+end)
+
+local parent
+pcall(function()
+	parent = gethui and gethui()
+end)
+if not parent then
+	pcall(function()
+		parent = game:GetService("CoreGui")
+	end)
+end
+if not parent then
+	parent = LP:WaitForChild("PlayerGui")
+end
+gui.Parent = parent
+G.__SnipeGui = gui
+
+-- Main Card
+local card = Instance.new("Frame")
+card.Size = UDim2.fromOffset(220, 178)
+card.Position = UDim2.fromOffset(30, 480)
+card.BackgroundColor3 = Color3.fromRGB(17, 17, 23)
+card.BorderSizePixel = 0
+card.Active = true
+card.Parent = gui
+corner(card, 14)
+
+local cstroke = Instance.new("UIStroke", card)
+cstroke.Color = Color3.fromRGB(42, 42, 56)
+cstroke.Thickness = 1.5
+cstroke.Transparency = 0.1
+
+-- Title
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -24, 0, 20)
+title.Position = UDim2.fromOffset(14, 12)
+title.BackgroundTransparency = 1
+title.Text = "Bee Merchant Sniper"
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = Color3.fromRGB(240, 240, 248)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.Parent = card
+
+-- Subtitle
+local sub = Instance.new("TextLabel")
+sub.Size = UDim2.new(1, -24, 0, 14)
+sub.Position = UDim2.fromOffset(14, 32)
+sub.BackgroundTransparency = 1
+sub.Text = "Auto buy items using honey"
+sub.TextXAlignment = Enum.TextXAlignment.Left
+sub.TextColor3 = MUTED
+sub.Font = Enum.Font.Gotham
+sub.TextSize = 11
+sub.Parent = card
+
+-- Divider
+local div1 = Instance.new("Frame")
+div1.Size = UDim2.new(1, -28, 0, 1)
+div1.Position = UDim2.fromOffset(14, 52)
+div1.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
+div1.BorderSizePixel = 0
+div1.Parent = card
+
+-- Auto Snipe row
+local rowLabel = Instance.new("TextLabel")
+rowLabel.Size = UDim2.fromOffset(100, 22)
+rowLabel.Position = UDim2.fromOffset(14, 62)
+rowLabel.BackgroundTransparency = 1
+rowLabel.Text = "Auto Snipe"
+rowLabel.TextXAlignment = Enum.TextXAlignment.Left
+rowLabel.TextColor3 = Color3.fromRGB(218, 218, 228)
+rowLabel.Font = Enum.Font.GothamMedium
+rowLabel.TextSize = 13
+rowLabel.Parent = card
+
+local track = Instance.new("Frame")
+track.Size = UDim2.fromOffset(44, 22)
+track.Position = UDim2.new(1, -58, 0, 62)
+track.BackgroundColor3 = OFF_COLOR
+track.BorderSizePixel = 0
+track.Parent = card
+corner(track, 11)
+
+local knob = Instance.new("Frame")
+knob.Size = UDim2.fromOffset(16, 16)
+knob.Position = UDim2.fromOffset(3, 3)
+knob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+knob.BorderSizePixel = 0
+knob.Parent = track
+corner(knob, 8)
+
+local hit = Instance.new("TextButton")
+hit.Size = UDim2.fromScale(1, 1)
+hit.BackgroundTransparency = 1
+hit.Text = ""
+hit.Parent = track
+
+-- Server Hop row
+local hopLabel = Instance.new("TextLabel")
+hopLabel.Size = UDim2.fromOffset(100, 22)
+hopLabel.Position = UDim2.fromOffset(14, 92)
+hopLabel.BackgroundTransparency = 1
+hopLabel.Text = "Server Hop"
+hopLabel.TextXAlignment = Enum.TextXAlignment.Left
+hopLabel.TextColor3 = Color3.fromRGB(218, 218, 228)
+hopLabel.Font = Enum.Font.GothamMedium
+hopLabel.TextSize = 13
+hopLabel.Parent = card
+
+local hopTrack = Instance.new("Frame")
+hopTrack.Size = UDim2.fromOffset(44, 22)
+hopTrack.Position = UDim2.new(1, -58, 0, 92)
+hopTrack.BackgroundColor3 = OFF_COLOR
+hopTrack.BorderSizePixel = 0
+hopTrack.Parent = card
+corner(hopTrack, 11)
+
+local hopKnob = Instance.new("Frame")
+hopKnob.Size = UDim2.fromOffset(16, 16)
+hopKnob.Position = UDim2.fromOffset(3, 3)
+hopKnob.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+hopKnob.BorderSizePixel = 0
+hopKnob.Parent = hopTrack
+corner(hopKnob, 8)
+
+local hopHit = Instance.new("TextButton")
+hopHit.Size = UDim2.fromScale(1, 1)
+hopHit.BackgroundTransparency = 1
+hopHit.Text = ""
+hopHit.Parent = hopTrack
+
+-- Target
+local targetLabel = Instance.new("TextLabel")
+targetLabel.Size = UDim2.new(1, -24, 0, 16)
+targetLabel.Position = UDim2.fromOffset(14, 122)
+targetLabel.BackgroundTransparency = 1
+targetLabel.Text = "Target: Dumbatron"
+targetLabel.TextXAlignment = Enum.TextXAlignment.Left
+targetLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
+targetLabel.Font = Enum.Font.GothamMedium
+targetLabel.TextSize = 12
+targetLabel.Parent = card
+
+-- Status
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -24, 0, 14)
+status.Position = UDim2.fromOffset(14, 144)
+status.BackgroundTransparency = 1
+status.Text = "Status: Idle"
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.TextColor3 = MUTED
+status.Font = Enum.Font.Gotham
+status.TextSize = 11
+status.Parent = card
+
+function setStatus(text, color)
+	status.Text = "Status: " .. text
+	tween(status, 0.15, {
+		TextColor3 = color or MUTED
+	})
+end
+
+function setState(on)
+	G.AutoSnipeEnabled = on and true or false
+	if G.AutoSnipeEnabled then
+		tween(track, 0.2, {BackgroundColor3 = ON_COLOR})
+		tween(knob, 0.2, {Position = UDim2.fromOffset(25, 3)})
+		setStatus("Active", ON_COLOR)
+		processSnipeQueue()
+	else
+		tween(track, 0.2, {BackgroundColor3 = OFF_COLOR})
+		tween(knob, 0.2, {Position = UDim2.fromOffset(3, 3)})
+		setStatus("Idle", MUTED)
+	end
+end
+
+function setHopState(on)
+	G.ServerHopEnabled = on and true or false
+	if G.ServerHopEnabled then
+		tween(hopTrack, 0.2, {BackgroundColor3 = ON_COLOR})
+		tween(hopKnob, 0.2, {Position = UDim2.fromOffset(25, 3)})
+	else
+		tween(hopTrack, 0.2, {BackgroundColor3 = OFF_COLOR})
+		tween(hopKnob, 0.2, {Position = UDim2.fromOffset(3, 3)})
+	end
+end
+
+hit.MouseButton1Click:Connect(function()
+	setState(not G.AutoSnipeEnabled)
+end)
+
+hopHit.MouseButton1Click:Connect(function()
+	setHopState(not G.ServerHopEnabled)
+end)
+
+-- Drag
+local function enableDrag(frame)
+	local dragging, dragStart, startPos
+	frame.InputBegan:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = i.Position
+			startPos = frame.Position
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(i)
+		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(i)
+		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+			local d = i.Position - dragStart
+			frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+		end
+	end)
+end
+
+enableDrag(card)
+
+-- Start both off
+setState(false)
+setHopState(false)
