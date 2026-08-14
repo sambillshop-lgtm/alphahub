@@ -1,0 +1,348 @@
+adapt desycn aimbot 
+    ADAPT HUB v3.0 – PREMIUM DESYNC AIMBOT
+    GUI: ADAPT HUB | PREMIUM AIMBOT (ON/OFF) | AIMBOT · ADAPT · V3.0 | LCTRL TO HIDE
+    Features:
+    - Desync teleport to target + velocity swing
+    - Auto-swing when close
+    - Works with bat, sword, or any melee tool
+    - Toggle with GUI button
+    - LCTRL to hide/show GUI
+    - Config auto-save
+]]
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local LP = Players.LocalPlayer
+local CONFIG_PATH = "AdaptHub/config.json"
+local isAimbotEnabled = true
+local isGuiVisible = true
+local SWING_RATE = 0.07
+local TELEPORT_DISTANCE = 18
+local TELEPORT_OFFSET = 1.2
+local VELOCITY_SPEED = 60
+local lastSwing = 0
+local cooldown = false
+local currentTarget = nil
+local function saveConfig()
+    pcall(function()
+        if not isfolder("AdaptHub") then makefolder("AdaptHub") end
+        local config = { isAimbotEnabled = isAimbotEnabled }
+        writefile(CONFIG_PATH, HttpService:JSONEncode(config))
+    end)
+end
+local function loadConfig()
+    local success, data = pcall(function()
+        if isfile(CONFIG_PATH) then
+            return HttpService:JSONDecode(readfile(CONFIG_PATH))
+        end
+        return nil
+    end)
+    if success and data then
+        if data.isAimbotEnabled ~= nil then isAimbotEnabled = data.isAimbotEnabled end
+    end
+end
+local function getNearestPlayer()
+    local myChar = LP.Character
+    if not myChar then return nil end
+    local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+    if not myRoot then return nil end
+    local nearest = nil
+    local nearestDist = math.huge
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP then
+            local char = plr.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if root and root.Position then
+                local dist = (myRoot.Position - root.Position).Magnitude
+                if dist < nearestDist then
+                    nearestDist = dist
+                    nearest = plr
+                end
+            end
+        end
+    end
+    return nearest, nearestDist
+end
+local function getTargetPosition(target)
+    if not target then return nil end
+    local char = target.Character
+    if not char then return nil end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    -- Check for server ghost (desync artifact)
+    local ghost = workspace:FindFirstChild("ServerGhost")
+    if ghost and ghost:IsA("BasePart") then
+        local dist = (root.Position - ghost.Position).Magnitude
+        if dist < 25 then
+            return ghost.Position, ghost.CFrame
+        end
+    end
+    return root.Position, root.CFrame
+end
+local function getMeleeTool()
+    local char = LP.Character
+    if not char then return nil end
+    -- Check for bat, sword, knife, or any tool with Activate
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and (tool.Name:lower():find("bat") or tool.Name:lower():find("sword") or tool.Name:lower():find("knife") or tool:FindFirstChildWhichIsA("RemoteEvent")) then
+            return tool
+        end
+    end
+    -- Check backpack
+    local bp = LP:FindFirstChild("Backpack")
+    if bp then
+        for _, tool in ipairs(bp:GetChildren()) do
+            if tool:IsA("Tool") and (tool.Name:lower():find("bat") or tool.Name:lower():find("sword")) then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then pcall(function() hum:EquipTool(tool) end) end
+                return tool
+            end
+        end
+    end
+    return nil
+end
+local function swingTool()
+    if cooldown then return end
+    local now = tick()
+    if now - lastSwing < SWING_RATE then return end
+    lastSwing = now
+    cooldown = true
+    task.delay(SWING_RATE, function() cooldown = false end)
+    pcall(function()
+        local tool = getMeleeTool()
+        if tool then
+            tool:Activate()
+            local remote = tool:FindFirstChildWhichIsA("RemoteEvent")
+            if remote and currentTarget then
+                local targetPos = getTargetPosition(currentTarget)
+                if targetPos then
+                    remote:FireServer(targetPos)
+                end
+            end
+            if remote then remote:FireServer() end
+        end
+    end)
+end
+local aimbotConnection = nil
+local function startAimbot()
+    if aimbotConnection then aimbotConnection:Disconnect() end
+    aimbotConnection = RunService.Heartbeat:Connect(function()
+        if not isAimbotEnabled then return end
+        local myChar = LP.Character
+        if not myChar then return end
+        local myRoot = myChar:FindFirstChild("HumanoidRootPart")
+        local myHum = myChar:FindFirstChildOfClass("Humanoid")
+        if not (myRoot and myHum and myHum.Health > 0) then return end
+        local target, dist = getNearestPlayer()
+        currentTarget = target
+        if not target then
+            myRoot.Velocity = Vector3.zero
+            return
+        end
+        local targetPos, targetCF = getTargetPosition(target)
+        if not targetPos then return end
+        -- Desync offset: teleport slightly ahead of target's look direction
+        local lookVec = targetCF and targetCF.LookVector or Vector3.new(0,0,1)
+        local offsetPos = targetPos + lookVec * TELEPORT_OFFSET
+        if dist > TELEPORT_DISTANCE then
+            -- Teleport with desync (CFrame jump)
+            myRoot.CFrame = CFrame.new(offsetPos)
+            myHum:MoveTo(offsetPos)
+        else
+            -- Velocity desync: move toward offset position
+            local direction = (offsetPos - myRoot.Position).Unit
+            myRoot.Velocity = direction * VELOCITY_SPEED
+        end
+        -- Auto-swing when close enough
+        if dist < 8 then
+            swingTool()
+        end
+    end)
+end
+local function stopAimbot()
+    if aimbotConnection then
+        aimbotConnection:Disconnect()
+        aimbotConnection = nil
+    end
+    local myChar = LP.Character
+    if myChar then
+        local root = myChar:FindFirstChild("HumanoidRootPart")
+        if root then root.Velocity = Vector3.zero end
+    end
+end
+local function toggleAimbot()
+    isAimbotEnabled = not isAimbotEnabled
+    if isAimbotEnabled then
+        startAimbot()
+    else
+        stopAimbot()
+    end
+    saveConfig()
+    return isAimbotEnabled
+end
+LP.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    if isAimbotEnabled then
+        stopAimbot()
+        task.wait(0.1)
+        startAimbot()
+    end
+end)
+local sg = Instance.new("ScreenGui")
+sg.Name = "AdaptHubGUI"
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.Parent = CoreGui
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 320, 0, 220)
+mainFrame.Position = UDim2.new(0.5, -160, 0.5, -110)
+mainFrame.BackgroundColor3 = Color3.fromRGB(8, 8, 14)
+mainFrame.BackgroundTransparency = 0
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = sg
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 18)
+mainCorner.Parent = mainFrame
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(100, 80, 200)
+mainStroke.Thickness = 1.5
+mainStroke.Transparency = 0.4
+mainStroke.Parent = mainFrame
+local gradient = Instance.new("UIGradient")
+gradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 12, 25)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(5, 5, 15))
+})
+gradient.Parent = mainFrame
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 40)
+topBar.Position = UDim2.new(0, 0, 0, 0)
+topBar.BackgroundColor3 = Color3.fromRGB(12, 10, 20)
+topBar.BorderSizePixel = 0
+topBar.Parent = mainFrame
+local topCorner = Instance.new("UICorner")
+topCorner.CornerRadius = UDim.new(0, 18)
+topCorner.Parent = topBar
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 1, 0)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "ADAPT HUB"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Font = Enum.Font.GothamBlack
+titleLabel.TextSize = 18
+titleLabel.Parent = topBar
+local aimbotRow = Instance.new("Frame")
+aimbotRow.Size = UDim2.new(0.9, 0, 0, 50)
+aimbotRow.Position = UDim2.new(0.05, 0, 0, 55)
+aimbotRow.BackgroundColor3 = Color3.fromRGB(18, 18, 28)
+aimbotRow.BorderSizePixel = 0
+aimbotRow.Parent = mainFrame
+local rowCorner = Instance.new("UICorner")
+rowCorner.CornerRadius = UDim.new(0, 14)
+rowCorner.Parent = aimbotRow
+local aimbotLabel = Instance.new("TextLabel")
+aimbotLabel.Size = UDim2.new(0.6, 0, 1, 0)
+aimbotLabel.Position = UDim2.new(0, 16, 0, 0)
+aimbotLabel.BackgroundTransparency = 1
+aimbotLabel.Text = "PREMIUM AIMBOT"
+aimbotLabel.TextColor3 = Color3.fromRGB(230, 230, 255)
+aimbotLabel.Font = Enum.Font.GothamBold
+aimbotLabel.TextSize = 14
+aimbotLabel.TextXAlignment = Enum.TextXAlignment.Left
+aimbotLabel.Parent = aimbotRow
+local toggleTrack = Instance.new("Frame")
+toggleTrack.Size = UDim2.new(0, 52, 0, 26)
+toggleTrack.Position = UDim2.new(1, -68, 0.5, -13)
+toggleTrack.BackgroundColor3 = isAimbotEnabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(45, 45, 55)
+toggleTrack.BorderSizePixel = 0
+toggleTrack.Parent = aimbotRow
+local trackCorner = Instance.new("UICorner")
+trackCorner.CornerRadius = UDim.new(1, 0)
+trackCorner.Parent = toggleTrack
+local toggleThumb = Instance.new("Frame")
+toggleThumb.Size = UDim2.new(0, 20, 0, 20)
+toggleThumb.Position = isAimbotEnabled and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)
+toggleThumb.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+toggleThumb.BorderSizePixel = 0
+toggleThumb.Parent = toggleTrack
+local thumbCorner = Instance.new("UICorner")
+thumbCorner.CornerRadius = UDim.new(1, 0)
+thumbCorner.Parent = toggleThumb
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+toggleBtn.BackgroundTransparency = 1
+toggleBtn.Text = ""
+toggleBtn.Parent = toggleTrack
+local function updateToggleUI()
+    local tween = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local targetColor = isAimbotEnabled and Color3.fromRGB(100, 200, 100) or Color3.fromRGB(45, 45, 55)
+    local thumbPos = isAimbotEnabled and UDim2.new(1, -24, 0.5, -10) or UDim2.new(0, 4, 0.5, -10)
+    TweenService:Create(toggleTrack, tween, {BackgroundColor3 = targetColor}):Play()
+    TweenService:Create(toggleThumb, tween, {Position = thumbPos}):Play()
+end
+toggleBtn.MouseButton1Click:Connect(function()
+    toggleAimbot()
+    updateToggleUI()
+end)
+local versionLabel = Instance.new("TextLabel")
+versionLabel.Size = UDim2.new(1, 0, 0, 30)
+versionLabel.Position = UDim2.new(0, 0, 0, 118)
+versionLabel.BackgroundTransparency = 1
+versionLabel.Text = "AIMBOT · ADAPT · V3.0"
+versionLabel.TextColor3 = Color3.fromRGB(140, 130, 180)
+versionLabel.Font = Enum.Font.Gotham
+versionLabel.TextSize = 12
+versionLabel.Parent = mainFrame
+local hideLabel = Instance.new("TextLabel")
+hideLabel.Size = UDim2.new(1, 0, 0, 30)
+hideLabel.Position = UDim2.new(0, 0, 0, 155)
+hideLabel.BackgroundTransparency = 1
+hideLabel.Text = "LCTRL TO HIDE"
+hideLabel.TextColor3 = Color3.fromRGB(100, 100, 130)
+hideLabel.Font = Enum.Font.Gotham
+hideLabel.TextSize = 11
+hideLabel.Parent = mainFrame
+local dragging = false
+local dragStart = nil
+local frameStart = nil
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        frameStart = mainFrame.Position
+    end
+end)
+mainFrame.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        local newX = frameStart.X.Offset + delta.X
+        local newY = frameStart.Y.Offset + delta.Y
+        local cam = workspace.CurrentCamera
+        local maxX = cam.ViewportSize.X - mainFrame.AbsoluteSize.X
+        local maxY = cam.ViewportSize.Y - mainFrame.AbsoluteSize.Y
+        newX = math.clamp(newX, 0, math.max(0, maxX))
+        newY = math.clamp(newY, 0, math.max(0, maxY))
+        mainFrame.Position = UDim2.new(0, newX, 0, newY)
+    end
+end)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.LeftControl then
+        isGuiVisible = not isGuiVisible
+        sg.Enabled = isGuiVisible
+    end
+end)
+loadConfig()
+startAimbot()
+updateToggleUI()
+print("🔥 ADAPT HUB v3.0 LOADED | Premium Desync Aimbot ACTIVE | LCTRL toggles GUI")
