@@ -1,0 +1,540 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local tpPos = CFrame.new(2000.5, 9911.9, 4000.2)
+local currentBind = Enum.KeyCode.F
+local isBinding = false
+local medusaResetEnabled = true
+local antiDieEnabled = true
+local anchor_conns = {}
+
+if PlayerGui:FindFirstChild("BugraInstantReset") then
+    PlayerGui.BugraInstantReset:Destroy()
+end
+
+local g = {}
+g["ScreenGui_1"] = Instance.new("ScreenGui")
+g["ScreenGui_1"].Name = "BugraInstantReset"
+g["ScreenGui_1"].DisplayOrder = 2147483647
+g["ScreenGui_1"].ResetOnSpawn = false
+g["ScreenGui_1"].Parent = PlayerGui
+
+-- GUI'nin yuvarlatılmış köşelerine tam uyan, kesintisiz ve uçları şeffaf 2 adet akışkan çizgi (Smooth Ribbon Segments)
+local numSegments = 50
+local line1Segments = {}
+local line2Segments = {}
+
+for i = 1, numSegments do
+    local seg = Instance.new("Frame")
+    seg.Name = "Line1_Seg_" .. i
+    seg.Size = UDim2.new(0, 8, 0, 3)
+    seg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    seg.BorderSizePixel = 0
+    seg.ZIndex = 100
+    seg.Parent = g["ScreenGui_1"]
+    Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
+    table.insert(line1Segments, seg)
+end
+
+for i = 1, numSegments do
+    local seg = Instance.new("Frame")
+    seg.Name = "Line2_Seg_" .. i
+    seg.Size = UDim2.new(0, 8, 0, 3)
+    seg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    seg.BorderSizePixel = 0
+    seg.ZIndex = 100
+    seg.Parent = g["ScreenGui_1"]
+    Instance.new("UICorner", seg).CornerRadius = UDim.new(1, 0)
+    table.insert(line2Segments, seg)
+end
+
+g["Frame_1"] = Instance.new("Frame")
+g["Frame_1"].BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+g["Frame_1"].BorderSizePixel = 0
+g["Frame_1"].ClipsDescendants = true
+g["Frame_1"].Position = UDim2.new(0.5, -150, 0.5, -239)
+g["Frame_1"].Size = UDim2.new(0, 300, 0, 166)
+g["Frame_1"].Parent = g["ScreenGui_1"]
+
+local Corner_1 = Instance.new("UICorner")
+Corner_1.CornerRadius = UDim.new(0, 12)
+Corner_1.Parent = g["Frame_1"]
+
+g["Frame_2"] = Instance.new("Frame")
+g["Frame_2"].BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+g["Frame_2"].BorderSizePixel = 0
+g["Frame_2"].Size = UDim2.new(1, 0, 0, 32)
+g["Frame_2"].Parent = g["Frame_1"]
+
+local Corner_2 = Instance.new("UICorner")
+Corner_2.CornerRadius = UDim.new(0, 12)
+Corner_2.Parent = g["Frame_2"]
+
+g["Frame_3"] = Instance.new("Frame")
+g["Frame_3"].BackgroundTransparency = 1
+g["Frame_3"].Position = UDim2.new(0, 10, 0, 0)
+g["Frame_3"].Size = UDim2.new(1, -95, 1, 0)
+g["Frame_3"].Parent = g["Frame_2"]
+
+g["TextLabel_1"] = Instance.new("TextLabel")
+g["TextLabel_1"].BackgroundTransparency = 1
+g["TextLabel_1"].Size = UDim2.new(1, 0, 1, 0)
+g["TextLabel_1"].Font = Enum.Font.GothamBold
+g["TextLabel_1"].Text = "BUGRA | INSTA RESET"
+g["TextLabel_1"].TextColor3 = Color3.fromRGB(240, 240, 240)
+g["TextLabel_1"].TextSize = 11
+g["TextLabel_1"].TextXAlignment = Enum.TextXAlignment.Left
+g["TextLabel_1"].Parent = g["Frame_3"]
+
+-- Sağ Üst Sabit %65 Sarı Şans Göstergesi
+g["TextLabel_Chance"] = Instance.new("TextLabel")
+g["TextLabel_Chance"].BackgroundTransparency = 1
+g["TextLabel_Chance"].AnchorPoint = Vector2.new(1, 0.5)
+g["TextLabel_Chance"].Position = UDim2.new(1, -48, 0.5, 0)
+g["TextLabel_Chance"].Size = UDim2.new(0, 40, 0, 18)
+g["TextLabel_Chance"].Font = Enum.Font.GothamBold
+g["TextLabel_Chance"].Text = "%65"
+g["TextLabel_Chance"].TextColor3 = Color3.fromRGB(255, 255, 0)
+g["TextLabel_Chance"].TextSize = 11
+g["TextLabel_Chance"].TextXAlignment = Enum.TextXAlignment.Right
+g["TextLabel_Chance"].Parent = g["Frame_2"]
+
+g["TextButton_1"] = Instance.new("TextButton")
+g["TextButton_1"].BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+g["TextButton_1"].BorderSizePixel = 0
+g["TextButton_1"].AnchorPoint = Vector2.new(1, 0.5)
+g["TextButton_1"].Position = UDim2.new(1, -10, 0.5, 0)
+g["TextButton_1"].Size = UDim2.new(0, 32, 0, 18)
+g["TextButton_1"].Text = ""
+g["TextButton_1"].Parent = g["Frame_2"]
+
+local Corner_3 = Instance.new("UICorner")
+Corner_3.CornerRadius = UDim.new(0, 9)
+Corner_3.Parent = g["TextButton_1"]
+
+g["Frame_5"] = Instance.new("Frame")
+g["Frame_5"].AnchorPoint = Vector2.new(0, 0.5)
+g["Frame_5"].BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+g["Frame_5"].BorderSizePixel = 0
+g["Frame_5"].Position = UDim2.new(1, -15, 0.5, 0)
+g["Frame_5"].Size = UDim2.new(0, 12, 0, 12)
+g["Frame_5"].Parent = g["TextButton_1"]
+
+local Corner_4 = Instance.new("UICorner")
+Corner_4.CornerRadius = UDim.new(0, 6)
+Corner_4.Parent = g["Frame_5"]
+
+g["Frame_4"] = Instance.new("Frame")
+g["Frame_4"].BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+g["Frame_4"].BorderSizePixel = 0
+g["Frame_4"].Position = UDim2.new(0, 0, 0, 32)
+g["Frame_4"].Size = UDim2.new(1, 0, 0, 1)
+g["Frame_4"].Parent = g["Frame_1"]
+
+g["TextButton_2"] = Instance.new("TextButton")
+g["TextButton_2"].BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+g["TextButton_2"].Position = UDim2.new(0, 10, 0, 40)
+g["TextButton_2"].Size = UDim2.new(0, 170, 0, 34)
+g["TextButton_2"].Font = Enum.Font.GothamBold
+g["TextButton_2"].Text = "RESET NOW"
+g["TextButton_2"].TextColor3 = Color3.fromRGB(15, 15, 15)
+g["TextButton_2"].TextSize = 13
+g["TextButton_2"].Parent = g["Frame_1"]
+
+local Corner_5 = Instance.new("UICorner")
+Corner_5.CornerRadius = UDim.new(0, 8)
+Corner_5.Parent = g["TextButton_2"]
+
+g["Frame_6"] = Instance.new("Frame")
+g["Frame_6"].BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+g["Frame_6"].BorderSizePixel = 0
+g["Frame_6"].Position = UDim2.new(1, -110, 0, 40)
+g["Frame_6"].Size = UDim2.new(0, 100, 0, 34)
+g["Frame_6"].Parent = g["Frame_1"]
+
+local Corner_6 = Instance.new("UICorner")
+Corner_6.CornerRadius = UDim.new(0, 8)
+Corner_6.Parent = g["Frame_6"]
+
+g["TextButton_3"] = Instance.new("TextButton")
+g["TextButton_3"].BackgroundTransparency = 1
+g["TextButton_3"].Size = UDim2.new(1, 0, 1, 0)
+g["TextButton_3"].Font = Enum.Font.GothamBold
+g["TextButton_3"].Text = "F"
+g["TextButton_3"].TextColor3 = Color3.fromRGB(240, 240, 240)
+g["TextButton_3"].TextSize = 14
+g["TextButton_3"].Parent = g["Frame_6"]
+
+g["TextButton_Medusa"] = Instance.new("TextButton")
+g["TextButton_Medusa"].BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+g["TextButton_Medusa"].Position = UDim2.new(0, 10, 0, 80)
+g["TextButton_Medusa"].Size = UDim2.new(0, 280, 0, 24)
+g["TextButton_Medusa"].Font = Enum.Font.GothamBold
+g["TextButton_Medusa"].Text = "MEDUSA AUTO-RESET: ON"
+g["TextButton_Medusa"].TextColor3 = Color3.fromRGB(0, 255, 0)
+g["TextButton_Medusa"].TextSize = 11
+g["TextButton_Medusa"].Parent = g["Frame_1"]
+Instance.new("UICorner", g["TextButton_Medusa"]).CornerRadius = UDim.new(0, 6)
+
+g["TextButton_Die"] = Instance.new("TextButton")
+g["TextButton_Die"].BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+g["TextButton_Die"].Position = UDim2.new(0, 10, 0, 110)
+g["TextButton_Die"].Size = UDim2.new(0, 280, 0, 24)
+g["TextButton_Die"].Font = Enum.Font.GothamBold
+g["TextButton_Die"].Text = "ANTI-DIE: ON"
+g["TextButton_Die"].TextColor3 = Color3.fromRGB(0, 255, 0)
+g["TextButton_Die"].TextSize = 11
+g["TextButton_Die"].Parent = g["Frame_1"]
+Instance.new("UICorner", g["TextButton_Die"]).CornerRadius = UDim.new(0, 6)
+
+g["TextLabel_Info"] = Instance.new("TextLabel")
+g["TextLabel_Info"].BackgroundTransparency = 1
+g["TextLabel_Info"].Position = UDim2.new(0, 10, 0, 138)
+g["TextLabel_Info"].Size = UDim2.new(0, 280, 0, 20)
+g["TextLabel_Info"].Font = Enum.Font.GothamBold
+g["TextLabel_Info"].Text = "If you don't spawn, reset from the game menu"
+g["TextLabel_Info"].TextColor3 = Color3.fromRGB(255, 50, 50)
+g["TextLabel_Info"].TextSize = 10
+g["TextLabel_Info"].Parent = g["Frame_1"]
+
+-- Yuvarlatılmış köşelere tam oturan parametrik yol hesaplaması
+local function getPointOnRoundedRect(s, W, H, R)
+    local pi = math.pi
+    local arcLen = (pi / 2) * R
+    local topLen = W - 2 * R
+    local rightLen = H - 2 * R
+    local bottomLen = W - 2 * R
+    local leftLen = H - 2 * R
+    
+    local p1 = topLen
+    local p2 = p1 + arcLen
+    local p3 = p2 + rightLen
+    local p4 = p3 + arcLen
+    local p5 = p4 + bottomLen
+    local p6 = p5 + arcLen
+    local p7 = p6 + leftLen
+    local totalP = p7 + arcLen
+    
+    s = s % totalP
+    if s < 0 then s = s + totalP end
+    
+    if s <= p1 then
+        return R + s, 0
+    elseif s <= p2 then
+        local ds = s - p1
+        local angle = -pi/2 + (ds / arcLen) * (pi/2)
+        return (W - R) + R * math.cos(angle), R + R * math.sin(angle)
+    elseif s <= p3 then
+        local ds = s - p2
+        return W, R + ds
+    elseif s <= p4 then
+        local ds = s - p3
+        local angle = 0 + (ds / arcLen) * (pi/2)
+        return (W - R) + R * math.cos(angle), (H - R) + R * math.sin(angle)
+    elseif s <= p5 then
+        local ds = s - p4
+        return (W - R) - ds, H
+    elseif s <= p6 then
+        local ds = s - p5
+        local angle = pi/2 + (ds / arcLen) * (pi/2)
+        return R + R * math.cos(angle), (H - R) + R * math.sin(angle)
+    elseif s <= p7 then
+        local ds = s - p6
+        return 0, (H - R) - ds
+    else
+        local ds = s - p7
+        local angle = pi + (ds / arcLen) * (pi/2)
+        return R + R * math.cos(angle), R + R * math.sin(angle)
+    end
+end
+
+-- GUI'nin etrafında kesintisiz, akışkan ve uçları şeffaf çizgilerin Heartbeat animasyonu
+RunService.Heartbeat:Connect(function()
+    if not g["Frame_1"] or not g["Frame_1"].Parent then return end
+    local absPos = g["Frame_1"].AbsolutePosition
+    local absSize = g["Frame_1"].AbsoluteSize
+    local W, H = absSize.X, absSize.Y
+    local R = 12
+    
+    local pi = math.pi
+    local arcLen = (pi / 2) * R
+    local topLen = W - 2 * R
+    local rightLen = H - 2 * R
+    local bottomLen = W - 2 * R
+    local leftLen = H - 2 * R
+    local totalP = topLen + arcLen + rightLen + arcLen + bottomLen + arcLen + leftLen + arcLen
+    
+    local speed = 140
+    local t = tick() * speed
+    local lineTotalSpan = 90
+    
+    local function updateLineSegments(segments, headDist)
+        for i, seg in ipairs(segments) do
+            local u = (i - 1) / (numSegments - 1)
+            local dist = headDist - (u * lineTotalSpan)
+            local x, y = getPointOnRoundedRect(dist, W, H, R)
+            
+            seg.Position = UDim2.new(0, absPos.X + x, 0, absPos.Y + y)
+            
+            -- Uçların şeffaf, ortanın yoğun olması sayesinde tamamen pürüzsüz ve kesintisiz görünüm
+            local transparency = 0.15 + 0.85 * (2 * (u - 0.5))^2
+            seg.BackgroundTransparency = math.clamp(transparency, 0, 1)
+        end
+    end
+    
+    updateLineSegments(line1Segments, t % totalP)
+    updateLineSegments(line2Segments, (t + totalP / 2) % totalP)
+end)
+
+local dragging = false
+local dragStart = nil
+local frameStart = nil
+
+g["Frame_2"].InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        frameStart = g["Frame_1"].Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        g["Frame_1"].Position = UDim2.new(
+            frameStart.X.Scale,
+            frameStart.X.Offset + delta.X,
+            frameStart.Y.Scale,
+            frameStart.Y.Offset + delta.Y
+        )
+    end
+end)
+
+local minimized = false
+local fullSize = UDim2.new(0, 300, 0, 166)
+local minimizedSize = UDim2.new(0, 300, 0, 32)
+
+g["TextButton_1"].MouseButton1Click:Connect(function()
+    minimized = not minimized
+    if minimized then
+        g["Frame_5"].Position = UDim2.new(0, 3, 0.5, 0)
+        g["TextButton_1"].BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+        g["Frame_1"].Size = minimizedSize
+        g["Frame_1"].ClipsDescendants = true
+    else
+        g["Frame_5"].Position = UDim2.new(1, -15, 0.5, 0)
+        g["TextButton_1"].BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        g["Frame_1"].Size = fullSize
+    end
+end)
+
+local isResetting = false
+
+local function doInstantReset()
+    if isResetting then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    
+    isResetting = true
+    
+    local cam = workspace.CurrentCamera
+    local lockedCamCFrame = cam.CFrame
+    
+    cam.CameraType = Enum.CameraType.Scriptable
+    cam.CFrame = lockedCamCFrame
+    
+    local prevAntiDie = antiDieEnabled
+    antiDieEnabled = false
+    
+    RunService:BindToRenderStep("BugraCamLock", Enum.RenderPriority.Camera.Value + 1, function()
+        cam.CameraType = Enum.CameraType.Scriptable
+        cam.CFrame = lockedCamCFrame
+        
+        local activeChar = LocalPlayer.Character
+        local activeHrp = activeChar and activeChar:FindFirstChild("HumanoidRootPart")
+        if activeHrp then
+            activeHrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            activeHrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            activeHrp.CFrame = tpPos
+        end
+    end)
+    
+    local respawnConn
+    respawnConn = LocalPlayer.CharacterAdded:Connect(function(newChar)
+        if respawnConn then respawnConn:Disconnect() end
+        
+        pcall(function()
+            RunService:UnbindFromRenderStep("BugraCamLock")
+        end)
+        
+        local newHum = newChar:WaitForChild("Humanoid", 5)
+        task.wait(0.05)
+        
+        pcall(function()
+            cam.CameraSubject = newHum
+            cam.CameraType = Enum.CameraType.Custom
+        end)
+        
+        antiDieEnabled = prevAntiDie
+        isResetting = false
+    end)
+end
+
+local function triggerInstantReset()
+    g["TextButton_2"].BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+    task.delay(0.12, function()
+        g["TextButton_2"].BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    end)
+    doInstantReset()
+end
+
+g["TextButton_2"].MouseButton1Click:Connect(triggerInstantReset)
+
+local antiDieConn = nil
+local healthConn = nil
+local stateConn = nil
+
+local function setupAntiDie(char)
+    if antiDieConn then antiDieConn:Disconnect() end
+    if healthConn then healthConn:Disconnect() end
+    if stateConn then stateConn:Disconnect() end
+    
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hum then return end
+    
+    -- Ölüm state'ini kapatarak karakterin ölmesini engelle
+    pcall(function()
+        hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+    end)
+    
+    -- Health değeri düşer düşmez anında 100 yap
+    healthConn = hum:GetPropertyChangedSignal("Health"):Connect(function()
+        if antiDieEnabled and not isResetting and hum.Health < hum.MaxHealth then
+            hum.Health = hum.MaxHealth
+        end
+    end)
+    
+    -- Heartbeat ile sürekli 100'de sabit tut
+    antiDieConn = RunService.Heartbeat:Connect(function()
+        if antiDieEnabled and hum and hum.Parent and not isResetting then
+            pcall(function()
+                if hum.Health < hum.MaxHealth then
+                    hum.Health = hum.MaxHealth
+                end
+            end)
+        end
+    end)
+end
+
+local function onAnchorChanged(part)
+    return part:GetPropertyChangedSignal("Anchored"):Connect(function()
+        if medusaResetEnabled and part.Anchored and not isResetting then
+            triggerInstantReset()
+        end
+    end)
+end
+
+local function setupMedusaWatcher(char)
+    for _, c in pairs(anchor_conns) do
+        pcall(function() c:Disconnect() end)
+    end
+    anchor_conns = {}
+
+    if not char or not medusaResetEnabled then return end
+
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table.insert(anchor_conns, onAnchorChanged(part))
+        end
+    end
+
+    table.insert(anchor_conns, char.DescendantAdded:Connect(function(part)
+        if part:IsA("BasePart") then
+            table.insert(anchor_conns, onAnchorChanged(part))
+        end
+    end))
+end
+
+local function disconnectMedusaWatcher()
+    for _, c in pairs(anchor_conns) do
+        pcall(function() c:Disconnect() end)
+    end
+    anchor_conns = {}
+end
+
+g["TextButton_Medusa"].MouseButton1Click:Connect(function()
+    medusaResetEnabled = not medusaResetEnabled
+    if medusaResetEnabled then
+        g["TextButton_Medusa"].Text = "MEDUSA AUTO-RESET: ON"
+        g["TextButton_Medusa"].TextColor3 = Color3.fromRGB(0, 255, 0)
+        g["TextButton_Medusa"].BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+        if LocalPlayer.Character then setupMedusaWatcher(LocalPlayer.Character) end
+    else
+        g["TextButton_Medusa"].Text = "MEDUSA AUTO-RESET: OFF"
+        g["TextButton_Medusa"].TextColor3 = Color3.fromRGB(180, 180, 180)
+        g["TextButton_Medusa"].BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        disconnectMedusaWatcher()
+    end
+end)
+
+g["TextButton_Die"].MouseButton1Click:Connect(function()
+    antiDieEnabled = not antiDieEnabled
+    if antiDieEnabled then
+        g["TextButton_Die"].Text = "ANTI-DIE: ON"
+        g["TextButton_Die"].TextColor3 = Color3.fromRGB(0, 255, 0)
+        g["TextButton_Die"].BackgroundColor3 = Color3.fromRGB(20, 50, 20)
+        if LocalPlayer.Character then setupAntiDie(LocalPlayer.Character) end
+    else
+        g["TextButton_Die"].Text = "ANTI-DIE: OFF"
+        g["TextButton_Die"].TextColor3 = Color3.fromRGB(180, 180, 180)
+        g["TextButton_Die"].BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        if antiDieConn then antiDieConn:Disconnect() end
+        if healthConn then healthConn:Disconnect() end
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(0.3)
+    if medusaResetEnabled then setupMedusaWatcher(char) end
+    if antiDieEnabled then setupAntiDie(char) end
+end)
+
+if LocalPlayer.Character then
+    if medusaResetEnabled then setupMedusaWatcher(LocalPlayer.Character) end
+    if antiDieEnabled then setupAntiDie(LocalPlayer.Character) end
+end
+
+g["TextButton_3"].MouseButton1Click:Connect(function()
+    if isBinding then return end
+    isBinding = true
+    g["TextButton_3"].Text = ".."
+    g["TextButton_3"].TextColor3 = Color3.fromRGB(255, 255, 0)
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if isBinding then
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            currentBind = input.KeyCode
+            g["TextButton_3"].Text = currentBind.Name
+            g["TextButton_3"].TextColor3 = Color3.fromRGB(240, 240, 240)
+            isBinding = false
+        end
+        return
+    end
+    
+    if input.KeyCode == currentBind and not isBinding then
+        triggerInstantReset()
+    end
+end)

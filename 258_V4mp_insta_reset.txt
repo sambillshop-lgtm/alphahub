@@ -1,0 +1,287 @@
+    Fully Reconstructed Logger.lua
+    Original author: @Bhmatrades on discord
+    Function: Logs all API calls, instance creations, HTTP requests, etc. to logged.txt
+    UI: Loaded remotely from Luarmor (see bottom)
+]]
+print("Made by @Bhmatrades on discord")
+writefile('logged.txt', '\nlocal Players = game:GetService("Players")\nlocal GameSettings = game:GetService("GameSettings")\nlocal LocalizationService = game:GetService("LocalizationService")\nlocal WebSocketService = game:GetService("WebSocketService")\nlocal WebSocketClient = game:GetService("WebSocketClient")\nlocal HttpService = game:GetService("HttpService")\nlocal UserInputService = game:GetService("UserInputService")\nlocal RunService = game:GetService("RunService")\nlocal TeleportService = game:GetService("TeleportService")\n')
+local function isUILibrary()
+    local trace = debug.traceback():lower():gsub('%s+', '')
+    return trace:find('windui') or trace:find('rayfield') or trace:find('obsidian') or
+           trace:find('interface') or trace:find('luna') or trace:find('fluent') or trace:find('drday')
+end
+local function formatLog(text)
+    if type(text) ~= 'string' then
+        error('Bad argument #1 to formatLog "string" expected, got: ' .. type(text))
+    end
+    return text:gsub('table: ', ''):gsub('function: ', ''):gsub('Ugc', 'game'):gsub('\n', ''):gsub('%s%s+', ';'):gsub('""', ''):gsub('Data Ping', 'DataPing'):gsub('Workspace', 'workspace'):gsub('game.Players', 'Players'):gsub('Teleport Service', 'TeleportService'):gsub('Run Service', 'RunService'):gsub('HttpGetAsync', 'HttpGet'):gsub('"', "'")
+end
+local function formatTable(tbl, depth)
+    depth = depth or 0
+    local res = ''
+    local first = true
+    if depth > 5 then return 'too big to display' end
+    if type(tbl) ~= 'table' then
+        res = '"' .. tostring(tbl) .. '"'
+        if res == '"nil"' then res = '' end
+        return res
+    end
+    for k, v in pairs(tbl) do
+        if not first then res = res .. ', ' end
+        first = false
+        if type(k) == 'string' then res = res .. k .. ' = ' end
+        if type(k) == 'table' then
+            res = res .. formatTable(v, depth + 1)
+        else
+            res = res .. tostring(v)
+        end
+    end
+    return res .. ''
+end
+local trackedInstances = {}
+local loggedKeys = {}
+local function makeKey(fem, boy) return fem .. ';' .. boy end
+local lastLog = ''
+local lastUpval = ''
+local lastFormatted = ''
+local logLineCount = 1
+local function writeLog(upvalue, ...)
+    upvalue = upvalue or 'nil'
+    upvalue = formatLog(tostring(upvalue))
+    if #upvalue > 100 then
+        local len = #upvalue
+        upvalue = upvalue:sub(1, 50) .. '... (' .. len .. ' characters remaining)'
+    end
+    local formatted = formatLog(tostring(...))
+    local logged = formatted
+    if logged == lastLog then return end
+    if formatted == lastFormatted and upvalue == lastUpval then return end
+    local key = makeKey(logged, upvalue)
+    if loggedKeys[key] then return end
+    if upvalue:find('Signal') then
+        logged = formatted .. ':Connect(function(...)end)'
+    end
+    if logged:find('game:HttpGet') then
+        logged = 'loadstring(' .. formatted .. ')()'
+    end
+    if logLineCount > 36000 then
+        game:shutdown()
+        return
+    end
+    if logged:find('IsA') then return end
+    logLineCount = logLineCount + 1
+    lastLog = logged
+    lastUpval = upvalue
+    lastFormatted = formatted
+    loggedKeys[key] = true
+    appendfile('logged.txt', logged .. '\n')
+end
+function GlobalScan()
+    for k, v in pairs(_G) do
+        writeLog('_G Scan', '_G.' .. k .. ' = ' .. formatTable(v))
+    end
+end
+function GenvScan()
+    for k, v in pairs(getgenv()) do
+        writeLog('getgenv Scan', 'getgenv().' .. k .. ' = ' .. formatTable(v))
+    end
+end
+local originalSetFFlag = clonefunction(setfflag)
+setfflag = newcclosure(function(flag, state)
+    local ret = originalSetFFlag(flag, state)
+    writeLog(ret, 'setfflag("' .. flag .. '", "' .. state .. '")')
+    return ret
+end)
+if http and http.request then
+    setreadonly(http, false)
+    http.request = nil
+    setreadonly(http, false)
+end
+local originalRequest = request
+request = newcclosure(function(data)
+    local ret = originalRequest(data)
+    local bodyStr = data.Body
+    if type(data.Body) == 'string' then
+        if data.Body:sub(1, 1) == '{' and data.Body:sub(-1) == '}' then
+            bodyStr = data.Body
+        else
+            bodyStr = '"' .. data.Body .. '"'
+        end
+    elseif type(data.Body) == 'table' then
+        bodyStr = 'game:GetService("HttpService"):JSONEncode(' .. formatTable(data.Body) .. ')'
+    else
+        bodyStr = tostring(data.Body)
+    end
+    local headersStr = '{'
+    local first = true
+    if data.Headers then
+        for k, v in pairs(data.Headers) do
+            if not first then headersStr = headersStr .. ', ' end
+            first = false
+            headersStr = headersStr .. '["' .. k .. '"] = "' .. v .. '"'
+        end
+    end
+    headersStr = headersStr .. '}'
+    writeLog(ret, 'request({\n Url = "' .. data.Url .. '",\n Method = "' .. data.Method .. '",\n Body = ' .. bodyStr .. ',\n Headers = ' .. headersStr .. '\n})')
+    return ret
+end)
+local originalLoadstring = clonefunction(loadstring)
+hookfunction(loadstring, function(str)
+    if true then
+        writefile(math.random(1, 999) .. '.txt', str)
+        warn('xd')
+    end
+    return originalLoadstring(str)
+end)
+local wss = game:GetService('WebSocketService')
+local originalWSClient = clonefunction(wss.CreateClient)
+hookfunction(game.WebSocketService.CreateClient, function(_, url)
+    warn('WSS')
+    if not url:lower():find('luarmor') then
+        writeLog('idk i found luarmor use this xd', 'WebsocketService:CreateClient("WebSocketService","' .. url .. '")')
+    end
+    return originalWSClient(_, url)
+end)
+Instance = Instance or {}
+local originalInstanceNew = clonefunction(Instance.new)
+setreadonly(Instance, false)
+Instance.new = newcclosure(function(className, parent)
+    if checkcaller() and not isUILibrary() then
+        local ret = originalInstanceNew(className, parent)
+        local info = debug.getinfo(2, 'Sl')
+        if info and info.source:find('@') then
+            writeLog(ret, 'local a = Instance.new("' .. className .. '")')
+        else
+            local varName = tostring(className)
+            trackedInstances[ret] = varName
+            writeLog(ret, 'local ' .. varName .. ' = Instance.new("' .. className .. '")')
+        end
+        return ret
+    end
+    return originalInstanceNew(className, parent)
+end)
+local mt = getrawmetatable(game)
+local originalIndex = clonefunction(mt.__index)
+local originalNamecall = clonefunction(mt.__namecall)
+local originalNewIndex = clonefunction(mt.__newindex)
+hookmetamethod(game, '__index', newcclosure(function(self, key, ...)
+    if checkcaller() and not isUILibrary() then
+        local ret = originalIndex(self, key, ...)
+        local formatted = formatTable(...)
+        if key == 'Character' then
+            writeLog('LocalPlayer.Character', self:GetFullName() .. '.' .. key)
+            return ret
+        end
+        local skipKeys = {
+            GetService = true, HttpGet = true, JSONDecode = true, CoreGui = true,
+            JSONEncode = true, WaitForChild = true, FindFirstChild = true, DescendantRemoving = true
+        }
+        if skipKeys[key] then return ret end
+        if key == 'JobId' or key == 'PlaceId' then
+            writeLog('game.' .. key, self:GetFullName() .. '.' .. key)
+            return ret
+        end
+        if tostring(ret):find('function:') then
+            writeLog(ret, self:GetFullName() .. ':' .. key .. '(' .. formatted .. ')')
+            return ret
+        end
+        writeLog(ret, self:GetFullName() .. '.' .. key)
+        return ret
+    end
+    return originalIndex(self, key, ...)
+end))
+hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+    if checkcaller() and not isUILibrary() and getnamecallmethod() ~= 'GetFullName' then
+        local instanceStr = tostring(self)
+        if type(instanceStr) == 'Instance' then
+            instanceStr = originalNamecall(instanceStr, 'GetFullName')
+        end
+        local ret = originalNamecall(self, ...)
+        local args = {...}
+        local formatted = formatTable(args)
+        local method = getnamecallmethod()
+        if method == 'GetService' then
+            writeLog(ret, 'game:GetService("' .. args[1] .. '")')
+            return ret
+        end
+        if method == 'WaitForChild' then
+            writeLog(ret, instanceStr .. ':WaitForChild("' .. args[1] .. '")')
+            return ret
+        end
+        if method == 'FindFirstChild' then
+            writeLog(ret, instanceStr .. ':FindFirstChild("' .. args[1] .. '")')
+            return ret
+        end
+        if method == 'HttpGet' then
+            writeLog(ret, 'game:HttpGet("' .. args[1] .. '", true)')
+            return ret
+        end
+        writeLog(ret, instanceStr .. ':' .. method .. '("' .. formatted .. '")')
+        return ret
+    end
+    return originalNamecall(self, ...)
+end))
+hookmetamethod(game, '__newindex', newcclosure(function(self, key, value)
+    if checkcaller() and not isUILibrary() then
+        local ret = originalNewIndex(self, key, value)
+        local cached = trackedInstances[self]
+        local keyStr = tostring(key)
+        local valType = tostring(typeof(value)) or 'Unknown'
+        local valStr = tostring(value)
+        local prefix = cached and (cached .. '.') or 'a.'
+        if keyStr then
+            if valType == 'Instance' then
+                writeLog(ret, prefix .. keyStr .. ' = ' .. value:GetFullName())
+            elseif valType == 'number' or valType == 'boolean' then
+                writeLog(ret, prefix .. keyStr .. ' = ' .. valStr)
+            elseif valType == 'string' then
+                writeLog(ret, prefix .. keyStr .. ' = "' .. valStr .. '"')
+            elseif valType == 'Color3' then
+                writeLog(ret, prefix .. keyStr .. ' = Color3.new(' .. valStr .. ')')
+            elseif valType == 'CFrame' then
+                writeLog(ret, prefix .. keyStr .. ' = CFrame.new(' .. valStr .. ')')
+            elseif valType == 'Vector3' then
+                writeLog(ret, prefix .. keyStr .. ' = Vector3.new(' .. valStr .. ')')
+            elseif valType == 'UDim2' then
+                writeLog(ret, prefix .. keyStr .. ' = UDim2.new(' .. valStr:gsub('{', ''):gsub('}', '') .. ')')
+            elseif valType == 'Vector2' then
+                writeLog(ret, prefix .. keyStr .. ' = Vector2.new(' .. valStr .. ')')
+            elseif valType == 'UDim' then
+                writeLog(ret, prefix .. keyStr .. ' = UDim.new(' .. valStr .. ')')
+            elseif valType == 'EnumItem' then
+                writeLog(ret, prefix .. keyStr .. ' = ' .. valStr)
+            elseif valType == 'ColorSequence' then
+                writeLog(ret, prefix .. keyStr .. ' = ColorSequence.new(' .. valStr:gsub('%s+', ',') .. ')')
+            else
+                writeLog(ret, prefix .. keyStr .. ' = [' .. valType .. '] ' .. valStr)
+            end
+        end
+        return ret
+    end
+    return originalNewIndex(self, key, value)
+end))
+game.DescendantRemoving:Connect(function(inst)
+    trackedInstances[inst] = nil
+end)
+local originalPrint = print
+print = newcclosure(function(...)
+    if checkcaller() and not isUILibrary() then
+        local args = {...}
+        local formattedArgs = {}
+        for i = 1, select('#', ...) do
+            local v = args[i]
+            if type(v) == 'table' then
+                formattedArgs[i] = formatTable(v)
+            else
+                formattedArgs[i] = tostring(v)
+            end
+        end
+        local ret = originalPrint(...)
+        writeLog(ret, 'print("' .. table.concat(formattedArgs, '\t') .. '")')
+        return ret
+    end
+    return originalPrint(...)
+end)
+print("[Logger] Executing user loadstring...")
+print("[Logger] All API calls will be logged to logged.txt")
+loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/8445161a4a689c7af803bdb093a0aa32.lua"))()

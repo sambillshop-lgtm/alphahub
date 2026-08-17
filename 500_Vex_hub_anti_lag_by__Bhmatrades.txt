@@ -1,0 +1,242 @@
+-- [[ DEOBFUSCATED BY @Bhmatrades]] --
+-- VEX Anti-Lagger - Cleaned & Reconstructed
+
+-- // [1] SERVICES //
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService") -- For potential future use
+
+local LocalPlayer = Players.LocalPlayer
+
+-- // [2] CONFIGURATION (EASY TO EDIT) //
+local CONFIG = {
+    GUI = {
+        ScreenGuiName = "AntiLaggerGUI",
+        MainFrameName = "Frame",           -- Top bar / main container
+        TitleLabelName = "TextLabel",      -- "ANTI LAGGER" title (inside inner frame)
+        ToggleButtonName = "TextButton",   -- The main toggle button
+    },
+    
+    Colors = {
+        MainBackground = Color3.fromRGB(12, 12, 18),
+        HeaderBackground = Color3.fromRGB(18, 18, 28),
+        ButtonBackground = Color3.fromRGB(18, 18, 28),
+        AccentOff = Color3.fromRGB(180, 40, 40),
+        AccentOn = Color3.fromRGB(0, 220, 80),
+        Text = Color3.fromRGB(220, 220, 220),
+        TitleText = Color3.fromRGB(220, 40, 40),
+    },
+    
+    AntiLagSettings = {
+        GlobalShadows = false,
+        FogEnd = 9000000000,
+        Brightness = 1,
+        EnvironmentDiffuseScale = 0,
+        EnvironmentSpecularScale = 0,
+        Material = Enum.Material.Plastic,
+        Reflectance = 0,
+        CastShadow = false,
+        Transparency = 1, -- for certain effects
+    }
+}
+
+-- // [3] OBJECT REFERENCES //
+local ScreenGui
+local MainFrame
+local HeaderFrame
+local TitleLabel
+local ToggleButton
+local ToggleLabel -- Label inside the toggle button ("ANTI LAG: OFF/ON")
+
+local IsAntiLagEnabled = false
+local Connections = {}
+
+-- // [4] UTILITY FUNCTIONS //
+local function applyAntiLag()
+    -- Lighting optimizations
+    local lightingSettings = CONFIG.AntiLagSettings
+    
+    Lighting.GlobalShadows = lightingSettings.GlobalShadows
+    Lighting.FogEnd = lightingSettings.FogEnd
+    Lighting.Brightness = lightingSettings.Brightness
+    Lighting.EnvironmentDiffuseScale = lightingSettings.EnvironmentDiffuseScale
+    Lighting.EnvironmentSpecularScale = lightingSettings.EnvironmentSpecularScale
+    
+    -- Process existing descendants
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        pcall(function()
+            if obj:IsA("BasePart") or obj:IsA("MeshPart") or obj:IsA("UnionOperation") then
+                obj.Material = lightingSettings.Material
+                obj.Reflectance = lightingSettings.Reflectance
+                if obj:FindFirstChild("Mesh") or obj:IsA("MeshPart") then
+                    obj.CastShadow = lightingSettings.CastShadow
+                end
+                -- Optional: high transparency on certain decorative parts (comment out if too aggressive)
+                -- if not obj:FindFirstChildWhichIsA("Decal") and not obj.Anchored then
+                --     obj.Transparency = lightingSettings.Transparency
+                -- end
+            elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Explosion") then
+                obj.Enabled = false
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Transparency = 1
+            end
+        end)
+    end
+    
+    -- Disable unnecessary effects in Lighting
+    for _, child in ipairs(Lighting:GetChildren()) do
+        pcall(function()
+            if child:IsA("BloomEffect") or child:IsA("BlurEffect") or child:IsA("ColorCorrectionEffect") or 
+               child:IsA("DepthOfFieldEffect") or child:IsA("SunRaysEffect") then
+                child.Enabled = false
+            end
+        end)
+    end
+end
+
+local function disableAntiLag()
+    -- Reset some basic settings (full reset would require storing original values - kept simple)
+    Lighting.GlobalShadows = true
+    Lighting.FogEnd = 100000 -- reasonable default
+    -- Other resets can be added here if needed
+end
+
+local function toggleAntiLag()
+    IsAntiLagEnabled = not IsAntiLagEnabled
+    
+    if ToggleLabel then
+        if IsAntiLagEnabled then
+            ToggleLabel.Text = "ANTI LAG: ON"
+            ToggleLabel.TextColor3 = CONFIG.Colors.AccentOn
+            -- Update stroke if present (assumed UIStroke on button)
+            local stroke = ToggleButton:FindFirstChildOfClass("UIStroke")
+            if stroke then
+                stroke.Color = CONFIG.Colors.AccentOn
+            end
+        else
+            ToggleLabel.Text = "ANTI LAG: OFF"
+            ToggleLabel.TextColor3 = CONFIG.Colors.AccentOff
+            local stroke = ToggleButton:FindFirstChildOfClass("UIStroke")
+            if stroke then
+                stroke.Color = CONFIG.Colors.AccentOff
+            end
+        end
+    end
+    
+    if IsAntiLagEnabled then
+        applyAntiLag()
+        -- Optional: connect DescendantAdded for dynamic objects
+        if not Connections.DescendantAdded then
+            Connections.DescendantAdded = Workspace.DescendantAdded:Connect(function(desc)
+                if IsAntiLagEnabled then
+                    pcall(function()
+                        if desc:IsA("BasePart") or desc:IsA("MeshPart") then
+                            desc.Material = CONFIG.AntiLagSettings.Material
+                            desc.Reflectance = CONFIG.AntiLagSettings.Reflectance
+                            desc.CastShadow = CONFIG.AntiLagSettings.CastShadow
+                        elseif desc:IsA("ParticleEmitter") or desc:IsA("Trail") then
+                            desc.Enabled = false
+                        end
+                    end)
+                end
+            end)
+        end
+    else
+        disableAntiLag()
+        if Connections.DescendantAdded then
+            Connections.DescendantAdded:Disconnect()
+            Connections.DescendantAdded = nil
+        end
+    end
+end
+
+-- // [5] GUI HANDLING //
+local function setupGUI()
+    ScreenGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild(CONFIG.GUI.ScreenGuiName)
+    if not ScreenGui then
+        warn("[AntiLagger] Could not find ScreenGui: " .. CONFIG.GUI.ScreenGuiName)
+        return false
+    end
+    
+    MainFrame = ScreenGui:FindFirstChild(CONFIG.GUI.MainFrameName, true) -- recursive search in case nested
+    if not MainFrame then
+        warn("[AntiLagger] Could not find MainFrame")
+        return false
+    end
+    
+    -- Find inner elements
+    HeaderFrame = MainFrame:FindFirstChildOfClass("Frame") -- assuming first frame is header
+    TitleLabel = HeaderFrame and HeaderFrame:FindFirstChild(CONFIG.GUI.TitleLabelName) or MainFrame:FindFirstChild(CONFIG.GUI.TitleLabelName, true)
+    
+    ToggleButton = MainFrame:FindFirstChild(CONFIG.GUI.ToggleButtonName, true)
+    if ToggleButton then
+        ToggleLabel = ToggleButton:FindFirstChildOfClass("TextLabel")
+    end
+    
+    -- Make draggable (if not already)
+    if MainFrame:IsA("Frame") or MainFrame:IsA("ImageButton") then
+        MainFrame.Active = true
+        MainFrame.Draggable = true
+    end
+    
+    -- Clean up any duplicate connections from trace
+    for _, conn in ipairs(Connections) do
+        if typeof(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
+        end
+    end
+    table.clear(Connections)
+    
+    print("✅ ANTI LAGGER GUI LOADED SUCCESSFULLY")
+    return true
+end
+
+-- // [6] FUNCTIONALITY //
+local function connectButtonEvents()
+    if not ToggleButton then return end
+    
+    -- Mouse hover effects (optional visual polish)
+    ToggleButton.MouseEnter:Connect(function()
+        if ToggleButton:FindFirstChildOfClass("UIStroke") then
+            ToggleButton:FindFirstChildOfClass("UIStroke").Transparency = 0
+        end
+    end)
+    
+    ToggleButton.MouseLeave:Connect(function()
+        if ToggleButton:FindFirstChildOfClass("UIStroke") then
+            ToggleButton:FindFirstChildOfClass("UIStroke").Transparency = 0.4
+        end
+    end)
+    
+    -- Main toggle
+    ToggleButton.MouseButton1Click:Connect(function()
+        toggleAntiLag()
+    end)
+end
+
+-- // [7] INITIALIZATION //
+local function initialize()
+    -- Load external anti-lagger if present in original (kept as optional)
+    pcall(function()
+        loadstring(game:HttpGet('https://raw.githubusercontent.com/sid0089/VEX-ANTILAGGER/refs/heads/main/VEX%20ANTILAGGER'))()
+    end)
+    
+    local guiSuccess = setupGUI()
+    if guiSuccess then
+        connectButtonEvents()
+        
+        -- Initial state: OFF
+        if ToggleLabel then
+            ToggleLabel.Text = "ANTI LAG: OFF"
+            ToggleLabel.TextColor3 = CONFIG.Colors.AccentOff
+        end
+        
+        -- Optional: auto-apply on start? (set to false by default)
+        -- IsAntiLagEnabled = true
+        -- toggleAntiLag()
+    end
+end
+
+initialize()
