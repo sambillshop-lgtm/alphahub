@@ -1,0 +1,350 @@
+-- deobf by prince https://discord.gg/TBBAUZu8cW
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local Packages = ReplicatedStorage:WaitForChild("Packages")
+local Net = Packages:WaitForChild("Net")
+
+local function cleanupOldUIs()
+    local oldUIs = {"ACECodeSniperUI", "AutoTypeCodesUI", "ACEPaste", "NineAutoRedeemUI", "NineHubUI"}
+    for _, uiName in ipairs(oldUIs) do
+        local ui = CoreGui:FindFirstChild(uiName)
+        if ui then ui:Destroy() end
+    end
+end
+
+cleanupOldUIs()
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "NineHubUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999
+ScreenGui.Parent = CoreGui
+
+local ToastFrame = Instance.new("Frame")
+ToastFrame.Name = "Toast"
+ToastFrame.Size = UDim2.fromOffset(400, 42)
+ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
+ToastFrame.Position = UDim2.new(0.5, 0, 0, -50)
+ToastFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+ToastFrame.BorderSizePixel = 0
+ToastFrame.BackgroundTransparency = 1
+ToastFrame.ZIndex = 100
+ToastFrame.Parent = ScreenGui
+
+local ToastCorner = Instance.new("UICorner")
+ToastCorner.CornerRadius = UDim.new(0, 8)
+ToastCorner.Parent = ToastFrame
+
+local ToastStroke = Instance.new("UIStroke")
+ToastStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ToastStroke.Color = Color3.fromRGB(130, 60, 200)
+ToastStroke.Thickness = 1
+ToastStroke.Transparency = 1
+ToastStroke.Parent = ToastFrame
+
+local ToastText = Instance.new("TextLabel")
+ToastText.Name = "Text"
+ToastText.Size = UDim2.new(1, -16, 1, 0)
+ToastText.Position = UDim2.fromOffset(8, 0)
+ToastText.BackgroundTransparency = 1
+ToastText.Text = ""
+ToastText.TextSize = 13
+ToastText.TextColor3 = Color3.fromRGB(240, 240, 240)
+ToastText.Font = Enum.Font.FredokaOne
+ToastText.TextXAlignment = Enum.TextXAlignment.Center
+ToastText.TextYAlignment = Enum.TextYAlignment.Center
+ToastText.TextTransparency = 1
+ToastText.ZIndex = 101
+ToastText.Parent = ToastFrame
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "Window"
+MainFrame.Size = UDim2.fromOffset(330, 255)
+MainFrame.Position = UDim2.new(0, 8, 0, 8)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 10)
+MainCorner.Parent = MainFrame
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MainStroke.Color = Color3.fromRGB(130, 60, 200)
+MainStroke.Thickness = 2
+MainStroke.Transparency = 0.2
+MainStroke.Parent = MainFrame
+
+local UIScale = Instance.new("UIScale")
+UIScale.Name = "InterfaceScale"
+UIScale.Scale = 0.92
+UIScale.Parent = MainFrame
+
+local HeaderFrame = Instance.new("Frame")
+HeaderFrame.Name = "Header"
+HeaderFrame.Size = UDim2.new(1, 0, 0, 64)
+HeaderFrame.BackgroundTransparency = 1
+HeaderFrame.Active = true
+HeaderFrame.ZIndex = 3
+HeaderFrame.Parent = MainFrame
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Name = "Title"
+TitleLabel.Size = UDim2.fromOffset(180, 25)
+TitleLabel.Position = UDim2.fromOffset(17, 17)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Nine Auto Redeem"
+TitleLabel.TextSize = 15
+TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+TitleLabel.Font = Enum.Font.FredokaOne
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = HeaderFrame
+
+local SettingsButton = Instance.new("TextButton")
+SettingsButton.Name = "SettingsButton"
+SettingsButton.Size = UDim2.fromOffset(24, 24)
+SettingsButton.Position = UDim2.new(1, -122, 0, 18)
+SettingsButton.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+SettingsButton.BorderSizePixel = 0
+SettingsButton.AutoButtonColor = false
+SettingsButton.Text = "⚙"
+SettingsButton.TextColor3 = Color3.fromRGB(240, 240, 240)
+SettingsButton.Font = Enum.Font.FredokaOne
+SettingsButton.ZIndex = 5
+SettingsButton.Parent = HeaderFrame
+
+Instance.new("UICorner", SettingsButton).CornerRadius = UDim.new(0, 8)
+local SettingsStroke = Instance.new("UIStroke", SettingsButton)
+SettingsStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+SettingsStroke.Color = Color3.fromRGB(130, 60, 200)
+SettingsStroke.Thickness = 1
+SettingsStroke.Transparency = 0.4
+
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Size = UDim2.fromOffset(24, 24)
+MinimizeButton.Position = UDim2.new(1, -94, 0, 18)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.AutoButtonColor = false
+MinimizeButton.Text = "-"
+MinimizeButton.TextColor3 = Color3.fromRGB(240, 240, 240)
+MinimizeButton.Font = Enum.Font.FredokaOne
+MinimizeButton.ZIndex = 5
+MinimizeButton.Parent = HeaderFrame
+
+Instance.new("UICorner", MinimizeButton).CornerRadius = UDim.new(0, 8)
+local MinStroke = Instance.new("UIStroke", MinimizeButton)
+MinStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+MinStroke.Color = Color3.fromRGB(130, 60, 200)
+MinStroke.Thickness = 1
+MinStroke.Transparency = 0.4
+
+local SettingsContainer = Instance.new("Frame")
+SettingsContainer.Name = "SettingsContainer"
+SettingsContainer.Size = UDim2.new(1, 0, 1, -64)
+SettingsContainer.Position = UDim2.fromOffset(0, 64)
+SettingsContainer.BackgroundTransparency = 1
+SettingsContainer.ClipsDescendants = true
+SettingsContainer.Parent = MainFrame
+
+MinimizeButton.MouseButton1Click:Connect(function()
+    MinimizeButton.Text = "+"
+    local tween = TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(330, 64)})
+    tween.Completed:Connect(function() SettingsContainer.Visible = false end)
+    tween:Play()
+end)
+
+local SizePanel = Instance.new("Frame")
+SizePanel.Name = "SizePanel"
+SizePanel.Size = UDim2.fromOffset(180, 110)
+SizePanel.AnchorPoint = Vector2.new(1, 0)
+SizePanel.Position = UDim2.new(0, -8, 0, 0)
+SizePanel.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+SizePanel.BorderSizePixel = 0
+SizePanel.Visible = false
+SizePanel.ZIndex = 20
+SizePanel.Parent = MainFrame
+
+Instance.new("UICorner", SizePanel).CornerRadius = UDim.new(0, 10)
+local SizePanelStroke = Instance.new("UIStroke", SizePanel)
+SizePanelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+SizePanelStroke.Color = Color3.fromRGB(130, 60, 200)
+SizePanelStroke.Thickness = 2
+SizePanelStroke.Transparency = 0.2
+
+local SizeTitle = Instance.new("TextLabel", SizePanel)
+SizeTitle.Name = "Title"
+SizeTitle.Size = UDim2.new(1, -16, 0, 24)
+SizeTitle.Position = UDim2.fromOffset(10, 8)
+SizeTitle.BackgroundTransparency = 1
+SizeTitle.Text = "UI Size"
+SizeTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+SizeTitle.Font = Enum.Font.FredokaOne
+SizeTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+local ValueLabel = Instance.new("TextLabel", SizePanel)
+ValueLabel.Name = "ValueLabel"
+ValueLabel.Size = UDim2.new(0, 50, 0, 24)
+ValueLabel.Position = UDim2.new(1, -60, 0, 8)
+ValueLabel.BackgroundTransparency = 1
+ValueLabel.Text = string.format("%.2f", UIScale.Scale) .. "x"
+ValueLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+ValueLabel.Font = Enum.Font.FredokaOne
+ValueLabel.TextXAlignment = Enum.TextXAlignment.Right
+
+local DecreaseBtn = Instance.new("TextButton", SizePanel)
+DecreaseBtn.Name = "DecreaseBtn"
+DecreaseBtn.Size = UDim2.fromOffset(45, 30)
+DecreaseBtn.Position = UDim2.new(0, 10, 0, 40)
+DecreaseBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+DecreaseBtn.Text = "-"
+DecreaseBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+Instance.new("UICorner", DecreaseBtn).CornerRadius = UDim.new(0, 8)
+
+local ResetBtn = Instance.new("TextButton", SizePanel)
+ResetBtn.Name = "ResetSizeBtn"
+ResetBtn.Size = UDim2.fromOffset(60, 30)
+ResetBtn.Position = UDim2.new(0.5, -30, 0, 40)
+ResetBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+ResetBtn.Text = "Reset"
+ResetBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+Instance.new("UICorner", ResetBtn).CornerRadius = UDim.new(0, 8)
+
+local IncreaseBtn = Instance.new("TextButton", SizePanel)
+IncreaseBtn.Name = "IncreaseBtn"
+IncreaseBtn.Size = UDim2.fromOffset(45, 30)
+IncreaseBtn.Position = UDim2.new(1, -55, 0, 40)
+IncreaseBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+IncreaseBtn.Text = "+"
+IncreaseBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+Instance.new("UICorner", IncreaseBtn).CornerRadius = UDim.new(0, 8)
+
+DecreaseBtn.MouseButton1Click:Connect(function() UIScale.Scale = UIScale.Scale - 0.05 end)
+IncreaseBtn.MouseButton1Click:Connect(function() UIScale.Scale = UIScale.Scale + 0.05 end)
+ResetBtn.MouseButton1Click:Connect(function()
+    UIScale.Scale = 0.92
+    local config = {retypeInvalid = false, uiScale = 0.92, riddleSolver = false, autoSubmit = true, submitAfter = 3, codeSniper = true}
+    writefile("nine_auto_redeem_config.json", HttpService:JSONEncode(config))
+    ValueLabel.Text = string.format("%.2f", UIScale.Scale) .. "x"
+end)
+
+local CloseBtn = Instance.new("TextButton", SizePanel)
+CloseBtn.Name = "CloseBtn"
+CloseBtn.Size = UDim2.new(1, -20, 0, 24)
+CloseBtn.Position = UDim2.new(0, 10, 1, -32)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 220)
+CloseBtn.Text = "Close"
+CloseBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 8)
+CloseBtn.MouseButton1Click:Connect(function() SizePanel.Visible = false end)
+
+SettingsButton.MouseButton1Click:Connect(function() SizePanel.Visible = not SizePanel.Visible end)
+
+local AutoWriteBtn = Instance.new("TextButton", HeaderFrame)
+AutoWriteBtn.Name = "AutoWrite"
+AutoWriteBtn.Size = UDim2.fromOffset(47, 24)
+AutoWriteBtn.Position = UDim2.new(1, -64, 0, 18)
+AutoWriteBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 220)
+AutoWriteBtn.Text = ""
+Instance.new("UICorner", AutoWriteBtn).CornerRadius = UDim.new(0, 12)
+
+local Knob = Instance.new("Frame", AutoWriteBtn)
+Knob.Name = "Knob"
+Knob.Size = UDim2.fromOffset(20, 20)
+Knob.Position = UDim2.new(1, -22, 0.5, -10)
+Knob.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+Instance.new("UICorner", Knob).CornerRadius = UDim.new(0, 10)
+
+AutoWriteBtn.MouseButton1Click:Connect(function()
+    local config = {retypeInvalid = false, uiScale = 0.92, riddleSolver = false, autoSubmit = true, submitAfter = 3, codeSniper = false}
+    writefile("nine_auto_redeem_config.json", HttpService:JSONEncode(config))
+    AutoWriteBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+    Knob.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    Knob.Position = UDim2.new(0, 2, 0.5, -10)
+end)
+
+local TitleDivider = Instance.new("Frame", HeaderFrame)
+TitleDivider.Name = "TitleDivider"
+TitleDivider.Size = UDim2.new(1, -34, 0, 2)
+TitleDivider.Position = UDim2.fromOffset(17, 54)
+TitleDivider.BackgroundColor3 = Color3.fromRGB(150, 80, 220)
+TitleDivider.BackgroundTransparency = 0.5
+TitleDivider.BorderSizePixel = 0
+
+local SettingsList = Instance.new("Frame", SettingsContainer)
+SettingsList.Name = "Settings"
+SettingsList.Size = UDim2.new(1, 0, 1, 0)
+SettingsList.BackgroundTransparency = 1
+
+local AutoSubmitFrame = Instance.new("Frame", SettingsList)
+AutoSubmitFrame.Name = "AutoSubmit"
+AutoSubmitFrame.Position = UDim2.fromOffset(10, 10)
+AutoSubmitFrame.Size = UDim2.fromOffset(310, 32)
+AutoSubmitFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+Instance.new("UICorner", AutoSubmitFrame).CornerRadius = UDim.new(0, 8)
+
+local AutoSubmitToggle = Instance.new("TextButton", AutoSubmitFrame)
+AutoSubmitToggle.Name = "State"
+AutoSubmitToggle.Size = UDim2.fromOffset(42, 20)
+AutoSubmitToggle.Position = UDim2.new(1, -50, 0.5, -10)
+AutoSubmitToggle.BackgroundColor3 = Color3.fromRGB(150, 80, 220)
+AutoSubmitToggle.Text = "ON"
+AutoSubmitToggle.MouseButton1Click:Connect(function()
+    AutoSubmitToggle.Text = "OFF"
+    AutoSubmitToggle.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+end)
+
+local SubmitAfterFrame = Instance.new("Frame", SettingsList)
+SubmitAfterFrame.Name = "SubmitAfter"
+SubmitAfterFrame.Position = UDim2.fromOffset(10, 47)
+SubmitAfterFrame.Size = UDim2.fromOffset(310, 60)
+SubmitAfterFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+Instance.new("UICorner", SubmitAfterFrame).CornerRadius = UDim.new(0, 8)
+
+local Submit3Btn = Instance.new("TextButton", SubmitAfterFrame)
+Submit3Btn.Name = "Toggle3"
+Submit3Btn.Size = UDim2.fromOffset(20, 20)
+Submit3Btn.Position = UDim2.new(1, -56, 0, 6)
+Submit3Btn.Text = "3"
+
+local Submit4Btn = Instance.new("TextButton", SubmitAfterFrame)
+Submit4Btn.Name = "Toggle4"
+Submit4Btn.Size = UDim2.fromOffset(20, 20)
+Submit4Btn.Position = UDim2.new(1, -28, 0, 6)
+Submit4Btn.Text = "4"
+
+local CustomSubmitBox = Instance.new("TextBox", SubmitAfterFrame)
+CustomSubmitBox.Name = "CustomSubmitBox"
+CustomSubmitBox.Size = UDim2.fromOffset(24, 20)
+CustomSubmitBox.Position = UDim2.new(1, -28, 0, 34)
+CustomSubmitBox.PlaceholderText = "#"
+
+local RetypeFrame = Instance.new("Frame", SettingsList)
+RetypeFrame.Name = "RetypeInvalid"
+RetypeFrame.Position = UDim2.fromOffset(10, 112)
+RetypeFrame.Size = UDim2.fromOffset(310, 32)
+RetypeFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+Instance.new("UICorner", RetypeFrame).CornerRadius = UDim.new(0, 8)
+
+local DiscordFooter = Instance.new("TextLabel", SettingsContainer)
+DiscordFooter.Name = "DiscordFooter"
+DiscordFooter.Size = UDim2.fromOffset(180, 19)
+DiscordFooter.Position = UDim2.new(0.5, -90, 0, 158)
+DiscordFooter.BackgroundTransparency = 1
+DiscordFooter.Text = "discord.gg/qy2neXET6W"
+DiscordFooter.TextColor3 = Color3.fromRGB(240, 240, 240)
+DiscordFooter.Font = Enum.Font.FredokaOne
+DiscordFooter.TextXAlignment = Enum.TextXAlignment.Center

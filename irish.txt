@@ -1,0 +1,623 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local HttpService = game:GetService("HttpService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local LP = Players.LocalPlayer
+-- ==================== CONFIGURATION PERSISTANTE ====================
+local CONFIG_FILE = "MachoHUBConfig.json"
+local State = {
+    duelLagger = { active = false },
+    batAimbot  = { active = false, autoSwing = true, chaseSpeed = 58 },
+    bypass     = { active = false, speedBoost = 33.3, lagAmount = 0.028 }
+}
+local function loadConfig()
+    pcall(function()
+        if isfile and isfile(CONFIG_FILE) then
+            local data = HttpService:JSONDecode(readfile(CONFIG_FILE))
+            if type(data) == "table" then
+                if data.duelLagger then State.duelLagger.active = data.duelLagger.active or false end
+                if data.batAimbot then
+                    State.batAimbot.active = data.batAimbot.active or false
+                    State.batAimbot.autoSwing = (data.batAimbot.autoSwing == nil) and true or data.batAimbot.autoSwing
+                    State.batAimbot.chaseSpeed = data.batAimbot.chaseSpeed or 58
+                end
+                if data.bypass then
+                    State.bypass.active = data.bypass.active or false
+                    State.bypass.speedBoost = data.bypass.speedBoost or 33.3
+                    State.bypass.lagAmount = data.bypass.lagAmount or 0.028
+                end
+            end
+        end
+    end)
+end
+local function saveConfig()
+    pcall(function()
+        if writefile then
+            writefile(CONFIG_FILE, HttpService:JSONEncode({
+                duelLagger = { active = State.duelLagger.active },
+                batAimbot = { active = State.batAimbot.active, autoSwing = State.batAimbot.autoSwing, chaseSpeed = State.batAimbot.chaseSpeed },
+                bypass = { active = State.bypass.active, speedBoost = State.bypass.speedBoost, lagAmount = State.bypass.lagAmount }
+            }))
+        end
+    end)
+end
+loadConfig()
+-- ==================== COULEURS (THEME VERT) ====================
+local colors = {
+    bg = Color3.fromRGB(0,0,0),
+    card = Color3.fromRGB(10,10,10),
+    cardHover = Color3.fromRGB(20,20,20),
+    border = Color3.fromRGB(30,30,30),
+    text = Color3.fromRGB(255,255,255),
+    textSub = Color3.fromRGB(170,170,170),
+    pink = Color3.fromRGB(57,255,20),      -- vert néon (accent principal)
+    pinkDark = Color3.fromRGB(0,180,70),   -- vert foncé
+    toggleOff = Color3.fromRGB(40,40,40),
+    toggleOn = Color3.fromRGB(57,255,20),  -- toggle actif = vert néon
+    success = Color3.fromRGB(0,255,0)
+}
+-- ==================== MODULE 1 : DUEL LAGGER ====================
+local duelLaggerThread = nil
+local function duelBomb(amt)
+    local main, spam = {}, {{}}
+    local z = spam[1]
+    for i = 1, amt do local t = {}; table.insert(z, t); z = t end
+    local max = math.min(499999 / (amt + 2), 1500)
+    for i = 1, max do table.insert(main, spam) end
+    pcall(function() game:GetService("RobloxReplicatedStorage").SetPlayerBlockList:FireServer(main) end)
+end
+local function toggleDuelLagger(value)
+    State.duelLagger.active = value
+    if value then
+        if duelLaggerThread then task.cancel(duelLaggerThread) end
+        duelLaggerThread = task.spawn(function()
+            while State.duelLagger.active do
+                pcall(function() game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge) end)
+                duelBomb(270)
+                task.wait(UserInputService.TouchEnabled and 5.8 or 0.25)
+            end
+        end)
+    else
+        if duelLaggerThread then task.cancel(duelLaggerThread); duelLaggerThread = nil end
+    end
+end
+-- ==================== MODULE 2 : BAT AIMBOT ====================
+local BAT_SLAP_LIST = { "Bat", "Slap", "Iron Slap", "Gold Slap", "Diamond Slap", "Emerald Slap", "Ruby Slap", "Dark Matter Slap", "Flame Slap", "Nuclear Slap", "Galaxy Slap", "Glitched Slap" }
+local HIT_DIST = 8
+local SWING_CD = 0.35
+local hittingCooldown = false
+local aimbotConn = nil
+local prevAutoRotate = nil
+local function getBat()
+    local char = LP.Character; if not char then return nil end
+    for _, name in ipairs(BAT_SLAP_LIST) do
+        local t = char:FindFirstChild(name)
+        if t and t:IsA("Tool") then return t end
+    end
+    local bp = LP:FindFirstChildOfClass("Backpack")
+    if bp then
+        for _, name in ipairs(BAT_SLAP_LIST) do
+            local t = bp:FindFirstChild(name)
+            if t and t:IsA("Tool") then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then pcall(function() hum:EquipTool(t) end) end
+                return t
+            end
+        end
+    end
+    for _, ch in ipairs(char:GetChildren()) do
+        if ch:IsA("Tool") and (ch.Name:lower():find("bat") or ch.Name:lower():find("slap")) then return ch end
+    end
+    if bp then
+        for _, ch in ipairs(bp:GetChildren()) do
+            if ch:IsA("Tool") and (ch.Name:lower():find("bat") or ch.Name:lower():find("slap")) then
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum then pcall(function() hum:EquipTool(ch) end) end
+                return ch
+            end
+        end
+    end
+    return nil
+end
+local function trySwing()
+    if hittingCooldown then return end
+    hittingCooldown = true
+    pcall(function()
+        local char = LP.Character
+        if char then
+            local bat = getBat()
+            if bat then
+                if bat.Parent ~= char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum then pcall(function() hum:EquipTool(bat) end) end
+                end
+                pcall(function() bat:Activate() end)
+            end
+        end
+    end)
+    task.delay(SWING_CD, function() hittingCooldown = false end)
+end
+local function getClosestPlayer()
+    local char = LP.Character; if not char then return nil, math.huge end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); if not hrp then return nil, math.huge end
+    local closest, dist = nil, math.huge
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character then
+            local tr = p.Character:FindFirstChild("HumanoidRootPart")
+            local ph = p.Character:FindFirstChildOfClass("Humanoid")
+            if tr and ph and ph.Health > 0 then
+                local d = (hrp.Position - tr.Position).Magnitude
+                if d < dist then dist = d; closest = p end
+            end
+        end
+    end
+    return closest, dist
+end
+local function startAimbot()
+    if aimbotConn then return end
+    local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum then
+        if prevAutoRotate == nil then prevAutoRotate = hum.AutoRotate end
+        hum.AutoRotate = false
+    end
+    aimbotConn = RunService.RenderStepped:Connect(function()
+        if not State.batAimbot.active then return end
+        local char = LP.Character; if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart"); if not root then return end
+        local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+        if not char:FindFirstChildOfClass("Tool") then
+            local bat = getBat()
+            if bat then pcall(function() hum:EquipTool(bat) end) end
+        end
+        local targetPlr, targetDist = getClosestPlayer()
+        if not targetPlr or not targetPlr.Character then return end
+        local target = targetPlr.Character:FindFirstChild("HumanoidRootPart")
+        if not target then return end
+        local targetVel = target.AssemblyLinearVelocity
+        local myPos = root.Position
+        local targetPos = target.Position
+        local predictPos = targetPos + targetVel * 0.14 + target.CFrame.LookVector * 0.3
+        local direction = predictPos - myPos
+        local flatDir = Vector3.new(direction.X, 0, direction.Z)
+        if flatDir.Magnitude > 0 then flatDir = flatDir.Unit else flatDir = Vector3.new(0,0,0) end
+        local desiredHeight = targetPos.Y + 3.7
+        local yVel = (desiredHeight - myPos.Y) * 19.5 + targetVel.Y * 0.8
+        if hum.FloorMaterial ~= Enum.Material.Air then yVel = math.max(yVel, 13) end
+        yVel = math.clamp(yVel, -70, 110)
+        local desiredVel = Vector3.new(flatDir.X * State.batAimbot.chaseSpeed, yVel, flatDir.Z * State.batAimbot.chaseSpeed)
+        root.AssemblyLinearVelocity = root.AssemblyLinearVelocity:Lerp(desiredVel, 0.8)
+        local speed3 = targetVel.Magnitude
+        local predictTime = math.clamp(speed3 / 150, 0.05, 0.2)
+        local predictedPos = targetPos + targetVel * predictTime
+        local toPredict = predictedPos - myPos
+        if toPredict.Magnitude > 0.1 then
+            local goalCF = CFrame.lookAt(myPos, predictedPos)
+            local diffCF = root.CFrame:Inverse() * goalCF
+            local rx, ry, rz = diffCF:ToEulerAnglesXYZ()
+            rx = math.clamp(rx, -2.5, 2.5); ry = math.clamp(ry, -2.5, 2.5); rz = math.clamp(rz, -2.5, 2.5)
+            root.AssemblyAngularVelocity = root.CFrame:VectorToWorldSpace(Vector3.new(rx * 42, ry * 42, rz * 42))
+        end
+        if State.batAimbot.autoSwing and targetDist <= HIT_DIST then trySwing() end
+    end)
+end
+local function stopAimbot()
+    if aimbotConn then aimbotConn:Disconnect(); aimbotConn = nil end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.AutoRotate = (prevAutoRotate == nil) and true or prevAutoRotate
+        hum.PlatformStand = false
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+    end
+    if root then
+        root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y * 0.3, 0)
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    prevAutoRotate = nil
+end
+LP.CharacterAdded:Connect(function() prevAutoRotate = nil end)
+-- ==================== MODULE 3 : BYPASS ====================
+local origWorkspace = {}
+local antiLagActive = false
+local antiLagDescConn = nil
+local bypassSpeedBoost = State.bypass.speedBoost
+local bypassLagAmount = State.bypass.lagAmount
+local function saveWorkspaceState()
+    if next(origWorkspace) ~= nil then return end
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") then
+            origWorkspace[obj] = { Enabled = obj.Enabled }
+        elseif obj:IsA("Decal") or obj:IsA("Texture") then
+            origWorkspace[obj] = { Transparency = obj.Transparency }
+        elseif obj:IsA("BasePart") then
+            origWorkspace[obj] = { Material = obj.Material, Reflectance = obj.Reflectance, CastShadow = obj.CastShadow }
+        end
+    end
+end
+local function restoreWorkspaceState()
+    for obj, props in pairs(origWorkspace) do
+        if obj and obj.Parent then pcall(function() for k, v in pairs(props) do obj[k] = v end end) end
+    end
+    origWorkspace = {}
+end
+local function processObj(obj)
+    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam") or obj:IsA("Fire") then
+        pcall(function() obj.Enabled = false end)
+    end
+    if obj:IsA("Decal") or obj:IsA("Texture") then
+        pcall(function() obj.Transparency = 1 end)
+    end
+    if obj:IsA("BasePart") then
+        pcall(function() obj.Material = Enum.Material.Plastic; obj.Reflectance = 0; obj.CastShadow = false end)
+    end
+end
+local function enableAntiLag()
+    if antiLagActive then return end
+    saveWorkspaceState()
+    antiLagActive = true
+    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
+    Lighting.Brightness = 1
+    Lighting.EnvironmentDiffuseScale = 0
+    Lighting.EnvironmentSpecularScale = 0
+    for _, e in pairs(Lighting:GetChildren()) do
+        if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
+            e.Enabled = false
+        end
+    end
+    for _, obj in pairs(Workspace:GetDescendants()) do processObj(obj) end
+    if antiLagDescConn then antiLagDescConn:Disconnect() end
+    antiLagDescConn = Workspace.DescendantAdded:Connect(function(obj)
+        if antiLagActive then task.defer(function()
+            if obj and obj.Parent and antiLagActive then processObj(obj) end
+        end) end
+    end)
+end
+local function disableAntiLag()
+    if not antiLagActive then return end
+    antiLagActive = false
+    if antiLagDescConn then antiLagDescConn:Disconnect(); antiLagDescConn = nil end
+    pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
+    restoreWorkspaceState()
+end
+local function toggleBypass(value)
+    State.bypass.active = value
+    if value then enableAntiLag() else disableAntiLag() end
+end
+RunService.RenderStepped:Connect(function()
+    if not State.bypass.active then return end
+    local char = LP.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum and hum.MoveDirection.Magnitude > 0 then
+        hrp.Velocity = Vector3.new(hum.MoveDirection.X * bypassSpeedBoost, hrp.Velocity.Y, hum.MoveDirection.Z * bypassSpeedBoost)
+    end
+end)
+RunService.RenderStepped:Connect(function()
+    if not State.bypass.active or bypassLagAmount <= 0 then return end
+    local t = tick()
+    while tick() - t < bypassLagAmount do end
+end)
+-- ==================== SPEED DISPLAY PERMANENT (au-dessus de la tête) ====================
+local speedGui = nil
+local speedLabel = nil
+local function createSpeedDisplay()
+    if speedGui then speedGui:Destroy() end
+    local char = LP.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    speedGui = Instance.new("BillboardGui")
+    speedGui.Name = "SpeedDisplay"
+    speedGui.Adornee = head
+    speedGui.Size = UDim2.new(0, 120, 0, 40)
+    speedGui.StudsOffset = Vector3.new(0, 2, 0)
+    speedGui.AlwaysOnTop = true
+    speedGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    speedGui.ResetOnSpawn = false
+
+    speedLabel = Instance.new("TextLabel", speedGui)
+    speedLabel.Size = UDim2.new(1, 0, 1, 0)
+    speedLabel.BackgroundTransparency = 1
+    speedLabel.Text = "0"
+    speedLabel.Font = Enum.Font.GothamBold
+    speedLabel.TextSize = 20
+    speedLabel.TextColor3 = colors.pink
+    speedLabel.TextStrokeTransparency = 0.3
+    speedLabel.TextStrokeColor3 = Color3.fromRGB(0,0,0)
+    speedLabel.TextScaled = true
+    speedLabel.TextWrapped = true
+
+    speedGui.Parent = head
+end
+local function updateSpeedDisplay()
+    local char = LP.Character
+    if not char then return end
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local vel = root.AssemblyLinearVelocity
+    local speed = math.floor(vel.Magnitude + 0.5)
+    if speedLabel then
+        speedLabel.Text = tostring(speed)
+    end
+end
+-- Recréer l'affichage à chaque apparition du personnage
+LP.CharacterAdded:Connect(function()
+    task.wait(0.2)
+    createSpeedDisplay()
+end)
+-- Mise à jour en temps réel et maintien de l'affichage
+RunService.RenderStepped:Connect(function()
+    updateSpeedDisplay()
+    if not speedGui and LP.Character and LP.Character:FindFirstChild("Head") then
+        createSpeedDisplay()
+    end
+end)
+-- Initialisation au démarrage
+task.wait(0.5)
+createSpeedDisplay()
+-- ==================== INTERFACE UTILISATEUR COMPACTE (HAUT DROITE) ====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "MachoHUBCherry"
+gui.ResetOnSpawn = false
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+pcall(function() gui.Parent = CoreGui end)
+if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+local W, H = 200, 262  -- hauteur augmentée pour que Auto Swing + footer ne soient plus coupés
+local mainFrame = Instance.new("Frame", gui)
+mainFrame.Size = UDim2.new(0, W, 0, H)
+mainFrame.Position = UDim2.new(1, -W - 10, 0, 10)
+mainFrame.BackgroundColor3 = colors.bg
+mainFrame.BorderSizePixel = 0
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 8)
+mainFrame.ClipsDescendants = true
+-- Contour vert tournant
+local rotatingStroke = Instance.new("UIStroke", mainFrame)
+rotatingStroke.Thickness = 2
+rotatingStroke.Color = Color3.fromRGB(57, 255, 20)
+rotatingStroke.Transparency = 0.3
+rotatingStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+local strokeGradient = Instance.new("UIGradient", rotatingStroke)
+strokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(57, 255, 20)),
+    ColorSequenceKeypoint.new(0.3, Color3.fromRGB(0, 200, 80)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(57, 255, 20)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 200, 80))
+})
+RunService.Heartbeat:Connect(function(dt)
+    if mainFrame and mainFrame.Parent then strokeGradient.Rotation = (strokeGradient.Rotation + 90 * dt) % 360 end
+end)
+-- Barre de titre
+local titleBar = Instance.new("Frame", mainFrame)
+titleBar.Size = UDim2.new(1, 0, 0, 28)
+titleBar.BackgroundColor3 = colors.card
+titleBar.BorderSizePixel = 0
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 8)
+local grip = Instance.new("TextLabel", titleBar)
+grip.Size = UDim2.new(0, 20, 1, 0)
+grip.BackgroundTransparency = 1
+grip.Text = "≡"
+grip.TextColor3 = colors.textSub
+grip.Font = Enum.Font.GothamBold
+grip.TextSize = 12
+grip.TextXAlignment = Enum.TextXAlignment.Center
+local title = Instance.new("TextLabel", titleBar)
+title.Size = UDim2.new(1, -60, 1, 0)
+title.Position = UDim2.new(0, 24, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "MachoHUB discord.gg/irish 🍀"
+title.Font = Enum.Font.GothamBlack
+title.TextSize = 11
+title.TextColor3 = colors.pink
+title.TextXAlignment = Enum.TextXAlignment.Left
+local closeBtn = Instance.new("TextButton", titleBar)
+closeBtn.Size = UDim2.new(0, 20, 0, 20)
+closeBtn.Position = UDim2.new(1, -26, 0, 4)
+closeBtn.BackgroundColor3 = colors.cardHover
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = colors.text
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 10
+closeBtn.BorderSizePixel = 0
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
+closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
+-- DRAG SYSTEM
+local dragging, dragStart, startPos = false, nil, nil
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+-- Fonction pour créer un module (sans touche)
+local function createModule(parent, yOffset, titleText, toggleFunc, getStateFunc)
+    local card = Instance.new("Frame", parent)
+    card.Size = UDim2.new(1, -12, 0, 50)
+    card.Position = UDim2.new(0, 6, 0, yOffset)
+    card.BackgroundColor3 = colors.card
+    card.BorderSizePixel = 0
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 5)
+
+    local titleLbl = Instance.new("TextLabel", card)
+    titleLbl.Size = UDim2.new(1, -20, 0, 16)
+    titleLbl.Position = UDim2.new(0, 6, 0, 3)
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Text = titleText
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.TextSize = 10
+    titleLbl.TextColor3 = colors.pink
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local statusLbl = Instance.new("TextLabel", card)
+    statusLbl.Size = UDim2.new(1, -20, 0, 12)
+    statusLbl.Position = UDim2.new(0, 6, 0, 22)
+    statusLbl.BackgroundTransparency = 1
+    statusLbl.Text = "INACTIVE"
+    statusLbl.Font = Enum.Font.Gotham
+    statusLbl.TextSize = 8
+    statusLbl.TextColor3 = colors.textSub
+    statusLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local switchBg = Instance.new("Frame", card)
+    switchBg.Size = UDim2.new(0, 36, 0, 16)
+    switchBg.Position = UDim2.new(1, -42, 0, 28)
+    switchBg.BackgroundColor3 = colors.toggleOff
+    switchBg.BorderSizePixel = 0
+    Instance.new("UICorner", switchBg).CornerRadius = UDim.new(0, 8)
+
+    local switchBall = Instance.new("Frame", switchBg)
+    switchBall.Size = UDim2.new(0, 12, 0, 12)
+    switchBall.Position = UDim2.new(0, 2, 0.5, -6)
+    switchBall.BackgroundColor3 = colors.text
+    switchBall.BorderSizePixel = 0
+    Instance.new("UICorner", switchBall).CornerRadius = UDim.new(0, 6)
+
+    local toggleBtn = Instance.new("TextButton", card)
+    toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+    toggleBtn.BackgroundTransparency = 1
+    toggleBtn.Text = ""
+
+    local function updateUI()
+        local active = getStateFunc()
+        statusLbl.Text = active and "ACTIVE" or "INACTIVE"
+        statusLbl.TextColor3 = active and colors.success or colors.textSub
+        switchBg.BackgroundColor3 = active and colors.toggleOn or colors.toggleOff
+        TweenService:Create(switchBall, TweenInfo.new(0.2), {
+            Position = active and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
+        }):Play()
+    end
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        toggleFunc(not getStateFunc())
+        updateUI()
+        saveConfig()
+    end)
+
+    updateUI()
+    return { update = updateUI }
+end
+-- 3 modules seulement (plus de speed display)
+local modules = {}
+modules[1] = createModule(mainFrame, 34, "Duel Lagger",
+    function(v) toggleDuelLagger(v) end, function() return State.duelLagger.active end)
+modules[2] = createModule(mainFrame, 90, "Bat Aimbot",
+    function(v) State.batAimbot.active = v; if v then startAimbot() else stopAimbot() end; saveConfig() end,
+    function() return State.batAimbot.active end)
+modules[3] = createModule(mainFrame, 146, "Bypass",
+    function(v) toggleBypass(v); saveConfig() end, function() return State.bypass.active end)
+-- AutoSwing
+local autoCard = Instance.new("Frame", mainFrame)
+autoCard.Size = UDim2.new(1, -12, 0, 28)
+autoCard.Position = UDim2.new(0, 6, 0, 202)
+autoCard.BackgroundColor3 = colors.card
+autoCard.BorderSizePixel = 0
+Instance.new("UICorner", autoCard).CornerRadius = UDim.new(0, 5)
+local autoLbl = Instance.new("TextLabel", autoCard)
+autoLbl.Size = UDim2.new(1, -60, 1, 0)
+autoLbl.Position = UDim2.new(0, 6, 0, 0)
+autoLbl.BackgroundTransparency = 1
+autoLbl.Text = "Auto Swing"
+autoLbl.Font = Enum.Font.GothamBold
+autoLbl.TextSize = 9
+autoLbl.TextColor3 = colors.text
+autoLbl.TextXAlignment = Enum.TextXAlignment.Left
+local autoToggle = Instance.new("TextButton", autoCard)
+autoToggle.Size = UDim2.new(0, 40, 0, 18)
+autoToggle.Position = UDim2.new(1, -46, 0.5, -9)
+autoToggle.BackgroundColor3 = State.batAimbot.autoSwing and colors.toggleOn or colors.toggleOff
+autoToggle.Text = State.batAimbot.autoSwing and "ON" or "OFF"
+autoToggle.TextColor3 = colors.text
+autoToggle.Font = Enum.Font.GothamBold
+autoToggle.TextSize = 8
+autoToggle.BorderSizePixel = 0
+Instance.new("UICorner", autoToggle).CornerRadius = UDim.new(0, 3)
+autoToggle.MouseButton1Click:Connect(function()
+    State.batAimbot.autoSwing = not State.batAimbot.autoSwing
+    autoToggle.Text = State.batAimbot.autoSwing and "ON" or "OFF"
+    autoToggle.BackgroundColor3 = State.batAimbot.autoSwing and colors.toggleOn or colors.toggleOff
+    saveConfig()
+end)
+local footer = Instance.new("TextLabel", mainFrame)
+footer.Size = UDim2.new(1, -12, 0, 14)
+footer.Position = UDim2.new(0, 6, 1, -18)
+footer.BackgroundTransparency = 1
+footer.Text = "CTRL hide"
+footer.Font = Enum.Font.Gotham
+footer.TextSize = 8
+footer.TextColor3 = colors.textSub
+footer.TextXAlignment = Enum.TextXAlignment.Center
+-- Raccourci CTRL pour cacher/montrer
+UserInputService.InputBegan:Connect(function(inp, gpe)
+    if gpe then return end
+    if inp.UserInputType == Enum.UserInputType.Keyboard and inp.KeyCode == Enum.KeyCode.LeftControl then
+        mainFrame.Visible = not mainFrame.Visible
+    end
+end)
+-- Initialisation des états
+toggleDuelLagger(State.duelLagger.active)
+if State.batAimbot.active then startAimbot() else stopAimbot() end
+toggleBypass(State.bypass.active)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local lp = Players.LocalPlayer
+ 
+local sg = Instance.new("ScreenGui")
+sg.Name = "IrishWatermark"
+sg.ResetOnSpawn = false
+sg.IgnoreGuiInset = true
+sg.Parent = lp:WaitForChild("PlayerGui")
+ 
+local lbl = Instance.new("TextLabel")
+lbl.Text = "discord.gg/irish"
+lbl.Size = UDim2.new(0, 360, 0, 50)
+lbl.AnchorPoint = Vector2.new(0.5, 1)
+lbl.BackgroundTransparency = 1
+lbl.Font = Enum.Font.GothamBlack
+lbl.TextSize = 28
+lbl.TextStrokeTransparency = 0.3
+lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+lbl.ZIndex = 100
+lbl.Parent = sg
+ 
+local hue = 0
+ 
+task.spawn(function()
+    while task.wait() do
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local cam = workspace.CurrentCamera
+ 
+        if hrp and cam then
+            local screenPos, onScreen = cam:WorldToViewportPoint(hrp.Position + Vector3.new(0, 4.5, 0))
+            lbl.Visible = onScreen
+            if onScreen then
+                lbl.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y - 8)
+            end
+        else
+            lbl.Visible = false
+        end
+ 
+        hue = (hue + 0.012) % 1
+        lbl.TextColor3 = Color3.fromHSV(hue, 1, 1)
+        lbl.TextStrokeColor3 = Color3.fromHSV(hue, 1, 0.2)
+    end
+end)

