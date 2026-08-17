@@ -1,0 +1,1626 @@
+-- Food Hub og sniper cuz solar is a sigma chat nigger
+
+local Players          = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService      = game:GetService("HttpService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui", 10)
+
+-- ── REMOTES ──────────────────────────────────────────────────
+local RemoteNew, RemoteClaim, RemoteTrade, RemoteSearch
+local TRADE_UUID  = "afb005f9-6e81-4e0a-8bb0-3555938a9658"
+local SEARCH_UUID = "792baf13-54a1-4663-92c4-1edd9da1e3e2"
+
+local function scanRemotes()
+	local ok, Net = pcall(function()
+		return ReplicatedStorage:WaitForChild("Packages", 12):WaitForChild("Net", 12)
+	end)
+	if not ok or not Net then return end
+
+	-- name-based scan, no index pairing — order-independent
+	for _, obj in ipairs(Net:GetDescendants()) do
+		local name = obj.Name
+		if name:find("Liveboard") and name:find("NewEntry")   then RemoteNew    = obj end
+		if name:find("Liveboard") and name:find("ClaimEntry") then RemoteClaim  = obj end
+		if name:find("TradeService") and name:find("Invite")  then RemoteTrade  = obj end
+		if name:find("TradeService") and name:find("Search")  then RemoteSearch = obj end
+	end
+
+	-- catch late-added remotes
+	Net.DescendantAdded:Connect(function(obj)
+		local name = obj.Name
+		if name:find("Liveboard") and name:find("NewEntry")   then RemoteNew    = obj end
+		if name:find("Liveboard") and name:find("ClaimEntry") then RemoteClaim  = obj end
+		if name:find("TradeService") and name:find("Invite")  then RemoteTrade  = obj end
+		if name:find("TradeService") and name:find("Search")  then RemoteSearch = obj end
+	end)
+end
+task.spawn(scanRemotes)
+
+-- ── ANIMALS DATA ─────────────────────────────────────────────
+local Animals = {}
+pcall(function()
+	local mod = ReplicatedStorage:FindFirstChild("Datas") and ReplicatedStorage.Datas:FindFirstChild("Animals")
+	if mod then
+		local ok2, result = pcall(require, mod)
+		if ok2 and type(result) == "table" then Animals = result end
+	end
+end)
+
+-- ── CLIPBOARD ────────────────────────────────────────────────
+local function copyText(s)
+	if type(s) ~= "string" then return false end
+	-- syn first (most reliable on supported executors)
+	if syn and type(syn.write_clipboard) == "function" and pcall(syn.write_clipboard, s) then return true end
+	-- _G scan only, getfenv(0) returns empty in modern executors so skip it
+	local names = { "setclipboard", "toclipboard", "Clipboard", "clipboard", "copy", "Set_Clipboard" }
+	for _, name in ipairs(names) do
+		local fn = rawget(_G, name)
+		if type(fn) == "function" and pcall(fn, s) then return true end
+	end
+	return false
+end
+
+-- ── SOUNDS ───────────────────────────────────────────────────
+local SoundParent
+local function getSoundParent()
+	-- revalidate on every call so respawn doesn't break sounds
+	local char = LocalPlayer.Character
+	if char then
+		SoundParent = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChildWhichIsA("BasePart") or char
+	end
+	if not SoundParent or not SoundParent.Parent then
+		-- wait for character if not ready yet
+		local c = LocalPlayer.CharacterAdded:Wait()
+		SoundParent = c:FindFirstChild("HumanoidRootPart") or c:FindFirstChildWhichIsA("BasePart") or c
+	end
+	return SoundParent
+end
+
+-- re-cache sound parent on each respawn
+LocalPlayer.CharacterAdded:Connect(function(char)
+	SoundParent = char:WaitForChild("HumanoidRootPart", 5) or char:FindFirstChildWhichIsA("BasePart") or char
+end)
+
+local function makeSound(id, vol, pitch)
+	local s = Instance.new("Sound")
+	s.SoundId = "rbxassetid://" .. id
+	s.Volume = vol or 0.75
+	s.PlaybackSpeed = pitch or 1
+	s.RollOffMaxDistance = 0
+	s.Parent = getSoundParent()
+	return s
+end
+
+local Sounds = {
+	og   = makeSound("9119713951", 1.0, 1.25),
+	norm = makeSound("9119713951", 0.65, 0.95),
+	log  = makeSound("9119713951", 0.7, 1.05),
+	tr   = makeSound("9119713951", 0.6, 1.0),
+}
+
+local function playSound(s)
+	pcall(function() s:Stop(); s:Play() end)
+end
+
+-- ── THEME (Food Hub – Dark + Orange) ─────────────────────────
+local Theme = {
+	bg      = Color3.fromRGB(12, 12, 14),
+	bg1     = Color3.fromRGB(18, 18, 22),
+	bg2     = Color3.fromRGB(24, 24, 30),
+	bg3     = Color3.fromRGB(32, 32, 40),
+	bg4     = Color3.fromRGB(42, 42, 52),
+	bg5     = Color3.fromRGB(55, 55, 68),
+
+	line    = Color3.fromRGB(45, 45, 55),
+	border  = Color3.fromRGB(55, 55, 70),
+	border2 = Color3.fromRGB(80, 80, 100),
+
+	text    = Color3.fromRGB(245, 245, 250),
+	text2   = Color3.fromRGB(180, 180, 195),
+	text3   = Color3.fromRGB(110, 110, 130),
+
+	accent  = Color3.fromRGB(255, 140, 40),
+	accent2 = Color3.fromRGB(255, 170, 70),
+	accent3 = Color3.fromRGB(255, 110, 20),
+
+	ok      = Color3.fromRGB(80, 200, 120),
+	err     = Color3.fromRGB(255, 80, 90),
+	gold    = Color3.fromRGB(255, 200, 80),
+}
+
+-- ── HELPERS ──────────────────────────────────────────────────
+local function tween(obj, time, props)
+	TweenService:Create(obj, TweenInfo.new(time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), props):Play()
+end
+local function tweenBack(obj, time, props)
+	TweenService:Create(obj, TweenInfo.new(time, Enum.EasingStyle.Back, Enum.EasingDirection.Out), props):Play()
+end
+local function create(class, parent)
+	local obj = Instance.new(class)
+	if parent then obj.Parent = parent end
+	return obj
+end
+local function corner(radius, parent)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+	return c
+end
+local function stroke(parent, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Theme.border
+	s.Thickness = thickness or 1
+	s.Transparency = transparency or 0
+	s.Parent = parent
+	return s
+end
+local function label(text, size, font, color, xAlign, parent)
+	local l = create("TextLabel", parent)
+	l.BackgroundTransparency = 1
+	l.Text = text or ""
+	l.TextSize = size or 12
+	l.Font = font or Enum.Font.Gotham
+	l.TextColor3 = color or Theme.text
+	l.TextXAlignment = xAlign or Enum.TextXAlignment.Left
+	return l
+end
+local function pad(parent, top, bot, left, right)
+	local p = create("UIPadding", parent)
+	p.PaddingTop = UDim.new(0, top or 0)
+	p.PaddingBottom = UDim.new(0, bot or top or 0)
+	p.PaddingLeft = UDim.new(0, left or top or 0)
+	p.PaddingRight = UDim.new(0, right or left or top or 0)
+end
+
+-- ── HOST GUI ─────────────────────────────────────────────────
+local HostGui
+local function getHostGui()
+	if HostGui and HostGui.Parent then return HostGui end
+	local sg = Instance.new("ScreenGui")
+	sg.Name = "FoodHub_" .. LocalPlayer.Name
+	sg.ResetOnSpawn = false
+	sg.DisplayOrder = 99
+	sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	sg.Parent = PlayerGui
+	HostGui = sg
+	return sg
+end
+local SG = getHostGui()
+
+-- ── TRADE QUEUE ──────────────────────────────────────────────
+local tradeQueue = {}
+local tradeActive = false
+local autoSendEnabled = false
+
+local function processQueue()
+	if tradeActive then return end
+	tradeActive = true
+	task.spawn(function()
+		while #tradeQueue > 0 do
+			local item = table.remove(tradeQueue, 1)
+			local uid, btn = item.uid, item.btn
+			if btn and btn.Parent then btn.Text = "…" end
+			if RemoteTrade then
+				local ok, res = pcall(function()
+					return RemoteTrade:InvokeServer(TRADE_UUID, uid)
+				end)
+				playSound(Sounds.tr)
+				if btn and btn.Parent then
+					if ok and res then
+						btn.Text = "SENT"
+						btn.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+						btn.TextColor3 = Color3.new(1, 1, 1)
+						task.delay(2, function()
+							if btn and btn.Parent then
+								btn.Text = "SEND"
+								btn.BackgroundColor3 = Theme.bg3
+								btn.TextColor3 = Theme.accent2
+							end
+						end)
+					else
+						btn.Text = "FAIL"
+						task.delay(1.8, function()
+							if btn and btn.Parent and btn.Text == "FAIL" then
+								btn.Text = "SEND"
+								btn.BackgroundColor3 = Theme.bg3
+								btn.TextColor3 = Theme.accent2
+							end
+						end)
+					end
+				end
+			else
+				if btn and btn.Parent then btn.Text = "SEND" end
+			end
+		end
+		tradeActive = false
+	end)
+end
+
+local function doTrade(uid, name, btn)
+	if not uid then return end
+	table.insert(tradeQueue, { uid = uid, name = name, btn = btn })
+	processQueue()
+end
+
+-- ── DATA TABLES ──────────────────────────────────────────────
+local RARITY_STRIP = {
+	Common = Color3.fromRGB(120, 120, 120), Uncommon = Color3.fromRGB(34, 197, 94),
+	Rare = Color3.fromRGB(59, 130, 246), Epic = Color3.fromRGB(168, 85, 247),
+	Legendary = Color3.fromRGB(234, 179, 8), Mythical = Color3.fromRGB(239, 68, 68),
+	OG = Color3.fromRGB(255, 140, 40), Unknown = Color3.fromRGB(70, 70, 70),
+}
+local RARITY_C = {
+	Common = Color3.fromRGB(160, 160, 160), Uncommon = Color3.fromRGB(74, 222, 128),
+	Rare = Color3.fromRGB(96, 165, 250), Epic = Color3.fromRGB(192, 132, 252),
+	Legendary = Color3.fromRGB(234, 179, 8), Mythical = Color3.fromRGB(248, 113, 113),
+	OG = Color3.fromRGB(255, 160, 60), Unknown = Color3.fromRGB(130, 130, 130),
+}
+
+local MUTS = {
+	Default     = { c = Color3.fromRGB(180, 180, 180), l = "DEFAULT",  rb = false },
+	Gold        = { c = Color3.fromRGB(234, 179, 8),   l = "GOLD",     rb = false },
+	Diamond     = { c = Color3.fromRGB(147, 197, 253), l = "DIAMOND",  rb = false },
+	Rainbow     = { c = Color3.fromRGB(255, 80, 220),  l = "RAINBOW",  rb = true  },
+	Bloodrot    = { c = Color3.fromRGB(185, 28, 28),   l = "BLOODROT", rb = false },
+	Candy       = { c = Color3.fromRGB(244, 114, 182), l = "CANDY",    rb = false },
+	Celestial   = { c = Color3.fromRGB(196, 181, 253), l = "CELESTIAL",rb = false },
+	Lava        = { c = Color3.fromRGB(249, 115, 22),  l = "LAVA",     rb = false },
+	Galaxy      = { c = Color3.fromRGB(139, 92, 246),  l = "GALAXY",   rb = false },
+	YinYang     = { c = Color3.fromRGB(210, 210, 210), l = "YIN YANG", rb = false },
+	Radioactive = { c = Color3.fromRGB(132, 204, 22),  l = "RADIOACT", rb = false },
+	Cursed      = { c = Color3.fromRGB(88, 28, 135),   l = "CURSED",   rb = false },
+	Divine      = { c = Color3.fromRGB(254, 240, 138), l = "DIVINE",   rb = false },
+	Cyber       = { c = Color3.fromRGB(34, 211, 238),  l = "CYBER",    rb = false },
+	Strawberry  = { c = Color3.fromRGB(244, 63, 94),   l = "STRAWBERRY",rb = false },
+	Crystal     = { c = Color3.fromRGB(186, 230, 253), l = "CRYSTAL",  rb = false },
+	Shadow      = { c = Color3.fromRGB(124, 58, 237),  l = "SHADOW",   rb = false },
+	Inferno     = { c = Color3.fromRGB(249, 115, 22),  l = "INFERNO",  rb = false },
+	Void        = { c = Color3.fromRGB(67, 20, 160),   l = "VOID",     rb = false },
+	Neon        = { c = Color3.fromRGB(0, 255, 120),   l = "NEON",     rb = false },
+	Ice         = { c = Color3.fromRGB(186, 230, 253), l = "ICE",      rb = false },
+}
+local MUT0 = { c = Color3.fromRGB(110, 110, 130), l = "NORMAL", rb = false }
+
+local OGS = {
+	{ k = "Skibidi Toilet",      l = "SKIBIDI", i = "🚽", c = Color3.fromRGB(56, 189, 248) },
+	{ k = "John Pork",           l = "J.PORK",  i = "🐷", c = Color3.fromRGB(251, 146, 60) },
+	{ k = "Strawberry Elephant", l = "S.ELEPH", i = "🍓", c = Color3.fromRGB(244, 114, 182) },
+	{ k = "Meowl",               l = "MEOWL",   i = "🦉", c = Color3.fromRGB(192, 132, 252) },
+}
+local PRIO = {
+	["Strawberry Elephant"] = 100, ["John Pork"] = 95,
+	["Meowl"] = 90, ["Skibidi Toilet"] = 80, ["Strawberry"] = 100,
+}
+local ogLogs = {}
+for _, s in ipairs(OGS) do ogLogs[s.k] = {} end
+
+local function getRarity(n)
+	local a = Animals[n]
+	return a and a.Rarity or "Common"
+end
+local function getMut(m)
+	return (m and MUTS[m]) or MUT0
+end
+local function formatTime()
+	return os.date("%H:%M:%S", os.time())
+end
+
+-- ── RAINBOW ──────────────────────────────────────────────────
+local rainbowColors = {
+	Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 180, 40),
+	Color3.fromRGB(80, 255, 100), Color3.fromRGB(40, 180, 255),
+	Color3.fromRGB(180, 80, 255), Color3.fromRGB(255, 80, 200),
+}
+local rainbowFrames = {}
+task.spawn(function()
+	local i = 0
+	while true do
+		task.wait()
+		i = (i + 0.022) % #rainbowColors
+		local idx = math.floor(i) + 1
+		local nxt = (idx % #rainbowColors) + 1
+		local c = rainbowColors[idx]:Lerp(rainbowColors[nxt], i - math.floor(i))
+		for k = #rainbowFrames, 1, -1 do
+			local f = rainbowFrames[k]
+			if f and f.Parent then
+				f.BackgroundColor3 = c
+			else
+				table.remove(rainbowFrames, k)
+			end
+		end
+	end
+end)
+
+-- ── WATERMARK ────────────────────────────────────────────────
+local WM = create("Frame", SG)
+WM.Size = UDim2.new(0, 220, 0, 36)
+WM.Position = UDim2.new(0.5, -110, 0, 12)
+WM.BackgroundColor3 = Theme.bg1
+WM.BorderSizePixel = 0
+WM.ZIndex = 100
+corner(18, WM)
+stroke(WM, Theme.accent, 1.2, 0.35)
+
+local wmDot = create("Frame", WM)
+wmDot.Size = UDim2.new(0, 7, 0, 7)
+wmDot.AnchorPoint = Vector2.new(0, 0.5)
+wmDot.Position = UDim2.new(0, 14, 0.5, 0)
+wmDot.BackgroundColor3 = Theme.accent
+wmDot.BorderSizePixel = 0
+wmDot.ZIndex = 101
+corner(4, wmDot)
+task.spawn(function()
+	while wmDot and wmDot.Parent do
+		tween(wmDot, 0.7, { BackgroundTransparency = 0.55 })
+		task.wait(0.85)
+		tween(wmDot, 0.7, { BackgroundTransparency = 0 })
+		task.wait(0.85)
+	end
+end)
+
+local wmTitle = label("FOOD HUB", 13, Enum.Font.GothamBlack, Theme.accent2, Enum.TextXAlignment.Center, WM)
+wmTitle.Size = UDim2.new(1, -40, 1, 0)
+wmTitle.Position = UDim2.new(0, 26, 0, 0)
+wmTitle.ZIndex = 102
+
+-- ── MAIN WINDOW ──────────────────────────────────────────────
+local PW, PH = 450, 580
+local TOPBAR_H = 48
+local TOPNAV_H = 44
+
+local Main = create("Frame", SG)
+Main.Name = "FoodHubMain"
+Main.Size = UDim2.new(0, PW, 0, PH)
+Main.Position = UDim2.new(0, 22, 0.5, -PH / 2)
+Main.BackgroundColor3 = Theme.bg
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+Main.ZIndex = 10
+corner(22, Main)
+stroke(Main, Theme.accent, 1.4, 0.25)
+
+local panelGrad = Instance.new("UIGradient", Main)
+panelGrad.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 18, 14)),
+	ColorSequenceKeypoint.new(0.55, Color3.fromRGB(14, 13, 16)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 12, 14)),
+}
+panelGrad.Rotation = 125
+
+-- TOP BAR
+local TopBar = create("Frame", Main)
+TopBar.Size = UDim2.new(1, 0, 0, TOPBAR_H)
+TopBar.BackgroundColor3 = Theme.bg1
+TopBar.BorderSizePixel = 0
+TopBar.ZIndex = 11
+corner(22, TopBar)
+
+local TitleL = label("FOOD HUB", 15, Enum.Font.GothamBlack, Theme.accent2, nil, TopBar)
+TitleL.Size = UDim2.new(1, -130, 0, 20)
+TitleL.Position = UDim2.new(0, 16, 0, 8)
+TitleL.ZIndex = 12
+
+local SubL = label("realtime claim tracker", 9, Enum.Font.Gotham, Theme.text3, nil, TopBar)
+SubL.Size = UDim2.new(1, -130, 0, 12)
+SubL.Position = UDim2.new(0, 16, 0, 29)
+SubL.ZIndex = 12
+
+local CntPill = create("Frame", TopBar)
+CntPill.Size = UDim2.new(0, 78, 0, 24)
+CntPill.AnchorPoint = Vector2.new(1, 0.5)
+CntPill.Position = UDim2.new(1, -48, 0.5, 0)
+CntPill.BackgroundColor3 = Theme.bg3
+CntPill.BorderSizePixel = 0
+CntPill.ZIndex = 12
+corner(12, CntPill)
+stroke(CntPill, Theme.border2, 1, 0)
+
+local CntL = label("0 caught", 9, Enum.Font.GothamBold, Theme.text2, Enum.TextXAlignment.Center, CntPill)
+CntL.Size = UDim2.new(1, 0, 1, 0)
+CntL.ZIndex = 13
+
+local MinB = create("TextButton", TopBar)
+MinB.Size = UDim2.new(0, 28, 0, 28)
+MinB.AnchorPoint = Vector2.new(1, 0.5)
+MinB.Position = UDim2.new(1, -12, 0.5, 0)
+MinB.BackgroundColor3 = Theme.bg3
+MinB.TextColor3 = Theme.text3
+MinB.TextSize = 18
+MinB.Font = Enum.Font.GothamBold
+MinB.Text = "−"
+MinB.BorderSizePixel = 0
+MinB.AutoButtonColor = false
+MinB.ZIndex = 12
+corner(14, MinB)
+stroke(MinB, Theme.border2, 1, 0)
+
+MinB.MouseEnter:Connect(function()
+	tween(MinB, 0.1, { BackgroundColor3 = Theme.bg5, TextColor3 = Theme.accent2 })
+end)
+MinB.MouseLeave:Connect(function()
+	tween(MinB, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text3 })
+end)
+
+local isMin = false
+MinB.MouseButton1Click:Connect(function()
+	isMin = not isMin
+	if isMin then
+		tween(Main, 0.2, { Size = UDim2.new(0, PW, 0, TOPBAR_H) })
+		MinB.Text = "+"
+	else
+		tweenBack(Main, 0.3, { Size = UDim2.new(0, PW, 0, PH) })
+		MinB.Text = "−"
+	end
+end)
+
+-- Drag
+do
+	local dragging, startPos, startInput
+	TopBar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+			startInput = input.Position
+			startPos = Main.Position
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local delta = input.Position - startInput
+			Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+end
+
+local TopDiv = create("Frame", Main)
+TopDiv.Size = UDim2.new(1, 0, 0, 1)
+TopDiv.Position = UDim2.new(0, 0, 0, TOPBAR_H)
+TopDiv.BackgroundColor3 = Theme.line
+TopDiv.BorderSizePixel = 0
+TopDiv.ZIndex = 11
+
+-- NAV
+local NavRow = create("Frame", Main)
+NavRow.Size = UDim2.new(1, 0, 0, TOPNAV_H)
+NavRow.Position = UDim2.new(0, 0, 0, TOPBAR_H + 1)
+NavRow.BackgroundColor3 = Theme.bg1
+NavRow.BorderSizePixel = 0
+NavRow.ZIndex = 11
+
+local NavLL = create("UIListLayout", NavRow)
+NavLL.FillDirection = Enum.FillDirection.Horizontal
+NavLL.SortOrder = Enum.SortOrder.LayoutOrder
+NavLL.HorizontalAlignment = Enum.HorizontalAlignment.Left
+NavLL.VerticalAlignment = Enum.VerticalAlignment.Center
+NavLL.Padding = UDim.new(0, 5)
+pad(NavRow, 6, 6, 10, 10)
+
+local NavDiv = create("Frame", Main)
+NavDiv.Size = UDim2.new(1, 0, 0, 1)
+NavDiv.Position = UDim2.new(0, 0, 0, TOPBAR_H + 1 + TOPNAV_H)
+NavDiv.BackgroundColor3 = Theme.line
+NavDiv.BorderSizePixel = 0
+NavDiv.ZIndex = 11
+
+local PAGE_Y = TOPBAR_H + 1 + TOPNAV_H + 1
+local PageArea = create("Frame", Main)
+PageArea.Size = UDim2.new(1, 0, 1, -PAGE_Y)
+PageArea.Position = UDim2.new(0, 0, 0, PAGE_Y)
+PageArea.BackgroundTransparency = 1
+PageArea.ZIndex = 10
+
+local function makePage()
+	local f = create("Frame", PageArea)
+	f.Size = UDim2.new(1, 0, 1, 0)
+	f.BackgroundTransparency = 1
+	f.Visible = false
+	f.ZIndex = 11
+	return f
+end
+
+local function makeScroll(parent, offsetY)
+	offsetY = offsetY or 0
+	local sf = create("ScrollingFrame", parent)
+	sf.Size = UDim2.new(1, 0, 1, -offsetY)
+	sf.Position = UDim2.new(0, 0, 0, offsetY)
+	sf.BackgroundTransparency = 1
+	sf.BorderSizePixel = 0
+	sf.ScrollBarThickness = 3
+	sf.ScrollBarImageColor3 = Theme.accent3
+	sf.ScrollBarImageTransparency = 0.35
+	sf.CanvasSize = UDim2.new(0, 0, 0, 0)
+	sf.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	sf.ZIndex = 12
+	return sf
+end
+
+local function makeEmpty(parent, text)
+	local f = create("Frame", parent)
+	f.Size = UDim2.new(1, 0, 0, 90)
+	f.BackgroundTransparency = 1
+	f.LayoutOrder = 999999
+	f.ZIndex = 13
+	local l = label(text, 12, Enum.Font.Gotham, Theme.text3, Enum.TextXAlignment.Center, f)
+	l.Size = UDim2.new(1, 0, 1, 0)
+	l.ZIndex = 14
+	return f
+end
+
+local function makeSubBar(parent)
+	local b = create("Frame", parent)
+	b.Size = UDim2.new(1, 0, 0, 38)
+	b.BackgroundColor3 = Theme.bg1
+	b.BorderSizePixel = 0
+	b.ZIndex = 13
+	local sep = create("Frame", parent)
+	sep.Size = UDim2.new(1, 0, 0, 1)
+	sep.Position = UDim2.new(0, 0, 0, 38)
+	sep.BackgroundColor3 = Theme.line
+	sep.BorderSizePixel = 0
+	sep.ZIndex = 13
+	return b
+end
+
+local SnipPage  = makePage()
+local LogsPage  = makePage()
+local OGPage    = makePage()
+local TradePage = makePage()
+
+-- Tabs
+local TABS = {
+	{ id = "snip",  label = "LIVE",    lo = 1 },
+	{ id = "logs",  label = "HISTORY", lo = 2 },
+	{ id = "og",    label = "OG",      lo = 3 },
+	{ id = "trade", label = "SEARCH",  lo = 4 },
+}
+local navBtns = {}
+local activeTab = nil
+
+local function switchTab(id)
+	if activeTab == id then return end
+	activeTab = id
+	local pages = { snip = SnipPage, logs = LogsPage, og = OGPage, trade = TradePage }
+	for k, f in pairs(pages) do f.Visible = (k == id) end
+	for k, b in pairs(navBtns) do
+		local on = (k == id)
+		tween(b, 0.14, {
+			BackgroundColor3 = on and Theme.bg4 or Theme.bg2,
+			TextColor3 = on and Theme.accent2 or Theme.text3
+		})
+		local ul = b:FindFirstChild("UL")
+		if ul then tween(ul, 0.14, { BackgroundTransparency = on and 0 or 1 }) end
+	end
+end
+
+for _, def in ipairs(TABS) do
+	local b = create("TextButton", NavRow)
+	b.Name = def.id
+	b.Size = UDim2.new(0, 78, 0, 30)
+	b.LayoutOrder = def.lo
+	b.BackgroundColor3 = Theme.bg2
+	b.TextColor3 = Theme.text3
+	b.TextSize = 10
+	b.Font = Enum.Font.GothamBold
+	b.Text = def.label
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.ZIndex = 12
+	corner(12, b)
+	stroke(b, Theme.border, 1, 0.45)
+
+	local ul = create("Frame", b)
+	ul.Name = "UL"
+	ul.Size = UDim2.new(0.65, 0, 0, 2)
+	ul.AnchorPoint = Vector2.new(0.5, 1)
+	ul.Position = UDim2.new(0.5, 0, 1, -2)
+	ul.BackgroundColor3 = Theme.accent
+	ul.BackgroundTransparency = 1
+	ul.BorderSizePixel = 0
+	ul.ZIndex = 13
+	corner(1, ul)
+
+	b.MouseEnter:Connect(function()
+		if activeTab ~= def.id then
+			tween(b, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text2 })
+		end
+	end)
+	b.MouseLeave:Connect(function()
+		if activeTab ~= def.id then
+			tween(b, 0.1, { BackgroundColor3 = Theme.bg2, TextColor3 = Theme.text3 })
+		end
+	end)
+	b.MouseButton1Click:Connect(function() switchTab(def.id) end)
+	navBtns[def.id] = b
+end
+
+-- ── SEND BUTTON ──────────────────────────────────────────────
+local SEND_W = 70
+local function makeSendBtn(parent, uid, name)
+	local sep = create("Frame", parent)
+	sep.Size = UDim2.new(0, 1, 0.55, 0)
+	sep.AnchorPoint = Vector2.new(1, 0.5)
+	sep.Position = UDim2.new(1, -SEND_W, 0.5, 0)
+	sep.BackgroundColor3 = Theme.line
+	sep.BorderSizePixel = 0
+	sep.ZIndex = 15
+
+	local b = create("TextButton", parent)
+	b.Name = "SEND_B"
+	b.Size = UDim2.new(0, 58, 0, 32)
+	b.AnchorPoint = Vector2.new(1, 0.5)
+	b.Position = UDim2.new(1, -6, 0.5, 0)
+	b.BackgroundColor3 = Theme.bg3
+	b.TextColor3 = Theme.accent2
+	b.TextSize = 10
+	b.Font = Enum.Font.GothamBold
+	b.Text = "SEND"
+	b.AutoButtonColor = false
+	b.ZIndex = 15
+	b.BorderSizePixel = 0
+	corner(14, b)
+	stroke(b, Theme.accent3, 1, 0.4)
+
+	b.MouseEnter:Connect(function()
+		if b.Text == "SEND" then
+			tween(b, 0.1, { BackgroundColor3 = Theme.bg4, TextColor3 = Theme.accent })
+		end
+	end)
+	b.MouseLeave:Connect(function()
+		if b.Text == "SEND" then
+			tween(b, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.accent2 })
+		end
+	end)
+
+	if uid then
+		b.MouseButton1Click:Connect(function()
+			if b.Text ~= "SEND" then return end
+			table.insert(tradeQueue, { uid = uid, name = name, btn = b })
+			processQueue()
+		end)
+	else
+		b.Active = false
+		b.TextTransparency = 0.5
+		b.BackgroundTransparency = 0.45
+	end
+	return b
+end
+
+-- ── BADGE ────────────────────────────────────────────────────
+local function makeBadge(parent, text, color, x, y, w)
+	w = w or math.max(38, #text * 5.5 + 12)
+	local f = create("Frame", parent)
+	f.Size = UDim2.new(0, w, 0, 16)
+	f.Position = UDim2.new(0, x, 0, y)
+	f.BackgroundColor3 = color
+	f.BackgroundTransparency = 0.82
+	f.BorderSizePixel = 0
+	f.ZIndex = 15
+	corner(9, f)
+	local s = Instance.new("UIStroke", f)
+	s.Color = color
+	s.Thickness = 1
+	s.Transparency = 0.4
+	local l = label(text, 7, Enum.Font.GothamBold, color, Enum.TextXAlignment.Center, f)
+	l.Size = UDim2.new(1, 0, 1, 0)
+	l.ZIndex = 16
+	l.Name = "BL"
+	return f, l
+end
+
+-- ── COPY BUTTON ──────────────────────────────────────────────
+local function makeCopyBtn(parent, getFn, x, y)
+	local b = create("TextButton", parent)
+	b.Size = UDim2.new(0, 40, 0, 17)
+	b.Position = UDim2.new(0, x, 0, y)
+	b.BackgroundColor3 = Theme.bg3
+	b.TextColor3 = Theme.text3
+	b.TextSize = 7
+	b.Font = Enum.Font.GothamBold
+	b.Text = "COPY"
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.ZIndex = 16
+	corner(9, b)
+	stroke(b, Theme.border, 1, 0)
+
+	b.MouseEnter:Connect(function()
+		tween(b, 0.1, { BackgroundColor3 = Theme.bg4, TextColor3 = Theme.text2 })
+	end)
+	b.MouseLeave:Connect(function()
+		tween(b, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text3 })
+	end)
+	b.MouseButton1Click:Connect(function()
+		local ok = copyText(getFn())
+		if ok then
+			b.Text = "OK"
+			b.TextColor3 = Theme.accent2
+			b.BackgroundColor3 = Theme.bg2
+		else
+			b.Text = "ERR"
+			b.TextColor3 = Theme.err
+		end
+		task.delay(1.4, function()
+			if b and b.Parent then
+				b.Text = "COPY"
+				b.TextColor3 = Theme.text3
+				b.BackgroundColor3 = Theme.bg3
+			end
+		end)
+	end)
+	return b
+end
+
+-- ── NOTIFICATIONS ────────────────────────────────────────────
+local NotifContainer = create("Frame", SG)
+NotifContainer.Size = UDim2.new(0, 270, 0, 500)
+NotifContainer.Position = UDim2.new(1, -285, 0, 58)
+NotifContainer.BackgroundTransparency = 1
+NotifContainer.ZIndex = 80
+
+local NCL = create("UIListLayout", NotifContainer)
+NCL.SortOrder = Enum.SortOrder.LayoutOrder
+NCL.Padding = UDim.new(0, 6)
+NCL.VerticalAlignment = Enum.VerticalAlignment.Top
+NCL.HorizontalAlignment = Enum.HorizontalAlignment.Right
+
+local notifIdx = 0
+local function notify(title, sub, isOG)
+	notifIdx = notifIdx + 1
+	playSound(isOG and Sounds.og or Sounds.norm)
+
+	local f = create("Frame", NotifContainer)
+	f.Size = UDim2.new(1, 0, 0, 56)
+	f.BackgroundColor3 = Theme.bg2
+	f.BorderSizePixel = 0
+	f.LayoutOrder = notifIdx
+	f.ClipsDescendants = true
+	f.BackgroundTransparency = 1
+	f.ZIndex = 80
+	f.Position = UDim2.new(1, 12, 0, 0)
+	corner(16, f)
+	stroke(f, isOG and Theme.accent or Theme.border2, 1.3, isOG and 0.15 or 0.5)
+
+	local bar = create("Frame", f)
+	bar.Size = UDim2.new(0, 3, 0.7, 0)
+	bar.AnchorPoint = Vector2.new(0, 0.5)
+	bar.Position = UDim2.new(0, 0, 0.5, 0)
+	bar.BackgroundColor3 = isOG and Theme.accent or Theme.text3
+	bar.BorderSizePixel = 0
+	bar.ZIndex = 82
+	corner(2, bar)
+
+	local tl = label(title, 11, Enum.Font.GothamBold, isOG and Theme.accent2 or Theme.text, nil, f)
+	tl.Size = UDim2.new(1, -70, 0, 16)
+	tl.Position = UDim2.new(0, 12, 0, 9)
+	tl.ZIndex = 82
+	tl.TextTruncate = Enum.TextTruncate.AtEnd
+
+	local sl = label(sub, 9, Enum.Font.Gotham, Theme.text2, nil, f)
+	sl.Size = UDim2.new(1, -16, 0, 14)
+	sl.Position = UDim2.new(0, 12, 0, 28)
+	sl.ZIndex = 82
+	sl.TextTruncate = Enum.TextTruncate.AtEnd
+
+	local ts = label(formatTime(), 8, Enum.Font.Gotham, Theme.text3, Enum.TextXAlignment.Right, f)
+	ts.Size = UDim2.new(0, 52, 0, 13)
+	ts.Position = UDim2.new(1, -56, 0, 7)
+	ts.ZIndex = 83
+
+	tween(f, 0.22, { BackgroundTransparency = 0, Position = UDim2.new(0, 0, 0, 0) })
+	task.delay(26, function()
+		tween(f, 0.22, { BackgroundTransparency = 1, Position = UDim2.new(1, 12, 0, 0) })
+		task.delay(0.28, function() pcall(function() f:Destroy() end) end)
+	end)
+end
+
+-- ── LIVE PAGE ────────────────────────────────────────────────
+local SnipBar = makeSubBar(SnipPage)
+local SCaughtL = label("0 caught", 10, Enum.Font.GothamBold, Theme.text3, nil, SnipBar)
+SCaughtL.Size = UDim2.new(0, 70, 1, 0)
+SCaughtL.Position = UDim2.new(0, 14, 0, 0)
+SCaughtL.ZIndex = 14
+
+local SOGL = label("0 OG", 10, Enum.Font.GothamBold, Theme.accent2, nil, SnipBar)
+SOGL.Size = UDim2.new(0, 42, 1, 0)
+SOGL.Position = UDim2.new(0, 88, 0, 0)
+SOGL.ZIndex = 14
+
+local autoBtn = create("TextButton", SnipBar)
+autoBtn.Size = UDim2.new(0, 92, 0, 26)
+autoBtn.Position = UDim2.new(0, 140, 0.5, -13)
+autoBtn.BackgroundColor3 = Theme.bg3
+autoBtn.TextColor3 = Theme.text3
+autoBtn.TextSize = 9
+autoBtn.Font = Enum.Font.GothamBold
+autoBtn.Text = "AUTO: OFF"
+autoBtn.BorderSizePixel = 0
+autoBtn.AutoButtonColor = false
+autoBtn.ZIndex = 14
+corner(12, autoBtn)
+stroke(autoBtn, Theme.border2, 1, 0)
+
+autoBtn.MouseButton1Click:Connect(function()
+	autoSendEnabled = not autoSendEnabled
+	if autoSendEnabled then
+		autoBtn.Text = "AUTO: ON"
+		autoBtn.BackgroundColor3 = Theme.bg2
+		autoBtn.TextColor3 = Theme.accent2
+	else
+		autoBtn.Text = "AUTO: OFF"
+		autoBtn.BackgroundColor3 = Theme.bg3
+		autoBtn.TextColor3 = Theme.text3
+	end
+end)
+
+local SnipClear = create("TextButton", SnipBar)
+SnipClear.Size = UDim2.new(0, 56, 0, 26)
+SnipClear.Position = UDim2.new(1, -64, 0.5, -13)
+SnipClear.BackgroundColor3 = Theme.bg3
+SnipClear.TextColor3 = Theme.text3
+SnipClear.TextSize = 9
+SnipClear.Font = Enum.Font.GothamBold
+SnipClear.Text = "CLEAR"
+SnipClear.BorderSizePixel = 0
+SnipClear.AutoButtonColor = false
+SnipClear.ZIndex = 14
+corner(12, SnipClear)
+stroke(SnipClear, Theme.border, 1, 0)
+
+SnipClear.MouseEnter:Connect(function()
+	tween(SnipClear, 0.1, { BackgroundColor3 = Theme.bg5, TextColor3 = Theme.accent2 })
+end)
+SnipClear.MouseLeave:Connect(function()
+	tween(SnipClear, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text3 })
+end)
+
+local SnipScroll = makeScroll(SnipPage, 39)
+local SnipLL = create("UIListLayout", SnipScroll)
+SnipLL.SortOrder = Enum.SortOrder.LayoutOrder
+SnipLL.Padding = UDim.new(0, 7)
+pad(SnipScroll, 8, 8, 8, 8)
+local SnipEmpty = makeEmpty(SnipScroll, "waiting for claims...")
+
+-- ── HISTORY PAGE ─────────────────────────────────────────────
+local LogsBar = makeSubBar(LogsPage)
+local LogsCountL = label("0 logged", 10, Enum.Font.GothamBold, Theme.text3, nil, LogsBar)
+LogsCountL.Size = UDim2.new(0.5, 0, 1, 0)
+LogsCountL.Position = UDim2.new(0, 14, 0, 0)
+LogsCountL.ZIndex = 14
+
+local LogsClear = create("TextButton", LogsBar)
+LogsClear.Size = UDim2.new(0, 56, 0, 26)
+LogsClear.Position = UDim2.new(1, -64, 0.5, -13)
+LogsClear.BackgroundColor3 = Theme.bg3
+LogsClear.TextColor3 = Theme.text3
+LogsClear.TextSize = 9
+LogsClear.Font = Enum.Font.GothamBold
+LogsClear.Text = "CLEAR"
+LogsClear.BorderSizePixel = 0
+LogsClear.AutoButtonColor = false
+LogsClear.ZIndex = 14
+corner(12, LogsClear)
+stroke(LogsClear, Theme.border, 1, 0)
+
+LogsClear.MouseEnter:Connect(function()
+	tween(LogsClear, 0.1, { BackgroundColor3 = Theme.bg5, TextColor3 = Theme.accent2 })
+end)
+LogsClear.MouseLeave:Connect(function()
+	tween(LogsClear, 0.1, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text3 })
+end)
+
+local LogsScroll = makeScroll(LogsPage, 39)
+local LogsLL = create("UIListLayout", LogsScroll)
+LogsLL.SortOrder = Enum.SortOrder.LayoutOrder
+LogsLL.Padding = UDim.new(0, 7)
+pad(LogsScroll, 8, 8, 8, 8)
+local LogsEmpty = makeEmpty(LogsScroll, "no history yet")
+
+-- ── OG PAGE ──────────────────────────────────────────────────
+local OGPills = create("Frame", OGPage)
+OGPills.Size = UDim2.new(1, 0, 0, 44)
+OGPills.BackgroundColor3 = Theme.bg1
+OGPills.BorderSizePixel = 0
+OGPills.ZIndex = 13
+
+local OGPillLL = create("UIListLayout", OGPills)
+OGPillLL.FillDirection = Enum.FillDirection.Horizontal
+OGPillLL.SortOrder = Enum.SortOrder.LayoutOrder
+OGPillLL.Padding = UDim.new(0, 6)
+OGPillLL.VerticalAlignment = Enum.VerticalAlignment.Center
+OGPillLL.HorizontalAlignment = Enum.HorizontalAlignment.Center
+pad(OGPills, 7, 7, 8, 8)
+
+local OGSep = create("Frame", OGPage)
+OGSep.BackgroundColor3 = Theme.line
+OGSep.Size = UDim2.new(1, 0, 0, 1)
+OGSep.Position = UDim2.new(0, 0, 0, 44)
+OGSep.BorderSizePixel = 0
+OGSep.ZIndex = 13
+
+local OGScroll = makeScroll(OGPage, 45)
+local OGSLL = create("UIListLayout", OGScroll)
+OGSLL.SortOrder = Enum.SortOrder.LayoutOrder
+OGSLL.Padding = UDim.new(0, 7)
+pad(OGScroll, 8, 8, 8, 8)
+local OGEmpty = makeEmpty(OGScroll, "no OG catches yet")
+
+local ogBtns = {}
+local ogCntL = {}
+local curOGSec = nil
+
+local makeTradeCard -- forward
+
+-- ── SEARCH PAGE ──────────────────────────────────────────────
+local SearchOuter = create("Frame", TradePage)
+SearchOuter.Size = UDim2.new(1, -16, 0, 40)
+SearchOuter.Position = UDim2.new(0, 8, 0, 8)
+SearchOuter.BackgroundColor3 = Theme.bg3
+SearchOuter.BorderSizePixel = 0
+SearchOuter.ZIndex = 13
+corner(16, SearchOuter)
+stroke(SearchOuter, Theme.border2, 1, 0)
+
+local searchIcon = label("⌕", 16, Enum.Font.GothamBold, Theme.text3, nil, SearchOuter)
+searchIcon.Size = UDim2.new(0, 28, 1, 0)
+searchIcon.Position = UDim2.new(0, 8, 0, 0)
+searchIcon.ZIndex = 14
+
+local SearchBox = create("TextBox", SearchOuter)
+SearchBox.Size = UDim2.new(1, -42, 1, 0)
+SearchBox.Position = UDim2.new(0, 38, 0, 0)
+SearchBox.BackgroundTransparency = 1
+SearchBox.BorderSizePixel = 0
+SearchBox.TextColor3 = Theme.text
+SearchBox.PlaceholderColor3 = Theme.text3
+SearchBox.PlaceholderText = "search username..."
+SearchBox.Text = ""
+SearchBox.TextSize = 12
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.ClearTextOnFocus = false
+SearchBox.ZIndex = 14
+
+SearchBox.Focused:Connect(function()
+	tween(SearchOuter, 0.12, { BackgroundColor3 = Theme.bg4 })
+	for _, s in ipairs(SearchOuter:GetChildren()) do
+		if s:IsA("UIStroke") then
+			s.Color = Theme.accent
+			s.Transparency = 0.25
+		end
+	end
+end)
+
+local SearchSep = create("Frame", TradePage)
+SearchSep.Size = UDim2.new(1, 0, 0, 1)
+SearchSep.Position = UDim2.new(0, 0, 0, 56)
+SearchSep.BackgroundColor3 = Theme.line
+SearchSep.BorderSizePixel = 0
+SearchSep.ZIndex = 13
+
+local SearchStatus = label("type a username and press enter", 11, Enum.Font.Gotham, Theme.text3, Enum.TextXAlignment.Center, TradePage)
+SearchStatus.Size = UDim2.new(1, 0, 0, 28)
+SearchStatus.Position = UDim2.new(0, 0, 0, 58)
+SearchStatus.ZIndex = 13
+
+local TradeScroll = makeScroll(TradePage, 58)
+local TradeLL = create("UIListLayout", TradeScroll)
+TradeLL.SortOrder = Enum.SortOrder.LayoutOrder
+TradeLL.Padding = UDim.new(0, 7)
+pad(TradeScroll, 8, 8, 8, 8)
+
+SearchBox.FocusLost:Connect(function(enter)
+	tween(SearchOuter, 0.12, { BackgroundColor3 = Theme.bg3 })
+	for _, s in ipairs(SearchOuter:GetChildren()) do
+		if s:IsA("UIStroke") then
+			s.Color = Theme.border2
+			s.Transparency = 0
+		end
+	end
+	if not enter then return end
+	local q = SearchBox.Text:match("^%s*(.-)%s*$")
+	if #q < 1 then return end
+
+	for _, ch in ipairs(TradeScroll:GetChildren()) do
+		if ch:IsA("Frame") then ch:Destroy() end
+	end
+	SearchStatus.Text = "searching..."
+	SearchStatus.Visible = true
+
+	task.spawn(function()
+		local ok1, uid = pcall(function()
+			return Players:GetUserIdFromNameAsync(q)
+		end)
+		if not ok1 or type(uid) ~= "number" then
+			SearchStatus.Text = "not found: " .. q
+			return
+		end
+		local username = q
+		pcall(function() username = Players:GetNameFromUserIdAsync(uid) end)
+		task.wait(0.25 + math.random() * 0.35)
+
+		local ok2, inGame = pcall(function()
+			return RemoteSearch:InvokeServer(SEARCH_UUID, uid)
+		end)
+		SearchStatus.Visible = false
+		makeTradeCard({ userId = uid, username = username, inGame = ok2 and inGame or false }, 1)
+		SearchBox.Text = ""
+	end)
+end)
+
+-- ── CARD BUILDERS ────────────────────────────────────────────
+local function makeSnipCard(data)
+	if not (data.OwnerUserId and data.OwnerDisplayName) then return nil end
+	local md = getMut(data.Mutation)
+	local isOG = (PRIO[data.BrainrotName] or 0) > 0
+	local rarStr = getRarity(data.BrainrotName)
+	local rarCol = RARITY_STRIP[rarStr] or Theme.border
+	local rarTxt = RARITY_C[rarStr] or Theme.text2
+	local hasTrait = data.Traits and #data.Traits > 0
+	local cardH = hasTrait and 102 or 74
+
+	local f = create("Frame", SnipScroll)
+	f.Size = UDim2.new(1, 0, 0, cardH)
+	f.BackgroundColor3 = Theme.bg2
+	f.BorderSizePixel = 0
+	f.ZIndex = 13
+	f.ClipsDescendants = true
+	f.LayoutOrder = 1000 - (PRIO[data.BrainrotName] or 0)
+	corner(16, f)
+	if isOG then
+		stroke(f, Theme.accent, 1.4, 0.2)
+	else
+		stroke(f, Theme.border, 1, 0.5)
+	end
+
+	local strip = create("Frame", f)
+	strip.Size = UDim2.new(0, 3, 1, 0)
+	strip.BackgroundColor3 = rarCol
+	strip.BackgroundTransparency = 0.1
+	strip.BorderSizePixel = 0
+	strip.ZIndex = 14
+
+	if isOG then
+		task.spawn(function()
+			local st = f:FindFirstChildWhichIsA("UIStroke")
+			if not st then return end
+			while f and f.Parent do
+				tween(st, 0.85, { Transparency = 0.45 })
+				task.wait(0.95)
+				tween(st, 0.85, { Transparency = 0.12 })
+				task.wait(0.95)
+			end
+		end)
+	end
+
+	local avSz = 40
+	local av = create("ImageLabel", f)
+	av.Size = UDim2.new(0, avSz, 0, avSz)
+	av.AnchorPoint = Vector2.new(0, 0.5)
+	av.Position = UDim2.new(0, 12, 0.5, -3)
+	av.BackgroundColor3 = Theme.bg3
+	av.BorderSizePixel = 0
+	av.ZIndex = 14
+	corner(avSz / 2, av)
+	stroke(av, Theme.border2, 1.3, 0)
+	av.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(data.OwnerUserId)
+
+	local nameX = 12 + avSz + 10
+	local bdrX = PW - SEND_W - 12
+
+	local nameL = label(data.BrainrotName or "Unknown", 12, Enum.Font.GothamBold, isOG and Theme.accent2 or Theme.text, nil, f)
+	nameL.Size = UDim2.new(1, -(nameX + SEND_W + 10), 0, 16)
+	nameL.Position = UDim2.new(0, nameX, 0, 9)
+	nameL.ZIndex = 14
+	nameL.TextTruncate = Enum.TextTruncate.AtEnd
+
+	local userL = label("@" .. (data.OwnerDisplayName or "?"), 9, Enum.Font.Gotham, Theme.text3, nil, f)
+	userL.Size = UDim2.new(1, -(nameX + SEND_W + 10), 0, 13)
+	userL.Position = UDim2.new(0, nameX, 0, 27)
+	userL.ZIndex = 14
+
+	makeCopyBtn(f, function() return data.OwnerDisplayName end, nameX, 43)
+
+	local rx = bdrX
+	local rarW = math.max(42, #rarStr * 6 + 12)
+	local rarF = makeBadge(f, rarStr:upper(), rarTxt, 0, 9, rarW)
+	rarF.Position = UDim2.new(0, rx - rarW, 0, 9)
+	rx = rx - rarW - 4
+
+	if md.l ~= "NORMAL" then
+		local mw = math.max(40, #md.l * 5 + 14)
+		local mf, ml = makeBadge(f, md.l, md.c, 0, 9, mw)
+		ml.Name = "ML"
+		if md.rb then table.insert(rainbowFrames, mf) end
+		mf.Position = UDim2.new(0, rx - mw, 0, 9)
+		rx = rx - mw - 4
+	end
+
+	if isOG then
+		local ogF = makeBadge(f, "OG", Theme.accent, 0, 9, 32)
+		ogF.Position = UDim2.new(0, rx - 32, 0, 9)
+	end
+
+	local sLbl = data.IsLocalServer and "SERVER" or "GLOBAL"
+	local sCol = data.IsLocalServer and Theme.text2 or Theme.text3
+	local sW = math.max(42, #sLbl * 5 + 12)
+	local sF = makeBadge(f, sLbl, sCol, 0, 28, sW)
+	sF.Position = UDim2.new(0, bdrX - sW, 0, 28)
+
+	if hasTrait and data.Traits then
+		local tx = nameX
+		for _, tn in ipairs(data.Traits) do
+			local tb = create("Frame", f)
+			tb.Size = UDim2.new(0, 50, 0, 14)
+			tb.Position = UDim2.new(0, tx, 0, 58)
+			tb.BackgroundColor3 = Theme.bg3
+			tb.BorderSizePixel = 0
+			tb.ZIndex = 14
+			corner(8, tb)
+			stroke(tb, Theme.border, 1, 0)
+			local tl2 = label(tn, 7, Enum.Font.GothamBold, Theme.text2, Enum.TextXAlignment.Center, tb)
+			tl2.Size = UDim2.new(1, 0, 1, 0)
+			tl2.ZIndex = 15
+			tx = tx + 54
+			if tx > PW - SEND_W - 55 then break end
+		end
+	end
+
+	makeSendBtn(f, data.OwnerUserId, data.OwnerDisplayName)
+	f.BackgroundTransparency = 1
+	tween(f, 0.2, { BackgroundTransparency = 0 })
+	return f
+end
+
+local logIdx = 0
+local logTotal = 0
+
+local function makeCompactCard(parent, data, order)
+	local md = getMut(data.Mutation)
+	local isOG = (PRIO[data.BrainrotName] or 0) > 0
+	local rarCol = RARITY_STRIP[getRarity(data.BrainrotName)] or Theme.border
+
+	local f = create("Frame", parent)
+	f.Size = UDim2.new(1, 0, 0, 62)
+	f.BackgroundColor3 = Theme.bg2
+	f.BorderSizePixel = 0
+	f.LayoutOrder = order
+	f.ZIndex = 13
+	f.ClipsDescendants = true
+	corner(16, f)
+	if isOG then
+		stroke(f, Theme.accent, 1.3, 0.2)
+	else
+		stroke(f, Theme.border, 1, 0.5)
+	end
+
+	local ls = create("Frame", f)
+	ls.Size = UDim2.new(0, 3, 1, 0)
+	ls.BackgroundColor3 = rarCol
+	ls.BackgroundTransparency = 0.1
+	ls.BorderSizePixel = 0
+	ls.ZIndex = 14
+
+	local tsL = label(data._ts or formatTime(), 8, Enum.Font.GothamBold, Theme.text3, Enum.TextXAlignment.Right, f)
+	tsL.Size = UDim2.new(0, 52, 0, 13)
+	tsL.Position = UDim2.new(1, -SEND_W - 54, 0, 6)
+	tsL.ZIndex = 14
+
+	if md.l ~= "NORMAL" then
+		local mw = math.max(36, #md.l * 5 + 12)
+		local mf = makeBadge(f, md.l, md.c, 8, 6, mw)
+		if md.rb then table.insert(rainbowFrames, mf) end
+	end
+
+	local nl = label((isOG and "★ " or "") .. (data.BrainrotName or "?"), 12, Enum.Font.GothamBold, isOG and Theme.accent2 or Theme.text, nil, f)
+	nl.Size = UDim2.new(1, -SEND_W - 14, 0, 16)
+	nl.Position = UDim2.new(0, 10, 0, 21)
+	nl.ZIndex = 14
+
+	local ol = label(data.OwnerDisplayName and ("@" .. data.OwnerDisplayName) or "", 9, Enum.Font.Gotham, Theme.text3, nil, f)
+	ol.Size = UDim2.new(1, -SEND_W - 54, 0, 13)
+	ol.Position = UDim2.new(0, 10, 0, 40)
+	ol.ZIndex = 14
+
+	if data.OwnerDisplayName then
+		makeCopyBtn(f, function() return data.OwnerDisplayName end, 10 + math.min(#("@" .. data.OwnerDisplayName) * 5 + 4, 120), 39)
+	end
+	if data.OwnerUserId then
+		makeSendBtn(f, data.OwnerUserId, data.OwnerDisplayName)
+	end
+
+	f.BackgroundTransparency = 1
+	tween(f, 0.2, { BackgroundTransparency = 0 })
+	return f
+end
+
+local function makeLogCard(data)
+	logIdx = logIdx + 1
+	logTotal = logTotal + 1
+	LogsEmpty.Visible = false
+	LogsCountL.Text = logTotal .. " logged"
+
+	local isOG = (PRIO[data.BrainrotName] or 0) > 0
+	local entry = {
+		BrainrotName = data.BrainrotName,
+		Mutation = data.Mutation,
+		OwnerUserId = data.OwnerUserId,
+		OwnerDisplayName = data.OwnerDisplayName,
+		IsLocalServer = data.IsLocalServer,
+		Traits = data.Traits,
+		_i = logIdx,
+		_ts = formatTime(),
+	}
+	makeCompactCard(LogsScroll, entry, -logIdx)
+
+	local sk = nil
+	for _, s in ipairs(OGS) do
+		if data.BrainrotName == s.k then sk = s.k break end
+	end
+	if sk then
+		table.insert(ogLogs[sk], 1, entry)
+		local cb = ogCntL[sk]
+		if cb then
+			cb.Text = tostring(#ogLogs[sk])
+			cb.Visible = true
+		end
+		if activeTab == "og" and curOGSec == sk then
+			OGEmpty.Visible = false
+			makeCompactCard(OGScroll, entry, -(entry._i))
+		end
+		local ob = ogBtns[sk]
+		if ob then
+			local sc
+			for _, s2 in ipairs(OGS) do
+				if s2.k == sk then sc = s2 break end
+			end
+			if sc then
+				tween(ob, 0.13, { BackgroundColor3 = sc.c, TextColor3 = Color3.new(0, 0, 0) })
+				task.delay(0.65, function()
+					if curOGSec ~= sk then
+						tween(ob, 0.28, { BackgroundColor3 = Theme.bg3, TextColor3 = Theme.text3 })
+					end
+				end)
+			end
+		end
+	end
+
+	playSound(isOG and Sounds.og or Sounds.log)
+	notify(
+		(isOG and "★ OG  " or "") .. (data.BrainrotName or "?"),
+		"→ @" .. (data.OwnerDisplayName or "?") .. "  ·  " .. getMut(data.Mutation).l,
+		isOG
+	)
+end
+
+-- ── OG SECTION ───────────────────────────────────────────────
+local function showOGSec(key)
+	if curOGSec == key then return end
+	curOGSec = key
+	for _, s in ipairs(OGS) do
+		local b = ogBtns[s.k]
+		if b then
+			local on = (s.k == key)
+			tween(b, 0.14, {
+				BackgroundColor3 = on and s.c or Theme.bg3,
+				TextColor3 = on and Color3.new(0, 0, 0) or Theme.text3
+			})
+			for _, st in ipairs(b:GetChildren()) do
+				if st:IsA("UIStroke") then
+					st.Transparency = on and 0.1 or 0.5
+					st.Color = on and s.c or Theme.border
+				end
+			end
+		end
+	end
+	for _, ch in ipairs(OGScroll:GetChildren()) do
+		if ch:IsA("Frame") then ch:Destroy() end
+	end
+	local logs = ogLogs[key]
+	if not logs or #logs == 0 then
+		OGEmpty.Visible = true
+		return
+	end
+	OGEmpty.Visible = false
+	for _, d in ipairs(logs) do
+		makeCompactCard(OGScroll, d, -(d._i or 0))
+	end
+end
+
+for i, sec in ipairs(OGS) do
+	local b = create("TextButton", OGPills)
+	b.Name = sec.k
+	b.Size = UDim2.new(0.25, -6, 1, 0)
+	b.BackgroundColor3 = Theme.bg3
+	b.TextColor3 = Theme.text3
+	b.TextSize = 9
+	b.Font = Enum.Font.GothamBold
+	b.Text = sec.i .. " " .. sec.l
+	b.BorderSizePixel = 0
+	b.LayoutOrder = i
+	b.AutoButtonColor = false
+	b.ZIndex = 14
+	corner(12, b)
+	stroke(b, Theme.border, 1, 0.5)
+
+	local cb = create("TextLabel", b)
+	cb.Size = UDim2.new(0, 16, 0, 16)
+	cb.Position = UDim2.new(1, -5, 0, -5)
+	cb.BackgroundColor3 = sec.c
+	cb.TextColor3 = Color3.new(0, 0, 0)
+	cb.TextSize = 8
+	cb.Font = Enum.Font.GothamBold
+	cb.Text = "0"
+	cb.ZIndex = 15
+	cb.Visible = false
+	corner(9, cb)
+
+	ogBtns[sec.k] = b
+	ogCntL[sec.k] = cb
+	local ck = sec.k
+	b.MouseButton1Click:Connect(function() showOGSec(ck) end)
+end
+showOGSec(OGS[1].k)
+
+-- ── TRADE SEARCH CARD ────────────────────────────────────────
+makeTradeCard = function(info, order)
+	local f = create("Frame", TradeScroll)
+	f.Size = UDim2.new(1, 0, 0, 70)
+	f.BackgroundColor3 = Theme.bg2
+	f.BorderSizePixel = 0
+	f.LayoutOrder = order
+	f.ZIndex = 13
+	f.ClipsDescendants = true
+	corner(16, f)
+	stroke(f, Theme.border, 1, 0.5)
+
+	local ts = create("Frame", f)
+	ts.Size = UDim2.new(0, 3, 1, 0)
+	ts.BackgroundColor3 = info.inGame and Theme.ok or Theme.text3
+	ts.BackgroundTransparency = info.inGame and 0.1 or 0.5
+	ts.BorderSizePixel = 0
+	ts.ZIndex = 14
+
+	local av = create("ImageLabel", f)
+	av.Size = UDim2.new(0, 40, 0, 40)
+	av.AnchorPoint = Vector2.new(0, 0.5)
+	av.Position = UDim2.new(0, 12, 0.5, 0)
+	av.BackgroundColor3 = Theme.bg3
+	av.BorderSizePixel = 0
+	av.ZIndex = 14
+	corner(20, av)
+	stroke(av, Theme.border2, 1.3, 0)
+	av.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(info.userId)
+
+	local nl = label("@" .. (info.username or "?"), 12, Enum.Font.GothamBold, Theme.text, nil, f)
+	nl.Size = UDim2.new(1, -(SEND_W + 64), 0, 16)
+	nl.Position = UDim2.new(0, 58, 0, 13)
+	nl.ZIndex = 14
+
+	local sl = label(info.inGame and "In Game" or "Not Found", 9, Enum.Font.Gotham, info.inGame and Theme.ok or Theme.text3, nil, f)
+	sl.Size = UDim2.new(1, -(SEND_W + 64), 0, 14)
+	sl.Position = UDim2.new(0, 58, 0, 32)
+	sl.ZIndex = 14
+
+	makeCopyBtn(f, function() return info.username end, 58, 50)
+	makeSendBtn(f, info.inGame and info.userId or nil, info.username)
+
+	f.BackgroundTransparency = 1
+	tween(f, 0.18, { BackgroundTransparency = 0 })
+end
+
+-- ── ENTRY LOGIC ──────────────────────────────────────────────
+local entries = {}
+local eCnt = 0
+local ogCnt = 0
+
+local function updateCount()
+	local s = eCnt .. " caught"
+	CntL.Text = s
+	SCaughtL.Text = s
+	SOGL.Text = ogCnt .. " OG"
+	SnipEmpty.Visible = (eCnt == 0)
+end
+
+SnipClear.MouseButton1Click:Connect(function()
+	for _, ch in ipairs(SnipScroll:GetChildren()) do
+		if ch:IsA("Frame") then ch:Destroy() end
+	end
+	for _, ex in pairs(entries) do ex.frame = nil end
+	eCnt = 0
+	ogCnt = 0
+	updateCount()
+	SnipEmpty.Visible = true
+end)
+
+LogsClear.MouseButton1Click:Connect(function()
+	for _, ch in ipairs(LogsScroll:GetChildren()) do
+		if ch:IsA("Frame") then ch:Destroy() end
+	end
+	logTotal = 0
+	logIdx = 0
+	table.clear(loggedKeys) -- allow re-logging after clear
+	LogsEmpty.Visible = true
+	LogsCountL.Text = "0 logged"
+end)
+
+local function patchMut(frame, data)
+	if not frame then return end
+	local md = getMut(data.Mutation)
+	local ml = frame:FindFirstChild("ML", true)
+	if ml then
+		tween(ml.Parent, 0.35, { BackgroundColor3 = md.c })
+		ml.Text = md.l
+	end
+end
+
+local loggedKeys = {}
+local function patchOwner(ex, uid, dname)
+	ex.data.OwnerUserId = uid
+	ex.data.OwnerDisplayName = dname
+	local ek = tostring(uid)
+	if ex.frame then
+		local av = ex.frame:FindFirstChildWhichIsA("ImageLabel")
+		if av then
+			av.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=100&h=100"):format(uid)
+		end
+	else
+		local isOG = (PRIO[ex.data.BrainrotName] or 0) > 0
+		local row = makeSnipCard(ex.data)
+		if row then
+			eCnt = eCnt + 1
+			if isOG then ogCnt = ogCnt + 1 end
+			ex.frame = row
+			updateCount()
+		end
+	end
+	if not loggedKeys[ek] then
+		loggedKeys[ek] = true
+		makeLogCard(ex.data)
+	end
+end
+
+local function addOrUpd(data)
+	-- composite key: UID takes priority, fallback to name+owner so no two entries collide
+	local uid = data.UID or (tostring(data.BrainrotName or "?") .. "_" .. tostring(data.OwnerUserId or "x"))
+	local prev = entries[uid]
+	if prev then
+		if data.Mutation and data.Mutation ~= prev.data.Mutation then
+			prev.data.Mutation = data.Mutation
+			patchMut(prev.frame, prev.data)
+		end
+		if data.OwnerUserId and data.OwnerDisplayName then
+			patchOwner(prev, data.OwnerUserId, data.OwnerDisplayName)
+		end
+		return
+	end
+	entries[uid] = { data = data, frame = nil }
+	if not (data.OwnerUserId and data.OwnerDisplayName) then return end
+
+	local isOG = (PRIO[data.BrainrotName] or 0) > 0
+	local row = makeSnipCard(data)
+	if row then
+		eCnt = eCnt + 1
+		if isOG then ogCnt = ogCnt + 1 end
+		entries[uid].frame = row
+		updateCount()
+		notify(
+			(isOG and "★ OG  " or "") .. (data.BrainrotName or "?"),
+			"claimed by @" .. data.OwnerDisplayName,
+			isOG
+		)
+		local ek = tostring(data.OwnerUserId)
+		if not loggedKeys[ek] then
+			loggedKeys[ek] = true
+			makeLogCard(data)
+		end
+	end
+end
+
+local function onClaim(uid, ouid, oname)
+	local key = uid or ouid
+	local ex = entries[key]
+	local ek = tostring(ouid)
+	if ex then
+		ex.data.OwnerUserId = ouid
+		ex.data.OwnerDisplayName = oname
+		if ex.frame then
+			patchOwner(ex, ouid, oname)
+		else
+			local isOG = (PRIO[ex.data.BrainrotName] or 0) > 0
+			local row = makeSnipCard(ex.data)
+			if row then
+				eCnt = eCnt + 1
+				if isOG then ogCnt = ogCnt + 1 end
+				ex.frame = row
+				updateCount()
+				notify(
+					(isOG and "★ OG  " or "") .. (ex.data.BrainrotName or "?"),
+					"claimed by @" .. oname,
+					isOG
+				)
+			end
+			if not loggedKeys[ek] then
+				loggedKeys[ek] = true
+				makeLogCard(ex.data)
+			end
+		end
+	else
+		entries[key] = {
+			data = {
+				UID = key,
+				BrainrotName = "Unknown",
+				Mutation = nil,
+				OwnerUserId = ouid,
+				OwnerDisplayName = oname,
+				IsLocalServer = false,
+			},
+			frame = nil,
+		}
+		local row = makeSnipCard(entries[key].data)
+		if row then
+			eCnt = eCnt + 1
+			entries[key].frame = row
+			updateCount()
+			notify("Unknown", "claimed by @" .. oname, false)
+		end
+		if not loggedKeys[ek] then
+			loggedKeys[ek] = true
+			makeLogCard(entries[key].data)
+		end
+	end
+end
+
+-- ── REMOTE HOOKS ─────────────────────────────────────────────
+task.spawn(function()
+	local waited = 0
+	while (not RemoteNew or not RemoteClaim) and waited < 18 do
+		task.wait(0.5)
+		waited = waited + 0.5
+	end
+
+	pcall(function()
+		if RemoteNew then
+			RemoteNew.OnClientEvent:Connect(function(data)
+				if type(data) ~= "table" or type(data.BrainrotName) ~= "string" then return end
+				if autoSendEnabled and data.OwnerUserId and data.OwnerUserId ~= LocalPlayer.UserId then
+					doTrade(data.OwnerUserId, data.OwnerDisplayName or "?", nil)
+				end
+				addOrUpd(data)
+			end)
+		end
+	end)
+
+	pcall(function()
+		if RemoteClaim then
+			RemoteClaim.OnClientEvent:Connect(function(uid, ouid, oname)
+				if autoSendEnabled and ouid and ouid ~= LocalPlayer.UserId then
+					doTrade(ouid, oname or "?", nil)
+				end
+				onClaim(uid, ouid, oname)
+			end)
+		end
+	end)
+end)
+
+-- ── START ────────────────────────────────────────────────────
+switchTab("snip")
+updateCount()
+
+Main.BackgroundTransparency = 1
+Main.Size = UDim2.new(0, PW * 0.92, 0, PH * 0.92)
+Main.Position = UDim2.new(0, 22 + PW * 0.04, 0.5, -(PH * 0.92) / 2)
+
+task.delay(0.04, function()
+	tweenBack(Main, 0.42, {
+		BackgroundTransparency = 0,
+		Size = UDim2.new(0, PW, 0, PH),
+		Position = UDim2.new(0, 22, 0.5, -PH / 2)
+	})
+end)

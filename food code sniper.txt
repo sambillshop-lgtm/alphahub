@@ -1,0 +1,570 @@
+-- food hub code sniper by solar cuz solar is a sigma chat niggerino tuffino
+-- made with ai btw.. idk why a webhook
+
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
+local CoreGui = game:GetService("CoreGui")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1534228608384634931/xYtzeEGUYb6SewDHjNapc64VNc2FH44fylgXwIamIPfQNWrFWRY_uvy32Y8piowEiATN"
+
+-- HTTP Request
+local httpRequest
+if syn and syn.request then
+    httpRequest = syn.request
+elseif http and http.request then
+    httpRequest = http.request
+elseif http_request then
+    httpRequest = http_request
+elseif request then
+    httpRequest = request
+end
+
+-- Settings
+local _enabled = true
+local _autoSubmit = true
+local _submitAfter = 1
+local _modeIndex = 1
+
+local Modes = {
+    {Name = "1 CODE", Count = 1},
+    {Name = "2 CODES", Count = 2},
+    {Name = "3 CODES", Count = 3},
+    {Name = "4 CODES", Count = 4},
+    {Name = "5 CODES", Count = 5},
+}
+
+local _msgBuffer = {}
+local _msgCombined = ""
+local _seenMsgs = {}
+local _isProcessing = false
+local listenConnections = {}
+
+local GUI, Main, StatusLog, OnBtn, ModeBtn, DelBtn, UnsafeBtn, CodeBox
+
+-- Simple log
+local function log(text, color)
+    if not StatusLog then return end
+    local line = Instance.new("TextLabel")
+    line.Size = UDim2.new(1, -10, 0, 15)
+    line.BackgroundTransparency = 1
+    line.Font = Enum.Font.Code
+    line.TextSize = 11
+    line.TextXAlignment = Enum.TextXAlignment.Left
+    line.TextColor3 = color or Color3.fromRGB(255, 220, 80)
+    line.Text = text
+    line.Parent = StatusLog
+
+    local children = StatusLog:GetChildren()
+    if #children > 7 then
+        for i = 1, #children - 7 do
+            if children[i]:IsA("TextLabel") then
+                children[i]:Destroy()
+            end
+        end
+    end
+end
+
+local function setStatus(txt, col)
+    log("> " .. txt, col or Color3.fromRGB(255, 220, 80))
+end
+
+-- Webhook
+local function sendWebhook(code)
+    if not httpRequest then return end
+    local name = LocalPlayer.DisplayName or LocalPlayer.Name
+    task.spawn(function()
+        pcall(function()
+            httpRequest({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = {["Content-Type"] = "application/json"},
+                Body = HttpService:JSONEncode({
+                    embeds = {{
+                        title = "Code Claimed",
+                        description = "**Code:** `" .. tostring(code) .. "`\n**Player:** " .. name,
+                        color = 0xFFC800,
+                        timestamp = DateTime.now():ToIsoDate()
+                    }}
+                })
+            })
+        end)
+    end)
+end
+
+-- Strip rich text
+local function stripRich(t)
+    if type(t) ~= "string" then return tostring(t) end
+    return (t:gsub("<[^>]->", "")):match("^%s*(.-)%s*$") or ""
+end
+
+-- Find code textbox (faster path)
+local function getCodeBox()
+    local codesGui = PlayerGui:FindFirstChild("Codes")
+    if not codesGui then return nil end
+    for _, obj in ipairs(codesGui:GetDescendants()) do
+        if obj:IsA("TextBox") and obj.Visible then
+            return obj
+        end
+    end
+    return nil
+end
+
+-- Find redeem / claim / submit button
+local function getRedeemButton()
+    local codesGui = PlayerGui:FindFirstChild("Codes")
+    if not codesGui then return nil end
+    for _, obj in ipairs(codesGui:GetDescendants()) do
+        if obj:IsA("TextButton") and obj.Visible then
+            local text = (obj.Text or ""):lower()
+            if text:find("redeem") or text:find("claim") or text:find("submit") then
+                return obj
+            end
+        end
+    end
+    return nil
+end
+
+-- Redeem code (faster)
+local function redeemCode(code)
+    local box = getCodeBox()
+    if not box then return false end
+
+    box.Text = tostring(code)
+    box:CaptureFocus()
+
+    -- Fire FocusLost if possible
+    if getconnections then
+        local connections = getconnections(box.FocusLost) or {}
+        for _, conn in ipairs(connections) do
+            pcall(function()
+                if conn.Enabled ~= false then
+                    conn:Fire(true)
+                end
+            end)
+        end
+    end
+
+    local btn = getRedeemButton()
+    if btn then
+        task.wait(0.05)
+        pcall(function()
+            btn:Click()
+        end)
+    end
+
+    return true
+end
+
+-- Process code
+local function processCode(code)
+    if not code or code == "" then
+        _isProcessing = false
+        return
+    end
+
+    if CodeBox then CodeBox.Text = code end
+    setStatus("Submitting → " .. code, Color3.fromRGB(255, 200, 50))
+
+    local ok = redeemCode(code)
+
+    if ok then
+        setStatus("Submitted → " .. code, Color3.fromRGB(80, 255, 120))
+        sendWebhook(code)
+    else
+        setStatus("Failed → " .. code, Color3.fromRGB(255, 80, 80))
+    end
+
+    if CodeBox then CodeBox.Text = "" end
+    _isProcessing = false
+end
+
+-- Better filter
+local skipWords = {
+    ["sammy"] = true, ["here"] = true, ["codes"] = true, ["dlc"] = true,
+    ["redeem"] = true, ["any"] = true, ["from"] = true, ["type"] = true,
+    ["fast"] = true, ["the"] = true, ["and"] = true, ["for"] = true,
+    ["with"] = true, ["code"] = true, ["new"] = true, ["check"] = true,
+    ["chat"] = true, ["message"] = true, ["notification"] = true
+}
+
+local function isValidCodeCandidate(text)
+    if not text or text == "" then return false end
+    if #text < 3 or #text > 40 then return false end
+
+    local lower = text:lower()
+    if skipWords[lower] then return false end
+
+    -- Skip pure numbers that are too short or pure spaces
+    if text:match("^%s*$") then return false end
+
+    -- Prefer things that look like codes (letters + numbers mixed is good, but allow pure too)
+    return true
+end
+
+-- Add to buffer
+local function appendToBox(rawText)
+    if not rawText or not _enabled then return end
+
+    local text = stripRich(rawText)
+    if not isValidCodeCandidate(text) then return end
+
+    if _seenMsgs[text] then return end
+    _seenMsgs[text] = true
+    task.delay(2, function()
+        _seenMsgs[text] = nil
+    end)
+
+    setStatus("Detected → " .. text, Color3.fromRGB(255, 220, 80))
+
+    _msgBuffer[#_msgBuffer + 1] = text
+    _msgCombined = table.concat(_msgBuffer, " ")
+    local count = #_msgBuffer
+
+    if CodeBox then
+        CodeBox.Text = _msgCombined
+        CodeBox.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+        task.delay(0.15, function()
+            if CodeBox then
+                CodeBox.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+            end
+        end)
+    end
+
+    if count >= _submitAfter and not _isProcessing then
+        local final = _msgCombined
+        _msgBuffer = {}
+        _msgCombined = ""
+
+        if _autoSubmit then
+            _isProcessing = true
+            task.spawn(function()
+                processCode(final)
+            end)
+        else
+            setStatus("Collected " .. count .. "/" .. _submitAfter .. " → " .. final, Color3.fromRGB(255, 200, 50))
+        end
+    else
+        setStatus("Collected " .. count .. "/" .. _submitAfter .. " → " .. _msgCombined, Color3.fromRGB(255, 200, 50))
+    end
+end
+
+-- Find notification-like remotes
+local function findNotifyRemotes()
+    local found = {}
+
+    local function check(obj)
+        if obj:IsA("RemoteEvent") then
+            local n = obj.Name:lower()
+            if n:find("notif") or n:find("announce") or n:find("chat") or
+               n:find("message") or n:find("notify") or n:find("alert") or
+               n:find("system") or n:find("broadcast") then
+                table.insert(found, obj)
+            end
+        end
+    end
+
+    local packages = ReplicatedStorage:FindFirstChild("Packages")
+    if packages then
+        local net = packages:FindFirstChild("Net")
+        if net then
+            for _, obj in ipairs(net:GetDescendants()) do
+                check(obj)
+            end
+        end
+    end
+
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        check(obj)
+    end
+
+    return found
+end
+
+-- Start listening (better coverage)
+local function startListening()
+    for _, conn in ipairs(listenConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    listenConnections = {}
+
+    local remotes = findNotifyRemotes()
+
+    if #remotes > 0 then
+        for _, remote in ipairs(remotes) do
+            local conn = remote.OnClientEvent:Connect(function(...)
+                if not _enabled then return end
+                local args = {...}
+                for _, arg in ipairs(args) do
+                    if type(arg) == "string" then
+                        pcall(appendToBox, arg)
+                    elseif type(arg) == "table" then
+                        for _, v in pairs(arg) do
+                            if type(v) == "string" then
+                                pcall(appendToBox, v)
+                            end
+                        end
+                    end
+                end
+            end)
+            table.insert(listenConnections, conn)
+        end
+        setStatus("Listening on " .. #remotes .. " remote(s)", Color3.fromRGB(100, 255, 100))
+    else
+        -- Fallback: attach to first few RemoteEvents we can find
+        local count = 0
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("RemoteEvent") and count < 8 then
+                local conn = obj.OnClientEvent:Connect(function(...)
+                    if not _enabled then return end
+                    local args = {...}
+                    for _, arg in ipairs(args) do
+                        if type(arg) == "string" then
+                            pcall(appendToBox, arg)
+                        end
+                    end
+                end)
+                table.insert(listenConnections, conn)
+                count = count + 1
+            end
+        end
+        setStatus("Fallback listening (" .. count .. " remotes)", Color3.fromRGB(255, 180, 50))
+    end
+end
+
+local function stopListening()
+    for _, conn in ipairs(listenConnections) do
+        pcall(function() conn:Disconnect() end)
+    end
+    listenConnections = {}
+    _msgBuffer = {}
+    _msgCombined = ""
+    _isProcessing = false
+    if CodeBox then CodeBox.Text = "" end
+end
+
+-- GUI
+pcall(function()
+    if CoreGui:FindFirstChild("FoodHub") then CoreGui.FoodHub:Destroy() end
+end)
+pcall(function()
+    if PlayerGui:FindFirstChild("FoodHub") then PlayerGui.FoodHub:Destroy() end
+end)
+
+GUI = Instance.new("ScreenGui")
+GUI.Name = "FoodHub"
+GUI.ResetOnSpawn = false
+GUI.IgnoreGuiInset = true
+GUI.DisplayOrder = 999
+
+local okParent = pcall(function()
+    GUI.Parent = CoreGui
+end)
+if not okParent then
+    GUI.Parent = PlayerGui
+end
+
+Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.new(0, 320, 0, 155)
+Main.Position = UDim2.new(0.5, -160, 0, 12)
+Main.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+Main.Parent = GUI
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = Main
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(255, 200, 30)
+mainStroke.Thickness = 1.4
+mainStroke.Transparency = 0.3
+mainStroke.Parent = Main
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 26)
+TitleBar.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = Main
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 8)
+titleCorner.Parent = TitleBar
+
+local titleFix = Instance.new("Frame")
+titleFix.Size = UDim2.new(1, 0, 0, 10)
+titleFix.Position = UDim2.new(0, 0, 1, -10)
+titleFix.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
+titleFix.BorderSizePixel = 0
+titleFix.Parent = TitleBar
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, -12, 1, 0)
+titleLabel.Position = UDim2.new(0, 10, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.GothamBold
+titleLabel.TextSize = 12
+titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+titleLabel.TextColor3 = Color3.fromRGB(255, 210, 40)
+titleLabel.Text = "FOOD HUB"
+titleLabel.Parent = TitleBar
+
+local btnRow = Instance.new("Frame")
+btnRow.Size = UDim2.new(1, -10, 0, 24)
+btnRow.Position = UDim2.new(0, 5, 0, 32)
+btnRow.BackgroundTransparency = 1
+btnRow.Parent = Main
+
+local btnLayout = Instance.new("UIListLayout")
+btnLayout.FillDirection = Enum.FillDirection.Horizontal
+btnLayout.Padding = UDim.new(0, 4)
+btnLayout.Parent = btnRow
+
+local function makeBtn(text, bg, w)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, w, 0, 22)
+    b.BackgroundColor3 = bg
+    b.Text = text
+    b.TextColor3 = Color3.fromRGB(0, 0, 0)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 10
+    b.AutoButtonColor = false
+    b.Parent = btnRow
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 5)
+    c.Parent = b
+    return b
+end
+
+OnBtn = makeBtn("ON", Color3.fromRGB(255, 210, 40), 40)
+ModeBtn = makeBtn("MODE:1", Color3.fromRGB(40, 40, 45), 58)
+ModeBtn.TextColor3 = Color3.fromRGB(255, 210, 40)
+DelBtn = makeBtn("DEL", Color3.fromRGB(200, 50, 50), 38)
+DelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UnsafeBtn = makeBtn("UNSAFE", Color3.fromRGB(255, 150, 30), 55)
+
+CodeBox = Instance.new("TextBox")
+CodeBox.Size = UDim2.new(0, 90, 0, 22)
+CodeBox.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+CodeBox.PlaceholderText = "code..."
+CodeBox.PlaceholderColor3 = Color3.fromRGB(100, 100, 110)
+CodeBox.Text = ""
+CodeBox.TextColor3 = Color3.fromRGB(255, 220, 80)
+CodeBox.Font = Enum.Font.Code
+CodeBox.TextSize = 11
+CodeBox.Parent = btnRow
+
+local boxCorner = Instance.new("UICorner")
+boxCorner.CornerRadius = UDim.new(0, 5)
+boxCorner.Parent = CodeBox
+
+StatusLog = Instance.new("ScrollingFrame")
+StatusLog.Name = "StatusLog"
+StatusLog.Size = UDim2.new(1, -10, 0, 85)
+StatusLog.Position = UDim2.new(0, 5, 0, 62)
+StatusLog.BackgroundColor3 = Color3.fromRGB(6, 6, 8)
+StatusLog.BorderSizePixel = 0
+StatusLog.ScrollBarThickness = 2
+StatusLog.ScrollBarImageColor3 = Color3.fromRGB(255, 200, 40)
+StatusLog.CanvasSize = UDim2.new(0, 0, 0, 0)
+StatusLog.AutomaticCanvasSize = Enum.AutomaticSize.Y
+StatusLog.Parent = Main
+
+local logCorner = Instance.new("UICorner")
+logCorner.CornerRadius = UDim.new(0, 6)
+logCorner.Parent = StatusLog
+
+local logStroke = Instance.new("UIStroke")
+logStroke.Color = Color3.fromRGB(255, 200, 40)
+logStroke.Thickness = 1
+logStroke.Transparency = 0.55
+logStroke.Parent = StatusLog
+
+local logLayout = Instance.new("UIListLayout")
+logLayout.Padding = UDim.new(0, 1)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+logLayout.Parent = StatusLog
+
+local logPad = Instance.new("UIPadding")
+logPad.PaddingTop = UDim.new(0, 4)
+logPad.PaddingLeft = UDim.new(0, 5)
+logPad.PaddingRight = UDim.new(0, 5)
+logPad.Parent = StatusLog
+
+-- Buttons
+OnBtn.MouseButton1Click:Connect(function()
+    _enabled = not _enabled
+    if _enabled then
+        OnBtn.BackgroundColor3 = Color3.fromRGB(255, 210, 40)
+        OnBtn.Text = "ON"
+        OnBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        startListening()
+        log("[setting] Script -> ON", Color3.fromRGB(80, 255, 120))
+    else
+        OnBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        OnBtn.Text = "OFF"
+        OnBtn.TextColor3 = Color3.fromRGB(255, 210, 40)
+        stopListening()
+        log("[setting] Script -> OFF", Color3.fromRGB(255, 80, 80))
+    end
+end)
+
+ModeBtn.MouseButton1Click:Connect(function()
+    _modeIndex = (_modeIndex % #Modes) + 1
+    _submitAfter = Modes[_modeIndex].Count
+    ModeBtn.Text = "MODE:" .. _modeIndex
+    _msgBuffer = {}
+    _msgCombined = ""
+    log("[setting] AutoSubmit after → " .. _submitAfter, Color3.fromRGB(255, 200, 50))
+end)
+
+DelBtn.MouseButton1Click:Connect(function()
+    _msgBuffer = {}
+    _msgCombined = ""
+    _isProcessing = false
+    if CodeBox then CodeBox.Text = "" end
+    log("[setting] Queue cleared", Color3.fromRGB(255, 150, 50))
+end)
+
+UnsafeBtn.MouseButton1Click:Connect(function()
+    _autoSubmit = not _autoSubmit
+    if _autoSubmit then
+        UnsafeBtn.BackgroundColor3 = Color3.fromRGB(255, 150, 30)
+        UnsafeBtn.Text = "UNSAFE"
+        UnsafeBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+        log("[setting] AutoSubmit -> ON", Color3.fromRGB(80, 255, 120))
+    else
+        UnsafeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+        UnsafeBtn.Text = "SAFE"
+        UnsafeBtn.TextColor3 = Color3.fromRGB(255, 210, 40)
+        log("[setting] AutoSubmit -> OFF", Color3.fromRGB(100, 180, 255))
+    end
+end)
+
+CodeBox.FocusLost:Connect(function(enter)
+    if enter and CodeBox.Text ~= "" then
+        appendToBox(CodeBox.Text)
+        CodeBox.Text = ""
+    end
+end)
+
+UserInputService.InputBegan:Connect(function(inp, gpe)
+    if gpe then return end
+    if inp.KeyCode == Enum.KeyCode.RightShift then
+        Main.Visible = not Main.Visible
+    end
+end)
+
+-- Start
+startListening()
+log("scanning for codes...", Color3.fromRGB(160, 160, 170))
+print("Food Hub loaded | Faster + better detection")
