@@ -1,0 +1,352 @@
+
+
+
+Run
+
+Layout
+
+Untitled 2
+
+myconfidenceisgone
+
+1
+Terminals
+Search...
+
+
+
+
+
+[21:02:02]
+Volt successfully loaded
+[21:02:03]
+Authentication successful
+[21:02:03]
+Initialization complete, launching Roblox...
+[21:02:26]
+[Logger] Hooked HTTP function
+[21:02:26]
+[Logger] Hooked request
+[21:02:26]
+[Logger] Hooked http_request
+[21:02:26]
+[Logger] Hooked
+WebSocket.connect
+[21:02:26]
+[Logger] Hooked
+websocket.connect
+[21:02:26]
+[Logger] Ready
+[21:02:27]
+✅ Sistema de Chat con Historial cargado correctamente
+[21:02:28]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:28]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:29]
+🟡 Conectando a WebSocket...
+[21:02:29]
+[WS] Attempting connect →
+wss://zlhub.net/ws
+[21:02:29]
+[WS] Attempting connect →
+wss://zlhub.net/ws
+[21:02:29]
+================ WEBSOCKET ================
+[21:02:29]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:29]
+===========================================
+[21:02:29]
+================ WEBSOCKET ================
+[21:02:29]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:29]
+===========================================
+[21:02:29]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:02:29]
+================ WEBSOCKET ================
+[21:02:29]
+Connected to:
+wss://zlhub.net/ws
+[21:02:29]
+===========================================
+[21:02:29]
+================ WEBSOCKET ================
+[21:02:29]
+Connected to:
+wss://zlhub.net/ws
+[21:02:29]
+===========================================
+[21:02:29]
+✅ Conectado a WebSocket, iniciando handshake...
+[21:02:29]
+Enviando...
+[21:02:29]
+[WS SEND] →
+{"key":"0a3e011703051903070a00775a665e646330454655505c04040a0f33032d0c3f342a1d16040a0657594151200031##HEX##,?#\\;?,%$]}{)","type":"handshake"}
+[21:02:29]
+❌ Error enviando mensaje:
+Luraph Script:280: :94: attempt to call a nil value
+[21:02:29]
+❌ Handshake falló, cerrando conexión
+[21:02:30]
+❌ Duel Remote NO encontrado
+[21:02:30]
+❌ Trade Remote NO encontrado
+[21:02:33]
+Luraph Script:8617: :40: attempt to call a nil value
+    Stack Begin
+    Script '', Line 40
+    Stack End
+[21:02:34]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:34]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:34]
+================ WEBSOCKET ================
+[21:02:34]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:34]
+===========================================
+[21:02:34]
+================ WEBSOCKET ================
+[21:02:34]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:34]
+===========================================
+[21:02:39]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:02:44]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:44]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:45]
+================ WEBSOCKET ================
+[21:02:45]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:45]
+===========================================
+[21:02:45]
+================ WEBSOCKET ================
+[21:02:45]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:45]
+===========================================
+[21:02:50]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:02:55]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:55]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:55]
+================ WEBSOCKET ================
+[21:02:55]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:55]
+===========================================
+[21:02:55]
+================ WEBSOCKET ================
+[21:02:55]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:02:55]
+===========================================
+[21:03:00]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:03:05]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:05]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:05]
+================ WEBSOCKET ================
+[21:03:05]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:05]
+===========================================
+[21:03:05]
+================ WEBSOCKET ================
+[21:03:05]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:05]
+===========================================
+[21:03:10]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:03:15]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:15]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:16]
+================ WEBSOCKET ================
+[21:03:16]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:16]
+===========================================
+[21:03:16]
+================ WEBSOCKET ================
+[21:03:16]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:16]
+===========================================
+[21:03:21]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:03:26]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:26]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:26]
+================ WEBSOCKET ================
+[21:03:26]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:26]
+===========================================
+[21:03:26]
+================ WEBSOCKET ================
+[21:03:26]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:26]
+===========================================
+[21:03:31]
+[WS SEND] →
+011b3812413f084319154b6e54173600006f145121055b2113552211563f0a195f260656381a5e2b13542b1850370155320e4d2400583f014228005333041c5a26064a301c5935521e6e0d54201854380a1678384d6a035528450b7b404f097b41036654153c115f294c0f763757384d593b4371270854644b132d16146d2e0947744215764101625b787b0a1a7b4f4623115f3c1d127c45622f10085c3f531f741c5e21005e2d177b35145d7557160c0c5968094966205e26175844670a11311d59704a067c5e05
+[21:03:31]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:31]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:31]
+================ WEBSOCKET ================
+[21:03:31]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:31]
+===========================================
+[21:03:31]
+================ WEBSOCKET ================
+[21:03:31]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:31]
+===========================================
+[21:03:36]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:03:41]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:41]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:42]
+================ WEBSOCKET ================
+[21:03:42]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:42]
+===========================================
+[21:03:42]
+================ WEBSOCKET ================
+[21:03:42]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:42]
+===========================================
+[21:03:47]
+[WS SEND] →
+011b281e46380c452b335d280b176e5b6d044f186002402910513432432651401b230547260b0d7d5f453b191b26165a3b024c6c0059254b58230655391b154d66055b2315553c115b20415c39185f32524131064401000d7753057e4a4c0d73481521115326180f7d5b0572115d3e0a5c365e077d541620084327120e043b1f54745415211340251e411f1c41755716201a0e701d5525015c23041f5d3d16462f1b513f0757220c5c2d1a5e301b51211b5b2d074920045f3d1608572c134a211e543f074b2a0a5b
+[21:03:52]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:52]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:52]
+================ WEBSOCKET ================
+[21:03:52]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:52]
+===========================================
+[21:03:52]
+================ WEBSOCKET ================
+[21:03:52]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:52]
+===========================================
+[21:03:57]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:57]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:57]
+================ WEBSOCKET ================
+[21:03:57]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:57]
+===========================================
+[21:03:57]
+================ WEBSOCKET ================
+[21:03:57]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:03:57]
+===========================================
+[21:04:01]
+[WS SEND] →
+011b3812413f084319154b6e54173600006f145121055b2113552211563f0a195f260656381a5e2b13542b1850370155320e4d2400583f014228005333041c5a26064a301c5935521e6e0d54201854380a1678384d6a035528450b7b404f097b41036654153c115f294c0f763757384d593b4371270854644b132d16146d2e0947744215764101625b787b0a1a7b4f4623115f3c1d127c45622f10085c3f531f741c5e21005e2d177b35145d7557160c0c5968094966205e26175844670a11311d59704a067c5e05
+[21:04:02]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:04:02]
+[WS] Attempting connect →
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:04:03]
+================ WEBSOCKET ================
+[21:04:03]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws
+[21:04:03]
+===========================================
+[21:04:03]
+================ WEBSOCKET ================
+[21:04:03]
+Connected to:
+wss://ceonidsfbvcnaikcfdgniadfnvweigrmceifndcnfhnevfr.click/ws

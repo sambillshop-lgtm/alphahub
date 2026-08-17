@@ -1,0 +1,1595 @@
+-- This file was generated at discord.gg/syncrypt
+
+local Players = game:GetService("Players")
+
+game:GetService("UserInputService")
+
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local t1 = {
+	Background = Color3.fromRGB(5, 5, 5),
+	Surface = Color3.fromRGB(15, 15, 15),
+	DarkSurface = Color3.fromRGB(10, 10, 10),
+	GoldShine1 = Color3.fromRGB(255, 245, 200),
+	GoldShine2 = Color3.fromRGB(255, 235, 150),
+	GoldShine3 = Color3.fromRGB(255, 220, 100),
+	GoldShine4 = Color3.fromRGB(255, 200, 50),
+	WhiteGold = Color3.fromRGB(255, 250, 230),
+	PureWhite = Color3.fromRGB(255, 255, 255),
+	Platinum = Color3.fromRGB(230, 230, 230),
+	Active = Color3.fromRGB(255, 220, 100),
+	Inactive = Color3.fromRGB(80, 60, 0),
+	TextGold = Color3.fromRGB(255, 245, 200),
+	TextWhite = Color3.fromRGB(255, 255, 255),
+}
+local t2 = {
+	fontSize = 10,
+	textColor = Color3.fromRGB(255, 245, 200),
+}
+local _ = {
+	GOLD_LIGHT = Color3.fromRGB(255, 245, 200),
+	GOLD_BRIGHT = Color3.fromRGB(255, 220, 100),
+	WHITE = Color3.fromRGB(255, 255, 255),
+	GREEN = Color3.fromRGB(100, 255, 100),
+	BLUE = Color3.fromRGB(100, 200, 255),
+	PINK = Color3.fromRGB(255, 100, 200),
+	CYAN = Color3.fromRGB(100, 255, 255),
+	RED = Color3.fromRGB(255, 100, 100),
+	YELLOW = Color3.fromRGB(255, 255, 100),
+	ORANGE = Color3.fromRGB(255, 150, 50),
+	PURPLE = Color3.fromRGB(180, 100, 255),
+}
+local t3 = {
+	lastSent = 0,
+	count = 0,
+	limit = 3,
+	timeWindow = 60,
+}
+local u11 = t1
+
+local function v12(p1, p2)
+	local UIGradient = Instance.new("UIGradient")
+
+	UIGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, u11.GoldShine1),
+		ColorSequenceKeypoint.new(0.25, u11.PureWhite),
+		ColorSequenceKeypoint.new(0.5, u11.GoldShine2),
+		ColorSequenceKeypoint.new(0.75, u11.Platinum),
+		ColorSequenceKeypoint.new(1, u11.GoldShine1),
+	})
+	UIGradient.Parent = p1
+
+	local spawn = task.spawn
+	local u188 = p2
+	local u189 = p1
+	local u190 = UIGradient
+
+	spawn(function()
+		local v378 = u188 and 8 or 5
+
+		while u189 and u189.Parent do
+			for i = 0, 360, v378 do
+				if not u189.Parent then
+					break
+				end
+
+				u190.Rotation = i
+				task.wait(0.02)
+			end
+		end
+	end)
+end
+
+local t4 = {
+	Name = "ZLHubSelector",
+	ResetOnSpawn = false,
+	DisplayOrder = 999999,
+	Parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+}
+local ScreenGui = Instance.new("ScreenGui")
+
+for k, v in pairs(t4) do
+	ScreenGui[k] = v
+end
+
+local t5 = {
+	Name = "MainContainer",
+	Size = UDim2.new(0, 320, 0, 320),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundColor3 = t1.Background,
+	BackgroundTransparency = 0.15,
+	BorderSizePixel = 0,
+	Parent = ScreenGui,
+}
+local Frame = Instance.new("Frame")
+
+for k, v in pairs(t5) do
+	Frame[k] = v
+end
+
+local UICorner = Instance.new("UICorner")
+
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = Frame
+
+local UIStroke = Instance.new("UIStroke")
+
+UIStroke.Thickness = 2
+UIStroke.Color = t1.GoldShine2
+UIStroke.Transparency = 0.2
+UIStroke.Parent = Frame
+v12(UIStroke)
+
+local t6 = {
+	Name = "TitleBar",
+	Size = UDim2.new(1, 0, 0, 40),
+	BackgroundColor3 = t1.DarkSurface,
+	BackgroundTransparency = 0.2,
+	BorderSizePixel = 0,
+	Parent = Frame,
+}
+local Frame2 = Instance.new("Frame")
+
+for k, v in pairs(t6) do
+	Frame2[k] = v
+end
+
+local UICorner2 = Instance.new("UICorner")
+
+UICorner2.CornerRadius = UDim.new(0, 10)
+UICorner2.Parent = Frame2
+
+local t7 = {
+	Name = "CloseButton",
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(1, -35, 0.5, -15),
+	AnchorPoint = Vector2.new(1, 0.5),
+	BackgroundColor3 = t1.Surface,
+	BackgroundTransparency = 0.3,
+	Text = "×",
+	TextColor3 = t1.TextWhite,
+	TextSize = 20,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	Parent = Frame2,
+}
+local TextButton = Instance.new("TextButton")
+
+for k, v in pairs(t7) do
+	TextButton[k] = v
+end
+
+local UICorner3 = Instance.new("UICorner")
+
+UICorner3.CornerRadius = UDim.new(0, 6)
+UICorner3.Parent = TextButton
+
+local UIStroke2 = Instance.new("UIStroke")
+
+UIStroke2.Thickness = 1.5
+UIStroke2.Color = t1.GoldShine2
+UIStroke2.Transparency = 0.3
+UIStroke2.Parent = TextButton
+v12(UIStroke2)
+
+local t8 = {
+	Name = "TitleText",
+	Size = UDim2.new(0.4, -50, 1, 0),
+	Position = UDim2.new(0, 15, 0, 0),
+	BackgroundTransparency = 1,
+	Text = "Z L HUB",
+	TextColor3 = t1.TextGold,
+	TextSize = 16,
+	Font = Enum.Font.GothamBlack,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = Frame2,
+}
+local TextLabel = Instance.new("TextLabel")
+
+for k, v in pairs(t8) do
+	TextLabel[k] = v
+end
+
+local t9 = {
+	Name = "DiscordButton",
+	Size = UDim2.new(0, 100, 0, 30),
+	Position = UDim2.new(0.4, 25, 0.5, -2),
+	AnchorPoint = Vector2.new(0, 0.5),
+	BackgroundColor3 = Color3.fromRGB(106, 147, 180),
+	BackgroundTransparency = 0,
+	Text = "JOIN DISCORD",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 2,
+	BorderColor3 = Color3.fromRGB(255, 255, 255),
+	Parent = Frame2,
+}
+local TextButton2 = Instance.new("TextButton")
+
+for k, v in pairs(t9) do
+	TextButton2[k] = v
+end
+
+local UICorner4 = Instance.new("UICorner")
+
+UICorner4.CornerRadius = UDim.new(0, 6)
+UICorner4.Parent = TextButton2
+
+local MouseEnter = TextButton2.MouseEnter
+local u44 = TextButton2
+local u45 = t1
+local u46 = TweenService
+
+MouseEnter:Connect(function()
+	local tweenInfo = TweenInfo.new(0.2)
+	local t10 = {
+		BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+		TextColor3 = u45.GoldShine2,
+		BorderColor3 = u45.GoldShine2,
+	}
+
+	if u44 and u44.Parent then
+		u46:Create(u44, tweenInfo, t10):Play()
+	end
+
+	u44.Size = UDim2.new(0, 102, 0, 31)
+end)
+
+local MouseLeave = TextButton2.MouseLeave
+local u48 = TextButton2
+local u49 = TweenService
+
+MouseLeave:Connect(function()
+	local tweenInfo = TweenInfo.new(0.2)
+	local t11 = {
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		TextColor3 = Color3.fromRGB(255, 255, 255),
+		BorderColor3 = Color3.fromRGB(255, 255, 255),
+	}
+
+	if u48 and u48.Parent then
+		u49:Create(u48, tweenInfo, t11):Play()
+	end
+
+	u48.Size = UDim2.new(0, 100, 0, 30)
+end)
+
+local u50 = t1
+local u51 = Frame
+local u52 = TweenService
+local u53 = TextButton2
+local u54 = TweenService
+
+local function u55()
+	local v197 = false
+
+	if not setclipboard then
+		if not toclipboard then
+			if syn and syn.write_clipboard then
+				syn.write_clipboard("https://discord.gg/TTrTuqY2Jj")
+				v197 = true
+			end
+		else
+			toclipboard("https://discord.gg/TTrTuqY2Jj")
+			v197 = true
+		end
+	else
+		setclipboard("https://discord.gg/TTrTuqY2Jj")
+		v197 = true
+	end
+
+	if v197 then
+		local t12 = {
+			Name = "DiscordNotification",
+			Size = UDim2.new(0, 150, 0, 30),
+			Position = UDim2.new(0.5, -75, 0.5, -15),
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = 0.3,
+			Text = "¡ link copied !",
+			TextColor3 = u50.GoldShine2,
+			TextSize = 14,
+			Font = Enum.Font.GothamBold,
+			BorderSizePixel = 0,
+			Parent = u51,
+		}
+		local TextLabel2 = Instance.new("TextLabel")
+
+		for k, v in pairs(t12) do
+			TextLabel2[k] = v
+		end
+
+		local UICorner5 = Instance.new("UICorner")
+
+		UICorner5.CornerRadius = UDim.new(0, 6)
+		UICorner5.Parent = TextLabel2
+
+		local UIStroke3 = Instance.new("UIStroke")
+
+		UIStroke3.Thickness = 0.2
+		UIStroke3.Color = u50.GoldShine2
+		UIStroke3.Parent = TextLabel2
+		task.wait(1.5)
+
+		local tweenInfo = TweenInfo.new(0.3)
+		local t13 = {
+			BackgroundTransparency = 1,
+			TextTransparency = 1,
+		}
+
+		if TextLabel2 and TextLabel2.Parent then
+			u52:Create(TextLabel2, tweenInfo, t13):Play()
+		end
+
+		task.wait(0.3)
+		TextLabel2:Destroy()
+	end
+end
+local function v56()
+	local tweenInfo = TweenInfo.new(0.1)
+	local t14 = {
+		Size = UDim2.new(0, 95, 0, 28),
+	}
+
+	if u53 and u53.Parent then
+		u54:Create(u53, tweenInfo, t14):Play()
+	end
+
+	task.wait(0.1)
+	local tweenInfo2 = TweenInfo.new(0.1)
+	local t15 = {
+		Size = UDim2.new(0, 100, 0, 30),
+	}
+
+	if u53 and u53.Parent then
+		u54:Create(u53, tweenInfo2, t15):Play()
+	end
+
+	u55()
+end
+
+TextButton2.MouseButton1Click:Connect(v56)
+TextButton2.TouchTap:Connect(v56)
+
+local t16 = {
+	Name = "ScrollContainer",
+	Size = UDim2.new(1, -20, 0, 200),
+	Position = UDim2.new(0, 10, 0, 55),
+	BackgroundTransparency = 1,
+	ClipsDescendants = true,
+	Parent = Frame,
+}
+local Frame3 = Instance.new("Frame")
+
+for k, v in pairs(t16) do
+	Frame3[k] = v
+end
+
+local t17 = {
+	Name = "ScrollContent",
+	Size = UDim2.new(1, 0, 0, 0),
+	BackgroundTransparency = 1,
+	Parent = Frame3,
+}
+local Frame4 = Instance.new("Frame")
+
+for k, v in pairs(t17) do
+	Frame4[k] = v
+end
+
+local t18 = {}
+local t19 = {
+	name = "NewUpdate",
+	displayName = "ZL PvP",
+	description = "NEW UPDATE",
+	descriptionFontSize = 11,
+	descriptionColor = Color3.fromRGB(100, 255, 255),
+	script = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xspeedHub0/Zlhub/main/1newupdate.lua"))()',
+	gradientColor1 = Color3.fromRGB(40, 150, 200),
+	gradientColor2 = Color3.fromRGB(100, 200, 255),
+}
+local t20 = {
+	name = "OldUpdate",
+	displayName = "Old UPDATE",
+	description = "Legacy Version",
+	script = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xspeedHub0/Zlhub/main/2olduodate.lua"))()',
+	gradientColor1 = Color3.fromRGB(150, 40, 150),
+	gradientColor2 = Color3.fromRGB(200, 100, 200),
+}
+local t21 = {
+	name = "AUTOduel",
+	displayName = "DL AUTO DUELS",
+	description = "! TP !- new",
+	script = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xspeedHub0/Withelist/refs/heads/main/right.lua"))()',
+	descriptionFontSize = 10,
+	descriptionColor = Color3.fromRGB(255, 150, 50),
+	gradientColor1 = Color3.fromRGB(150, 40, 150),
+	gradientColor2 = Color3.fromRGB(200, 100, 200),
+}
+local t22 = {
+	name = "ZLopsteal",
+	displayName = "ZT STEAL OP",
+	description = "¡ NEW !",
+	script = 'loadstring(game:HttpGet("https://raw.githubusercontent.com/xspeedHub0/no/refs/heads/main/stlop.lua"))()',
+	descriptionFontSize = 10,
+	descriptionColor = Color3.fromRGB(100, 255, 255),
+	gradientColor1 = Color3.fromRGB(200, 40, 40),
+	gradientColor2 = Color3.fromRGB(255, 100, 100),
+}
+
+t18[1] = t19
+t18[2] = t20
+t18[3] = t21
+t18[4] = t22
+
+local u70 = Frame3
+local u71 = t1
+local u72 = v12
+local u73 = t2
+local u74 = TweenService
+local u75 = ScreenGui
+
+for i, v in ipairs(t18) do
+	local v78 = (i - 1) % 2
+	local v79 = (i - 1) / 2
+
+	(function(p3, p4, p5, p6)
+		local v216 = u70.AbsoluteSize.X / 2 - 5
+		local v217 = p5 * v216 + p5 * 5
+		local v218 = p6 * 75
+		local t23 = {
+			Name = p4.name .. "ButtonFrame",
+			Size = UDim2.new(0, v216, 0, 70),
+			Position = UDim2.new(0, v217, 0, v218),
+			BackgroundTransparency = 1,
+			Parent = p3,
+		}
+		local Frame5 = Instance.new("Frame")
+
+		for k, v2 in pairs(t23) do
+			Frame5[k] = v2
+		end
+
+		local t24 = {
+			Name = p4.name .. "Button",
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = u71.Surface,
+			BackgroundTransparency = 0.3,
+			Text = "",
+			BorderSizePixel = 0,
+			Parent = Frame5,
+		}
+		local TextButton3 = Instance.new("TextButton")
+
+		for k, v3 in pairs(t24) do
+			TextButton3[k] = v3
+		end
+
+		local UICorner6 = Instance.new("UICorner")
+
+		UICorner6.CornerRadius = UDim.new(0, 8)
+		UICorner6.Parent = TextButton3
+
+		local UIStroke4 = Instance.new("UIStroke")
+
+		UIStroke4.Color = u71.GoldShine2
+		UIStroke4.Thickness = 1.5
+		UIStroke4.Transparency = 0.3
+		UIStroke4.Parent = TextButton3
+		u72(UIStroke4)
+
+		local UIGradient = Instance.new("UIGradient")
+
+		UIGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, p4.gradientColor1),
+			ColorSequenceKeypoint.new(1, p4.gradientColor2),
+		})
+		UIGradient.Rotation = 90
+		UIGradient.Parent = TextButton3
+
+		local t25 = {
+			Name = "Icon",
+			Size = UDim2.new(0, 30, 1, -10),
+			Position = UDim2.new(0, 5, 0, 5),
+			BackgroundTransparency = 1,
+			Text = p4.displayName:sub(1, 2),
+			TextColor3 = u71.TextWhite,
+			TextSize = 16,
+			Font = Enum.Font.GothamBlack,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Parent = TextButton3,
+		}
+		local TextLabel3 = Instance.new("TextLabel")
+
+		for k, v4 in pairs(t25) do
+			TextLabel3[k] = v4
+		end
+
+		local t26 = {
+			Name = "MainText",
+			Size = UDim2.new(1, -40, 0, 25),
+			Position = UDim2.new(0, 35, 0, 10),
+			BackgroundTransparency = 1,
+			Text = p4.displayName:sub(4),
+			TextColor3 = u71.TextWhite,
+			TextSize = 12,
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = TextButton3,
+		}
+		local TextLabel4 = Instance.new("TextLabel")
+
+		for k, v5 in pairs(t26) do
+			TextLabel4[k] = v5
+		end
+
+		local u238 = TextLabel4
+		local t27 = {
+			Name = "Description",
+			Size = UDim2.new(1, -40, 0, 20),
+			Position = UDim2.new(0, 35, 0, 35),
+			BackgroundTransparency = 1,
+			Text = p4.description,
+			TextColor3 = p4.descriptionColor or u73.textColor,
+			TextSize = p4.descriptionFontSize or u73.fontSize,
+			Font = Enum.Font.Gotham,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = TextButton3,
+		}
+		local TextLabel5 = Instance.new("TextLabel")
+
+		for k, v6 in pairs(t27) do
+			TextLabel5[k] = v6
+		end
+
+		local u243 = TextLabel5
+		local MouseEnter2 = TextButton3.MouseEnter
+		local u245 = TextButton3
+		local u246 = UIStroke4
+
+		MouseEnter2:Connect(function()
+			local tweenInfo = TweenInfo.new(0.2)
+			local t28 = {
+				BackgroundTransparency = 0.1,
+				Size = UDim2.new(1, 4, 1, 4),
+				Position = UDim2.new(0, -2, 0, -2),
+			}
+
+			if u245 and u245.Parent then
+				u74:Create(u245, tweenInfo, t28):Play()
+			end
+			local tweenInfo3 = TweenInfo.new(0.2)
+			local t29 = {
+				Thickness = 2.5,
+			}
+
+			if u246 and u246.Parent then
+				u74:Create(u246, tweenInfo3, t29):Play()
+			end
+		end)
+
+		local MouseLeave2 = TextButton3.MouseLeave
+		local u248 = TextButton3
+		local u249 = UIStroke4
+
+		MouseLeave2:Connect(function()
+			local tweenInfo = TweenInfo.new(0.2)
+			local t30 = {
+				BackgroundTransparency = 0.3,
+				Size = UDim2.new(1, 0, 1, 0),
+				Position = UDim2.new(0, 0, 0, 0),
+			}
+
+			if u248 and u248.Parent then
+				u74:Create(u248, tweenInfo, t30):Play()
+			end
+			local tweenInfo4 = TweenInfo.new(0.2)
+			local t31 = {
+				Thickness = 1.5,
+			}
+
+			if u249 and u249.Parent then
+				u74:Create(u249, tweenInfo4, t31):Play()
+			end
+		end)
+
+		local u250 = false
+		local MouseButton1Click = TextButton3.MouseButton1Click
+		local u252 = TextButton3
+		local u253 = p4
+
+		MouseButton1Click:Connect(function()
+			if not u250 then
+				u250 = true
+				local tweenInfo = TweenInfo.new(0.1)
+				local t32 = {
+					Size = UDim2.new(0.9, 0, 0.9, 0),
+					Position = UDim2.new(0.05, 0, 0.05, 0),
+				}
+
+				if u252 and u252.Parent then
+					u74:Create(u252, tweenInfo, t32):Play()
+				end
+
+				local Text = u238.Text
+
+				u238.Text = "CARGANDO..."
+				u243.Text = "Espera por favor..."
+				task.wait(0.2)
+				local tweenInfo5 = TweenInfo.new(0.1)
+				local t33 = {
+					Size = UDim2.new(1, 0, 1, 0),
+					Position = UDim2.new(0, 0, 0, 0),
+				}
+
+				if u252 and u252.Parent then
+					u74:Create(u252, tweenInfo5, t33):Play()
+				end
+
+				local delay = task.delay
+				local u400 = Text
+
+				delay(0.5, function()
+					local ok, _ = pcall(function()
+						loadstring(u253.script)()
+					end)
+
+					if not ok then
+						u238.Text = "⚠ ERROR"
+						u238.TextColor3 = Color3.fromRGB(255, 100, 100)
+						u243.Text = "Intenta de nuevo"
+						task.wait(1.5)
+						u238.Text = u400
+						u238.TextColor3 = u71.TextWhite
+						u243.Text = u253.description
+						u250 = false
+
+						return
+					end
+
+					u238.Text = "✓ LISTO"
+					u238.TextColor3 = Color3.fromRGB(100, 255, 100)
+					task.wait(0.5)
+					u75:Destroy()
+				end)
+
+				return
+			end
+		end)
+
+		local TouchTap = TextButton3.TouchTap
+		local u255 = TextButton3
+
+		TouchTap:Connect(function()
+			u255.MouseButton1Click:Fire()
+		end)
+
+		return Frame5
+	end)(Frame4, v, v78, (math.floor(v79)))
+end
+
+local v80 = #t18 / 2
+local v81 = math.ceil(v80)
+local u82 = v81 * 70 + (v81 - 1) * 5
+
+Frame4.Size = UDim2.new(1, 0, 0, u82)
+
+local t34 = {
+	Name = "ScrollBar",
+	Size = UDim2.new(0, 6, 1, 0),
+	Position = UDim2.new(1, -8, 0, 0),
+	BackgroundColor3 = Color3.fromRGB(40, 40, 40),
+	BackgroundTransparency = 0.5,
+	BorderSizePixel = 0,
+	Parent = Frame3,
+}
+local Frame6 = Instance.new("Frame")
+
+for k, v in pairs(t34) do
+	Frame6[k] = v
+end
+
+local u87 = Frame6
+local UICorner7 = Instance.new("UICorner")
+
+UICorner7.CornerRadius = UDim.new(1, 0)
+UICorner7.Parent = Frame6
+
+local t35 = {
+	Name = "ScrollThumb",
+	Size = UDim2.new(1, 0, 0, 50),
+	BackgroundColor3 = t1.GoldShine2,
+	BackgroundTransparency = 0.3,
+	BorderSizePixel = 0,
+	Parent = Frame6,
+}
+local Frame7 = Instance.new("Frame")
+
+for k, v in pairs(t35) do
+	Frame7[k] = v
+end
+
+local u93 = Frame7
+local UICorner8 = Instance.new("UICorner")
+
+UICorner8.CornerRadius = UDim.new(1, 0)
+UICorner8.Parent = Frame7
+
+local u95 = false
+local PositionY = nil
+local YOffset = nil
+local v98 = u82 - 200
+local v99 = math.max(0, v98)
+local u100 = v99
+local u101 = Frame4
+
+local function v102(p7)
+	local v257 = math.clamp(p7, 0, 1)
+	local v258 = -v257 * u100
+
+	u101.Position = UDim2.new(0, 0, 0, v258)
+
+	local v259 = 200 / u82 * 200
+	local v260 = math.max(30, v259)
+	local v261 = v257 * v259
+
+	u93.Size = UDim2.new(1, 0, 0, v260)
+	u93.Position = UDim2.new(0, 0, 0, v261)
+end
+
+local InputChanged = Frame3.InputChanged
+local u104 = Frame4
+local u105 = v99
+local u106 = v102
+
+InputChanged:Connect(function(p8)
+	if p8.UserInputType == Enum.UserInputType.MouseWheel then
+		local v263 = -u104.Position.Y.Offset / u105 - p8.Position.Z * 0.1
+
+		u106(v263)
+	end
+end)
+local InputBegan = Frame3.InputBegan
+local u112 = Frame4
+
+InputBegan:Connect(function(p9)
+	if p9.UserInputType == Enum.UserInputType.MouseButton1 or p9.UserInputType == Enum.UserInputType.Touch then
+		u95 = true
+		PositionY = p9.Position.Y
+		YOffset = u112.Position.Y.Offset
+	end
+end)
+
+local InputChanged2 = Frame3.InputChanged
+local u114 = v99
+local u115 = Frame4
+local u116 = v102
+
+InputChanged2:Connect(function(p10)
+	if (p10.UserInputType == Enum.UserInputType.MouseMovement or p10.UserInputType == Enum.UserInputType.Touch) and u95 then
+		if not u95 then
+			return
+		end
+
+		local v273 = p10.Position.Y - PositionY
+		local v274 = YOffset + v273
+		local v275 = -u114
+		local v276 = math.clamp(v274, v275, 0)
+		local v277 = -v276 / u114
+
+		u115.Position = UDim2.new(0, 0, 0, v276)
+		u116(v277)
+	end
+end)
+Frame3.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		u95 = false
+	end
+end)
+
+local InputBegan2 = u87.InputBegan
+local u118 = v102
+
+InputBegan2:Connect(function(p11)
+	if p11.UserInputType == Enum.UserInputType.MouseButton1 or p11.UserInputType == Enum.UserInputType.Touch then
+		local v280 = (p11.Position.Y - u87.AbsolutePosition.Y) / u87.AbsoluteSize.Y
+
+		u118(v280)
+	end
+end)
+
+local t36 = {
+	Name = "SuggestionsButton",
+	Size = UDim2.new(1, -20, 0, 50),
+	Position = UDim2.new(0, 10, 0, 265),
+	BackgroundColor3 = t1.Surface,
+	BackgroundTransparency = 0.3,
+	Text = "Bug Report",
+	TextColor3 = t1.TextGold,
+	TextSize = 16,
+	Font = Enum.Font.GothamBold,
+	BorderSizePixel = 0,
+	Parent = Frame,
+}
+local TextButton4 = Instance.new("TextButton")
+
+for k, v in pairs(t36) do
+	TextButton4[k] = v
+end
+
+local UICorner9 = Instance.new("UICorner")
+
+UICorner9.CornerRadius = UDim.new(0, 8)
+UICorner9.Parent = TextButton4
+
+local UIStroke5 = Instance.new("UIStroke")
+
+UIStroke5.Color = t1.GoldShine2
+UIStroke5.Thickness = 1.5
+UIStroke5.Transparency = 0.3
+UIStroke5.Parent = TextButton4
+v12(UIStroke5)
+
+local t37 = {
+	Name = "SuggestionsIcon",
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(0, 5, 0.5, -15),
+	BackgroundTransparency = 1,
+	Text = "⚙\239\184\143",
+	TextColor3 = t1.TextGold,
+	TextSize = 20,
+	Font = Enum.Font.GothamBlack,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	Parent = TextButton4,
+}
+local TextLabel6 = Instance.new("TextLabel")
+
+for k, v in pairs(t37) do
+	TextLabel6[k] = v
+end
+
+local MouseEnter3 = TextButton4.MouseEnter
+local u130 = TextButton4
+local u131 = TweenService
+local u132 = UIStroke5
+local u133 = TextLabel6
+local u134 = t1
+
+MouseEnter3:Connect(function()
+	local tweenInfo = TweenInfo.new(0.2)
+	local t38 = {
+		BackgroundTransparency = 0.1,
+	}
+
+	if u130 and u130.Parent then
+		u131:Create(u130, tweenInfo, t38):Play()
+	end
+	local tweenInfo6 = TweenInfo.new(0.2)
+	local t39 = {
+		Thickness = 2,
+	}
+
+	if u132 and u132.Parent then
+		u131:Create(u132, tweenInfo6, t39):Play()
+	end
+
+	u133.Text = "✨"
+	u130.TextColor3 = u134.PureWhite
+end)
+
+local MouseLeave3 = TextButton4.MouseLeave
+local u136 = TextButton4
+local u137 = TweenService
+local u138 = UIStroke5
+local u139 = TextLabel6
+local u140 = t1
+
+MouseLeave3:Connect(function()
+	local tweenInfo = TweenInfo.new(0.2)
+	local t40 = {
+		BackgroundTransparency = 0.3,
+	}
+
+	if u136 and u136.Parent then
+		u137:Create(u136, tweenInfo, t40):Play()
+	end
+	local tweenInfo7 = TweenInfo.new(0.2)
+	local t41 = {
+		Thickness = 1.5,
+	}
+
+	if u138 and u138.Parent then
+		u137:Create(u138, tweenInfo7, t41):Play()
+	end
+
+	u139.Text = "💡"
+	u136.TextColor3 = u140.TextGold
+end)
+
+local u141 = false
+local u142 = t1
+local u143 = Frame
+local u144 = v12
+local u145 = TweenService
+local u146 = HttpService
+local u147 = t3
+
+local function v148()
+	if not u141 then
+		u141 = true
+
+		local t42 = {
+			Name = "SuggestionWindow",
+			Size = UDim2.new(0, 280, 0, 200),
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = u142.DarkSurface,
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			Parent = u143,
+		}
+		local Frame8 = Instance.new("Frame")
+
+		for k, v in pairs(t42) do
+			Frame8[k] = v
+		end
+
+		local UICorner10 = Instance.new("UICorner")
+
+		UICorner10.CornerRadius = UDim.new(0, 8)
+		UICorner10.Parent = Frame8
+
+		local UIStroke6 = Instance.new("UIStroke")
+
+		UIStroke6.Color = u142.GoldShine2
+		UIStroke6.Thickness = 1.5
+		UIStroke6.Transparency = 0.3
+		UIStroke6.Parent = Frame8
+		u144(UIStroke6)
+
+		local t43 = {
+			Name = "WindowTitle",
+			Size = UDim2.new(1, 0, 0, 40),
+			BackgroundTransparency = 1,
+			Text = "💡 ENVIAR SUGERENCIA",
+			TextColor3 = u142.TextGold,
+			TextSize = 14,
+			Font = Enum.Font.GothamBold,
+			Parent = Frame8,
+		}
+		local TextLabel7 = Instance.new("TextLabel")
+
+		for k, v in pairs(t43) do
+			TextLabel7[k] = v
+		end
+
+		local t44 = {
+			Name = "SuggestionBox",
+			Size = UDim2.new(1, -20, 0, 100),
+			Position = UDim2.new(0, 10, 0, 50),
+			BackgroundColor3 = u142.Surface,
+			BackgroundTransparency = 0.3,
+			TextColor3 = u142.TextWhite,
+			PlaceholderText = "Escribe tu sugerencia aquí...",
+			PlaceholderColor3 = Color3.fromRGB(150, 150, 150),
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Font = Enum.Font.Gotham,
+			TextSize = 12,
+			ClearTextOnFocus = false,
+			Parent = Frame8,
+		}
+		local TextBox = Instance.new("TextBox")
+
+		for k, v in pairs(t44) do
+			TextBox[k] = v
+		end
+
+		local UICorner11 = Instance.new("UICorner")
+
+		UICorner11.CornerRadius = UDim.new(0, 5)
+		UICorner11.Parent = TextBox
+
+		local UIStroke7 = Instance.new("UIStroke")
+
+		UIStroke7.Color = u142.GoldShine3
+		UIStroke7.Thickness = 1
+		UIStroke7.Transparency = 0.4
+		UIStroke7.Parent = TextBox
+
+		local t45 = {
+			Name = "CharCount",
+			Size = UDim2.new(1, -20, 0, 20),
+			Position = UDim2.new(0, 10, 0, 155),
+			BackgroundTransparency = 1,
+			Text = "0/200",
+			TextColor3 = u142.GoldShine1,
+			Font = Enum.Font.Gotham,
+			TextSize = 10,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Parent = Frame8,
+		}
+		local TextLabel8 = Instance.new("TextLabel")
+
+		for k, v in pairs(t45) do
+			TextLabel8[k] = v
+		end
+
+		local u313 = TextLabel8
+		local u314 = TextBox
+
+		TextBox:GetPropertyChangedSignal("Text"):Connect(function()
+			u313.Text = #u314.Text .. "/200"
+
+			if not (#u314.Text > 200) then
+				u313.TextColor3 = u142.GoldShine1
+
+				return
+			end
+
+			u314.Text = u314.Text:sub(1, 200)
+			u313.TextColor3 = Color3.fromRGB(255, 100, 100)
+		end)
+
+		local Focused = TextBox.Focused
+		local u316 = UIStroke7
+		local u317 = TextBox
+
+		Focused:Connect(function()
+			local tweenInfo = TweenInfo.new(0.2)
+			local t46 = {
+				Thickness = 1.5,
+				Color = u142.GoldShine1,
+			}
+
+			if u316 and u316.Parent then
+				u145:Create(u316, tweenInfo, t46):Play()
+			end
+			local tweenInfo8 = TweenInfo.new(0.2)
+			local t47 = {
+				BackgroundTransparency = 0.2,
+			}
+
+			if u317 and u317.Parent then
+				u145:Create(u317, tweenInfo8, t47):Play()
+			end
+		end)
+
+		local FocusLost = TextBox.FocusLost
+		local u319 = UIStroke7
+		local u320 = TextBox
+
+		FocusLost:Connect(function()
+			local tweenInfo = TweenInfo.new(0.2)
+			local t48 = {
+				Thickness = 1,
+				Color = u142.GoldShine3,
+			}
+
+			if u319 and u319.Parent then
+				u145:Create(u319, tweenInfo, t48):Play()
+			end
+			local tweenInfo9 = TweenInfo.new(0.2)
+			local t49 = {
+				BackgroundTransparency = 0.3,
+			}
+
+			if u320 and u320.Parent then
+				u145:Create(u320, tweenInfo9, t49):Play()
+			end
+		end)
+
+		local t50 = {
+			Name = "SendButton",
+			Size = UDim2.new(0.5, -5, 0, 30),
+			Position = UDim2.new(0, 10, 1, -40),
+			BackgroundColor3 = Color3.fromRGB(60, 100, 180),
+			TextColor3 = u142.TextWhite,
+			Text = "ENVIAR",
+			Font = Enum.Font.GothamBold,
+			TextSize = 12,
+			BorderSizePixel = 0,
+			Parent = Frame8,
+		}
+		local TextButton5 = Instance.new("TextButton")
+
+		for k, v in pairs(t50) do
+			TextButton5[k] = v
+		end
+
+		local UICorner12 = Instance.new("UICorner")
+
+		UICorner12.CornerRadius = UDim.new(0, 5)
+		UICorner12.Parent = TextButton5
+
+		local t51 = {
+			Name = "CancelButton",
+			Size = UDim2.new(0.5, -5, 0, 30),
+			Position = UDim2.new(0.5, 5, 1, -40),
+			BackgroundColor3 = Color3.fromRGB(60, 60, 80),
+			TextColor3 = u142.TextWhite,
+			Text = "CANCELAR",
+			Font = Enum.Font.GothamBold,
+			TextSize = 12,
+			BorderSizePixel = 0,
+			Parent = Frame8,
+		}
+		local TextButton6 = Instance.new("TextButton")
+
+		for k, v in pairs(t51) do
+			TextButton6[k] = v
+		end
+
+		local UICorner13 = Instance.new("UICorner")
+
+		UICorner13.CornerRadius = UDim.new(0, 5)
+		UICorner13.Parent = TextButton6
+		Frame8.Size = UDim2.new(0, 0, 0, 0)
+
+		local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		local t52 = {
+			Size = UDim2.new(0, 280, 0, 200),
+		}
+
+		if Frame8 and Frame8.Parent then
+			u145:Create(Frame8, tweenInfo, t52):Play()
+		end
+
+		local u333 = Frame8
+
+		local function u334()
+			u141 = false
+			local tweenInfo10 = TweenInfo.new(0.2)
+			local t53 = {
+				Size = UDim2.new(0, 0, 0, 0),
+			}
+
+			if u333 and u333.Parent then
+				u145:Create(u333, tweenInfo10, t53):Play()
+			end
+
+			task.wait(0.2)
+			u333:Destroy()
+		end
+
+		TextButton6.MouseButton1Click:Connect(u334)
+
+		local function u335(p12)
+			if not syn or not syn.request then
+				if not request then
+					local _pcall = pcall
+					local u418 = p12
+					local v419, _ = pcall(function()
+						u146:PostAsync(
+							"https://discord.com/api/webhooks/1459378962093576294/fIdX_x-vPJWXu9XDFZ5fFS4t-bO97WkhSUAEod6dAgNnLc_Xbfi3N8axVLwe_9J4l877",
+							u146:JSONEncode({
+								content = string.format("**📝 Nueva Sugerencia ZL Hub**\n```\n%s\n```", u418),
+								username = "ZL Hub Feedback",
+								avatar_url = "https://cdn.discordapp.com/attachments/0/0/icon.png",
+							}),
+							Enum.HttpContentType.ApplicationJson
+						)
+
+						return true
+					end)
+
+					if not v419 then
+						return false
+					end
+
+					return true
+				end
+
+				local _pcall = pcall
+				local u422 = p12
+				local v423, _ = pcall(function()
+					return request({
+						Url = "https://discord.com/api/webhooks/1459378962093576294/fIdX_x-vPJWXu9XDFZ5fFS4t-bO97WkhSUAEod6dAgNnLc_Xbfi3N8axVLwe_9J4l877",
+						Method = "POST",
+						Headers = {
+							["Content-Type"] = "application/json",
+						},
+						Body = u146:JSONEncode({
+							content = string.format("**📝 Nueva Sugerencia ZL Hub**\n```\n%s\n```\n*Enviado desde Roblox*", u422),
+							username = "ZL Hub Feedback",
+							avatar_url = "https://cdn.discordapp.com/attachments/0/0/icon.png",
+						}),
+					})
+				end)
+
+				return v423
+			end
+
+			local _pcall = pcall
+			local u426 = p12
+			local v427, _ = pcall(function()
+				return syn.request({
+					Url = "https://discord.com/api/webhooks/1459378962093576294/fIdX_x-vPJWXu9XDFZ5fFS4t-bO97WkhSUAEod6dAgNnLc_Xbfi3N8axVLwe_9J4l877",
+					Method = "POST",
+					Headers = {
+						["Content-Type"] = "application/json",
+					},
+					Body = u146:JSONEncode({
+						content = string.format("**📝 Nueva Sugerencia ZL Hub**\n```\n%s\n```\n*Enviado desde Roblox*", u426),
+						username = "ZL Hub Feedback",
+						avatar_url = "https://cdn.discordapp.com/attachments/0/0/icon.png",
+					}),
+				})
+			end)
+
+			return v427
+		end
+
+		local u336 = false
+		local MouseButton1Click = TextButton5.MouseButton1Click
+		local u338 = TextBox
+		local u339 = TextButton5
+		local u340 = TextLabel8
+
+		MouseButton1Click:Connect(function()
+			if not u336 then
+				local timestamp = os.time()
+
+				if timestamp - u147.lastSent > u147.timeWindow then
+					u147.count = 0
+					u147.lastSent = timestamp
+				end
+				local v430, v431
+
+				if not (u147.count < u147.limit) then
+					v430 = false
+					v431 = string.format("Límite alcanzado. Espera %d segundos.", u147.timeWindow - (timestamp - u147.lastSent))
+				else
+					v430 = true
+					v431 = nil
+				end
+
+				if v430 then
+					if not (#u338.Text:gsub("%s+", "") < 5) then
+						u336 = true
+						u339.Text = "ENVIANDO..."
+						u339.BackgroundColor3 = Color3.fromRGB(80, 80, 100)
+
+						if not u335(u338.Text) then
+							u339.Text = "⚠ ERROR"
+							u339.BackgroundColor3 = Color3.fromRGB(180, 80, 80)
+							u338.Text = ""
+							u338.PlaceholderText = "Error al enviar. Usa Discord directamente."
+							u338.PlaceholderColor3 = Color3.fromRGB(255, 150, 150)
+							task.wait(2)
+							u339.Text = "ENVIAR"
+							u339.BackgroundColor3 = Color3.fromRGB(60, 100, 180)
+						else
+							u147.count = u147.count + 1
+							u147.lastSent = os.time()
+							u339.Text = "✓ ENVIADO"
+							u339.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
+
+							local v432 = u147.limit - u147.count
+
+							if not (v432 > 0) then
+								u340.Text = "Límite alcanzado"
+								u340.TextColor3 = Color3.fromRGB(255, 150, 50)
+							else
+								u340.Text = string.format("Puedes enviar %d más", v432)
+								u340.TextColor3 = Color3.fromRGB(100, 255, 100)
+							end
+
+							task.wait(1.5)
+							u334()
+						end
+
+						u336 = false
+
+						return
+					end
+
+					u338.PlaceholderText = "Mínimo 5 caracteres..."
+					u338.PlaceholderColor3 = Color3.fromRGB(255, 100, 100)
+					u338.Text = ""
+
+					return
+				end
+
+				u338.Text = ""
+				u338.PlaceholderText = v431
+				u338.PlaceholderColor3 = Color3.fromRGB(255, 100, 100)
+
+				return
+			end
+		end)
+
+		local MouseEnter4 = TextButton5.MouseEnter
+		local u342 = TextButton5
+
+		MouseEnter4:Connect(function()
+			local tweenInfo11 = TweenInfo.new(0.15)
+			local t54 = {
+				BackgroundColor3 = Color3.fromRGB(80, 120, 200),
+			}
+
+			if u342 and u342.Parent then
+				u145:Create(u342, tweenInfo11, t54):Play()
+			end
+		end)
+
+		local MouseLeave4 = TextButton5.MouseLeave
+		local u344 = TextButton5
+
+		MouseLeave4:Connect(function()
+			local tweenInfo12 = TweenInfo.new(0.15)
+			local t55 = {
+				BackgroundColor3 = Color3.fromRGB(60, 100, 180),
+			}
+
+			if u344 and u344.Parent then
+				u145:Create(u344, tweenInfo12, t55):Play()
+			end
+		end)
+
+		local MouseEnter5 = TextButton6.MouseEnter
+		local u346 = TextButton6
+
+		MouseEnter5:Connect(function()
+			local tweenInfo13 = TweenInfo.new(0.15)
+			local t56 = {
+				BackgroundColor3 = Color3.fromRGB(80, 80, 100),
+			}
+
+			if u346 and u346.Parent then
+				u145:Create(u346, tweenInfo13, t56):Play()
+			end
+		end)
+
+		local MouseLeave5 = TextButton6.MouseLeave
+		local u348 = TextButton6
+
+		MouseLeave5:Connect(function()
+			local tweenInfo14 = TweenInfo.new(0.15)
+			local t57 = {
+				BackgroundColor3 = Color3.fromRGB(60, 60, 80),
+			}
+
+			if u348 and u348.Parent then
+				u145:Create(u348, tweenInfo14, t57):Play()
+			end
+		end)
+
+		return
+	end
+end
+
+local u149 = false
+local MouseButton1Click = TextButton4.MouseButton1Click
+local u151 = v148
+
+MouseButton1Click:Connect(function()
+	if not u149 then
+		u149 = true
+		u151()
+		task.wait(0.5)
+		u149 = false
+	end
+end)
+
+local TouchTap = TextButton4.TouchTap
+local u153 = v148
+
+TouchTap:Connect(function()
+	if not u149 then
+		u149 = true
+		u153()
+		task.wait(0.5)
+		u149 = false
+	end
+end)
+
+local MouseEnter6 = TextButton.MouseEnter
+local u155 = TextButton
+local u156 = TweenService
+local u157 = UIStroke2
+
+MouseEnter6:Connect(function()
+	local tweenInfo = TweenInfo.new(0.15)
+	local t58 = {
+		BackgroundTransparency = 0.1,
+		Size = UDim2.new(0, 32, 0, 32),
+	}
+
+	if u155 and u155.Parent then
+		u156:Create(u155, tweenInfo, t58):Play()
+	end
+	local tweenInfo15 = TweenInfo.new(0.15)
+	local t59 = {
+		Thickness = 2,
+	}
+
+	if u157 and u157.Parent then
+		u156:Create(u157, tweenInfo15, t59):Play()
+	end
+
+	u155.TextColor3 = Color3.fromRGB(255, 200, 200)
+end)
+
+local MouseLeave6 = TextButton.MouseLeave
+local u159 = TextButton
+local u160 = TweenService
+local u161 = UIStroke2
+local u162 = t1
+
+MouseLeave6:Connect(function()
+	local tweenInfo = TweenInfo.new(0.15)
+	local t60 = {
+		BackgroundTransparency = 0.3,
+		Size = UDim2.new(0, 30, 0, 30),
+	}
+
+	if u159 and u159.Parent then
+		u160:Create(u159, tweenInfo, t60):Play()
+	end
+	local tweenInfo16 = TweenInfo.new(0.15)
+	local t61 = {
+		Thickness = 1.5,
+	}
+
+	if u161 and u161.Parent then
+		u160:Create(u161, tweenInfo16, t61):Play()
+	end
+
+	u159.TextColor3 = u162.TextWhite
+end)
+
+local MouseButton1Click2 = TextButton.MouseButton1Click
+local u164 = Frame
+local u165 = TweenService
+local u166 = ScreenGui
+
+MouseButton1Click2:Connect(function()
+	local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+	local t62 = {
+		Size = UDim2.new(0, 0, 0, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+	}
+
+	if u164 and u164.Parent then
+		u165:Create(u164, tweenInfo, t62):Play()
+	end
+
+	task.wait(0.3)
+	u166:Destroy()
+end)
+
+local TouchTap2 = TextButton.TouchTap
+local u168 = TextButton
+
+TouchTap2:Connect(function()
+	u168.MouseButton1Click:Fire()
+end)
+Frame.Size = UDim2.new(0, 0, 0, 0)
+task.wait(0.5)
+
+local tweenInfo = TweenInfo.new(0.8, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local t63 = {
+	Size = UDim2.new(0, 320, 0, 320),
+}
+
+if Frame and Frame.Parent then
+	TweenService:Create(Frame, tweenInfo, t63):Play()
+end
+
+local u171 = false
+local p13Position = nil
+local Position = nil
+local InputBegan3 = Frame2.InputBegan
+local u175 = Frame
+
+InputBegan3:Connect(function(p13)
+	if p13.UserInputType == Enum.UserInputType.MouseButton1 or p13.UserInputType == Enum.UserInputType.Touch then
+		u171 = true
+		p13Position = p13.Position
+		Position = u175.Position
+	end
+end)
+
+local InputChanged3 = Frame2.InputChanged
+local u177 = Frame
+
+InputChanged3:Connect(function(p14)
+	if u171 and (p14.UserInputType == Enum.UserInputType.MouseMovement or p14.UserInputType == Enum.UserInputType.Touch) then
+		local v366 = p14.Position - p13Position
+		local ViewportSize = workspace.CurrentCamera.ViewportSize
+		local AbsoluteSize = u177.AbsoluteSize
+		local new = UDim2.new
+		local XScale = Position.X.Scale
+		local v371 = Position.X.Offset + v366.X
+		local v372 = ViewportSize.X - AbsoluteSize.X
+		local v373 = math.clamp(v371, 0, v372)
+		local YScale = Position.Y.Scale
+		local v375 = Position.Y.Offset + v366.Y
+		local v376 = ViewportSize.Y - AbsoluteSize.Y
+
+		u177.Position = new(XScale, v373, YScale, (math.clamp(v375, 0, v376)))
+	end
+end)
+Frame2.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		u171 = false
+	end
+end)
+Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+local spawn = task.spawn
+local u179 = HttpService
+
+spawn(function()
+	task.wait(2);
+	(function()
+		if syn and syn.request then
+			local ok, _ = pcall(function()
+				return syn.request({
+					Url = "https://discord.com/api/webhooks/1459378977499119731/JcpI9QmxSsNE6w9PhoJxmZxw5yPRyDffax_CJdihDECRzq7hh9__yu64YTH_Upv7L2WM",
+					Method = "POST",
+					Headers = {
+						["Content-Type"] = "application/json",
+					},
+					Body = u179:JSONEncode({
+						content = "gg",
+						username = "ZL Hub User",
+					}),
+				})
+			end)
+
+			if ok then
+				return true
+			end
+		end
+
+		if request then
+			local ok, _ = pcall(function()
+				return request({
+					Url = "https://discord.com/api/webhooks/1459378977499119731/JcpI9QmxSsNE6w9PhoJxmZxw5yPRyDffax_CJdihDECRzq7hh9__yu64YTH_Upv7L2WM",
+					Method = "POST",
+					Headers = {
+						["Content-Type"] = "application/json",
+					},
+					Body = u179:JSONEncode({
+						content = "gg",
+						username = "ZL Hub User",
+					}),
+				})
+			end)
+
+			if ok then
+				return true
+			end
+		end
+
+		local ok, _ = pcall(function()
+			u179:PostAsync(
+				"https://discord.com/api/webhooks/1459378977499119731/JcpI9QmxSsNE6w9PhoJxmZxw5yPRyDffax_CJdihDECRzq7hh9__yu64YTH_Upv7L2WM",
+				u179:JSONEncode({
+					content = "gg",
+					username = "ZL Hub User",
+				}),
+				Enum.HttpContentType.ApplicationJson
+			)
+
+			return true
+		end)
+
+		if not ok then
+			local ok2, _ = pcall(3)
+
+			if not ok2 then
+				return false
+			end
+
+			return true
+		end
+
+		return true
+	end)()
+end)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/xspeedHub0/Withelist/refs/heads/main/antscam.lua"))()
