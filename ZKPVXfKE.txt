@@ -1,0 +1,1864 @@
+-- ==========================================
+-- LNZ NOTIFIER WITH WHITELIST CHECK (V3)
+-- ==========================================
+
+-- ==========================================
+-- URL DECODER
+-- ==========================================
+local function DecodeURL(bytes)
+    local decoded = ""
+    for _, b in ipairs(bytes) do
+        decoded = decoded .. string.char(b)
+    end
+    return decoded
+end
+
+-- VanishNotifier API URLs
+local VANISH_RECENT_URL = "https://ws.vanishnotifier.org/recent"
+local VANISH_BOTS_URL = "https://ws.vanishnotifier.org/bots"
+
+-- ZLXCH WebSocket URL
+local ZLXCH_WS_URL = "wss://zlxch.com/api/brainrot/ws?key=hsUtEKKGdJIiHwLdPWgVghlQKzyByzOa"
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local GuiService = game:GetService("GuiService")
+local SoundService = game:GetService("SoundService")
+local CoreGui = (gethui and gethui()) or game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+
+local secure_request = (syn and syn.request) or request or http_request or (http and http.request)
+if clonefunction then pcall(function() secure_request = clonefunction(secure_request) end) end
+
+-- WebSocket support
+local WebSocket = WebSocket or (syn and syn.websocket)
+
+-- Clipboard support
+local setclipboard = setclipboard or (syn and syn.setclipboard) or (Clipboard and Clipboard.set)
+local function copyToClipboard(text)
+    if setclipboard then
+        pcall(function() setclipboard(text) end)
+    elseif syn and syn.clipboard then
+        pcall(function() syn.clipboard.set(text) end)
+    else
+        pcall(function() game:GetService("Clipboard"):set(text) end)
+    end
+end
+
+-- ==========================================
+-- MUTATIONS LIST
+-- ==========================================
+local MUTATIONS = {
+    "Divine", "Gold", "Diamond", "Rainbow", "Cyber", "Galaxy", 
+    "Bloodrot", "YinYang", "Radioactive", "Silver", "Bronze", 
+    "Crystal", "Shadow", "Dark", "Light", "Fire", "Ice", 
+    "Thunder", "Nature", "Mythical", "Legendary", "Epic", 
+    "Rare", "Uncommon", "Common", "Shiny", "Mystic", "Phantom",
+    "Ghost", "Demon", "Angel", "Corrupt", "Frost", "Magma",
+    "Candy", "Cursed", "Golden", "Sapphire", "Ruby", "Emerald",
+    "Platinum", "Obsidian", "Crimson", "Azure", "Verdant",
+    "Solar", "Lunar", "Stellar", "Cosmic", "Void", "Chaos",
+    "Order", "Ancient", "Primal", "Awakened", "Enchanted",
+    "Crystalized", "Frozen", "Burning", "Electric", "Toxic"
+}
+
+local function stripMutations(name)
+    if not name or name == "" then return "" end
+    local stripped = name
+    local sortedMutations = {}
+    for _, m in ipairs(MUTATIONS) do
+        table.insert(sortedMutations, m)
+    end
+    table.sort(sortedMutations, function(a, b) return #a > #b end)
+    for _, mutation in ipairs(sortedMutations) do
+        local prefix = mutation .. " "
+        if #stripped >= #prefix and stripped:sub(1, #prefix):lower() == prefix:lower() then
+            stripped = stripped:sub(#prefix + 1)
+            break
+        end
+    end
+    return stripped
+end
+
+local function getBaseBrainrotName(fullName)
+    if not fullName then return "" end
+    local noMutation = stripMutations(fullName)
+    local baseName = noMutation:gsub(" %d+$", ""):gsub(" %$%d+$", ""):gsub(" %d+%.%d+[MK]?$", "")
+    return baseName
+end
+
+-- ==========================================
+-- WHITELIST DATABASE
+-- ==========================================
+local ALL_BRAINROTS = {
+    "1x1x1x1","25","67","Agarrini La Palini","Antonio","Arcadopus","Arcadragon",
+    "Bacuru and Egguru","Bananito","Baskito","Berryno","Bisonte Giuppitere","Blackhole Goat",
+    "Boatito Auratito","Brunito Marsito","Buho de Volto","Bunito Bunito Spinito","Bunnyman",
+    "Bunny Bunny Bunny Sahur","Bunny and Eggy","Buntteo","Burguro and Fryuro","Burrito Bandito",
+    "Camera Ramena","Capitano Moby","Cash or Card","Celestial Pegasus","Celularcini Viciosini",
+    "Cerberus","Chachechi","Chicleteira Bicicleteira","Chicleteira Cupideira","Chicleteira Noelteira",
+    "Chicleteirina Bicicleteirina","Chill Puppy","Chillin Chili","Chimnino","Chipso and Queso",
+    "Churrito Bunnito","Cigno Fulgoro","Cloverat Clapat","Cooki and Milki","Cuadramat and Pakrahmatmamat",
+    "Cupid Cupid Sahur","Cupid Hotspot","DJ Panda","Digi Narwhal","Donkeyturbo Express",
+    "Dragon Cannelloni","Dragon Cannellloni","Dragon Gingerini","Dug dug dug","Duggy Bros",
+    "Dul Dul Dul","Easter Easter Easter Sahur","Eid Eid Eid Sahur","Elefanto Frigo","Esok Sekolah",
+    "Eviledon","Extinct Matteo","Extinct Tralalero","Festive 67","Fishboard","Fishino Clownino",
+    "Fortunu and Cashuru","Foxini Lanternini","Fragola La La La","Fragrama and Chocrama","Frankentteo",
+    "Futbolini Skatini","GOAT","Garama and Madundung","Giftini Spyderini","Ginger Gerat",
+    "Gobblino Uniciclino","Gold Gold Gold","Graipuss Medussi","Granny","Griffin","Guerriro Digitale",
+    "Guest 666","Gym Bros","Hacker","Headless Horseman","Ho Ho Ho Sahur","Hopilikalika Hopilikalako",
+    "Horegini Boom","Hydra Bunny","Hydra Dragon Cannelloni","Jackorilla","Job Job Job Sahur",
+    "John Doe","John Pork","Jolly Jolly Sahur","Kalika Bros","Karker Sahur","Karkerkar Kurkur",
+    "Ketchuru and Musturu","Ketupat Bros","Ketupat Kepat","La Casa Boo","La Cucaracha",
+    "La Easter Grande","La Extinct Grande","La Food Combinasion","La Ginger Sekolah",
+    "La Grande Combinasion","La Jolly Grande","La Karkerkar Combinasion","La Lucky Grande",
+    "La Romantic Grande","La Sahur Combinasion","La Secret Combinasion","La Spooky Grande",
+    "La Supreme Combinasion","La Taco Combinasion","La Vacca Jacko Linterino","La Vacca Lepre Lepreino",
+    "La Vacca Prese Presente","La Vacca Saturno Saturnita","Las Sis","Las Tralaleritas",
+    "Las Vaquitas Saturnitas","Lavadorito Spinito","List List List Sahur","Los 25","Los 67",
+    "Los Amigos","Los Bros","Los Bunitos","Los Burritos","Los Candies","Los Chicleteiras",
+    "Los Chillis","Los Combinasionas","Los Cucarachas","Los Cupids","Los Hackers","Los Hotspotsitos",
+    "Los Jobcitos","Los Jolly Combinasionas","Los Karkeritos","Los Mariachis","Los Matteos",
+    "Los Mi Gatitos","Los Mobilis","Los Nooo My Hotspotsitos","Los Planitos","Los Primos",
+    "Los Puggies","Los Quesadillas","Los Sekolahs","Los Spaghettis","Los Spooky Combinasionas",
+    "Los Spyderinis","Los Sweethearts","Los Tacoritas","Los Tortus","Los Tralaleritos","Los Trios",
+    "Love Love Bear","Love Love Love Sahur","Lovin Rose","Luck Luck Luck Sahur","Mariachi Corazoni",
+    "Meowl","Mi Gatito","Mieteteira Bicicleteira","Money Money Bros","Money Money Puggy",
+    "Money Money Reindeer","Nacho Spyder","Naughty Naughty","Noo my Candy","Noo my Eggs",
+    "Noo my Gold","Noo my Heart","Noo my Present","Noo my examine","Nooo My Hotspot",
+    "Nuclearo Dinossauro","Orcaledon","Pancake and Syrup","Paradiso Axolottino","Perrito Burrito",
+    "Pirulitoita Bicicleteira","Please my Present","Popcuru and Fizzuru","Pot Hotspot","Pot Pumpkin",
+    "Pumpkini Spyderini","Quackini Snackini","Quesadilla Crocodila","Quesadillo Vampiro",
+    "Rang Ring Bus","Reindeer Tralala","Reinito Sleighito","Rico Dinero","Rocco Disco",
+    "Rosey and Teddy","Rosetti Tualetti","Sammyni Fattini","Sammyni Spyderini","Santa Hotspot",
+    "Santteo","Serafinna Medusella","Signore Carapace","Skibidi Toilet","Snailo Clovero",
+    "Spaghetti Tualetti","Spinny Hammy","Spooky and Pumpky","Strawberrita","Strawberry Elephant",
+    "Swag Soda","Swaggy Bros","Tacorillo Crocodillo","Tacorita Bicicleta","Tang Tang Keletang",
+    "Telemorte","Tictac Sahur","Tirilikalika Tirilikalako","To to to Sahur","Torrtuginni Dragonfrutini",
+    "Tralaledon","Trenostruzzo Turbo 4000","Trickolino","Triplito Tralaleritos","Tuff Toucan",
+    "Tung Tung Tung Sahur","Ventoliero Pavonero","Vulturino Skeletono","W or L",
+    "Yess my examine","Zombie Tralala"
+}
+
+table.sort(ALL_BRAINROTS)
+
+local brainrotAmounts = {}
+local whitelistEnabled = true
+local notifsEnabled = true
+local notifSoundEnabled = true
+local activeTopNotifs = {}
+local MAX_TOP_NOTIFS = 3
+local manualAntiError = false
+local spamThreads = {} 
+
+for _, name in ipairs(ALL_BRAINROTS) do
+    brainrotAmounts[name] = 0
+end
+
+local seenFindingIds = {}
+local seenJobIds = {}
+local vanishInitialized = false
+
+-- Whitelist Sound
+local WhitelistSound = Instance.new("Sound")
+WhitelistSound.SoundId = "rbxassetid://5476307813"
+WhitelistSound.Volume = 0.6
+WhitelistSound.Parent = SoundService
+
+-- ==========================================
+-- WHITELIST CHECK FUNCTIONS
+-- ==========================================
+local function shouldNotifyForBrainrot(name, value)
+    if not whitelistEnabled then return true end
+    
+    local baseName = getBaseBrainrotName(name)
+    
+    if brainrotAmounts[name] then
+        if brainrotAmounts[name] == -1 then return true end
+        if brainrotAmounts[name] > 0 then return value >= brainrotAmounts[name] end
+    end
+    
+    if brainrotAmounts[baseName] then
+        if brainrotAmounts[baseName] == -1 then return true end
+        if brainrotAmounts[baseName] > 0 then return value >= brainrotAmounts[baseName] end
+    end
+    
+    for whitelisted, requiredAmount in pairs(brainrotAmounts) do
+        if requiredAmount == -1 and (baseName:find(whitelisted, 1, true) or name:find(whitelisted, 1, true)) then
+            return true
+        end
+        if requiredAmount > 0 and (baseName:find(whitelisted, 1, true) or name:find(whitelisted, 1, true)) then
+            return value >= requiredAmount
+        end
+    end
+    
+    return true
+end
+
+-- ==========================================
+-- ANTI-ERROR SYSTEM
+-- ==========================================
+local function clearErrors()
+    if manualAntiError then
+        pcall(function()
+            if GuiService:GetErrorMessage() ~= "" then
+                GuiService:ClearError()
+            end
+        end)
+    end
+end
+
+GuiService.ErrorMessageChanged:Connect(function()
+    if manualAntiError then
+        clearErrors()
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if manualAntiError then
+            clearErrors()
+        end
+        task.wait(2)
+    end
+end)
+
+-- ==========================================
+-- SOUND SYSTEM
+-- ==========================================
+local NotifySound = Instance.new("Sound")
+NotifySound.SoundId = "rbxassetid://128618867765188"
+NotifySound.Volume = 0.5
+NotifySound.Parent = SoundService
+
+local function playNotifySound()
+    if notifSoundEnabled then
+        pcall(function()
+            NotifySound:Stop()
+            NotifySound:Play()
+        end)
+    end
+end
+
+local function playWhitelistSound()
+    if notifSoundEnabled then
+        pcall(function()
+            WhitelistSound:Stop()
+            WhitelistSound:Play()
+        end)
+    end
+end
+
+-- ==========================================
+-- 10 SECOND DELAY SCREEN
+-- ==========================================
+local startTime = tick()
+
+local DelayGui = Instance.new("ScreenGui")
+DelayGui.Name = "DelayLoader"
+DelayGui.Parent = CoreGui
+DelayGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+DelayGui.ResetOnSpawn = false
+
+local DelayFrame = Instance.new("Frame", DelayGui)
+DelayFrame.Size = UDim2.new(0, 260, 0, 80)
+DelayFrame.Position = UDim2.new(0.5, -130, 0.5, -40)
+DelayFrame.BackgroundColor3 = Color3.fromRGB(13, 17, 23)
+DelayFrame.BackgroundTransparency = 0
+Instance.new("UICorner", DelayFrame).CornerRadius = UDim.new(0, 10)
+local fs = Instance.new("UIStroke", DelayFrame);
+fs.Color = Color3.fromRGB(32, 40, 52); fs.Thickness = 1
+
+local DelayText = Instance.new("TextLabel", DelayFrame)
+DelayText.Size = UDim2.new(1, 0, 1, 0)
+DelayText.BackgroundTransparency = 1
+DelayText.Text = "LNZ NOTIFIER — Loading... (10s)"
+DelayText.TextColor3 = Color3.fromRGB(200, 200, 200)
+DelayText.Font = Enum.Font.GothamBold
+DelayText.TextSize = 13
+
+while tick() - startTime < 10 do
+    local r = math.ceil(10 - (tick() - startTime))
+    DelayText.Text = "LNZ NOTIFIER — Loading... (" .. r .. "s)"
+    task.wait(0.1)
+end
+
+DelayGui:Destroy()
+
+-- ==========================================
+-- CLEANUP OLD GUIS
+-- ==========================================
+local GuiName = "LNZNotifierGui"
+local ReopenBtnName = "LNZReopenBtn"
+local TopNotifCtnName = "LNZTopNotifs"
+
+for _, v in pairs(CoreGui:GetChildren()) do
+    if v.Name == GuiName or v.Name == ReopenBtnName or v.Name == TopNotifCtnName then
+        v:Destroy()
+    end
+end
+
+-- ==========================================
+-- FILE SYSTEM
+-- ==========================================
+local isfile = isfile or (syn and syn.isfile) or (getgenv and getgenv().isfile)
+local readfile = readfile or (syn and syn.readfile) or (getgenv and getgenv().readfile)
+local writefile = writefile or (syn and syn.writefile) or (getgenv and getgenv().writefile)
+
+local ConfigFolder = "LNZ_Settings"
+local ConfigFile = "LNZ_Settings/Config.json"
+local AmountsConfigFile = "LNZ_Settings/Amounts.json"
+
+pcall(function()
+    if not isfolder then isfolder = function() return false end end
+    if not isfolder(ConfigFolder) and makefolder then makefolder(ConfigFolder) end
+end)
+
+-- ==========================================
+-- GLOBAL VARIABLES
+-- ==========================================
+local spamCount = 10
+local autoJoinEnabled = false
+local CurrentFilter = "all"
+local LogEntries = {}
+local logOrderCounter = 0
+local PLACE_ID = "109983668079237"
+local zlxchWs = nil
+
+-- ==========================================
+-- HELPERS
+-- ==========================================
+local function formatValue(value)
+    local m = value / 1000000
+    if m >= 100 then return string.format("%.0fM", m)
+    elseif m >= 10 then return string.format("%.1fM", m)
+    else return string.format("%.2fM", m) end
+end
+
+-- ==========================================
+-- CONFIG SAVE/LOAD
+-- ==========================================
+local function SaveAmountsConfig()
+    local arr = {}
+    for name, amount in pairs(brainrotAmounts) do
+        if amount ~= 0 then
+            table.insert(arr, {name = name, amount = amount})
+        end
+    end
+    local ok, json = pcall(function()
+        return HttpService:JSONEncode({amounts = arr, whitelistEnabled = whitelistEnabled})
+    end)
+    if ok and writefile then pcall(function() writefile(AmountsConfigFile, json) end) end
+    return ok and json
+end
+
+local function LoadAmountsConfig()
+    if not (isfile and readfile and isfile(AmountsConfigFile)) then return end
+    local ok, data = pcall(function() return HttpService:JSONDecode(readfile(AmountsConfigFile)) end)
+    if ok and data then
+        if data.amounts then
+            for _, entry in ipairs(data.amounts) do
+                if entry.name and entry.amount then
+                    brainrotAmounts[entry.name] = entry.amount
+                end
+            end
+        end
+        if data.whitelistEnabled ~= nil then
+            whitelistEnabled = data.whitelistEnabled
+        end
+    end
+    for _, name in ipairs(ALL_BRAINROTS) do
+        if brainrotAmounts[name] == nil then
+            brainrotAmounts[name] = 0
+        end
+    end
+end
+
+local function SaveConfig()
+    local ok, json = pcall(function()
+        return HttpService:JSONEncode({
+            spamCount = spamCount,
+            notifsEnabled = notifsEnabled,
+            notifSoundEnabled = notifSoundEnabled
+        })
+    end)
+    if ok and writefile then pcall(function() writefile(ConfigFile, json) end) end
+    SaveAmountsConfig()
+end
+
+local function LoadConfig()
+    if isfile and readfile and isfile(ConfigFile) then
+        local ok, data = pcall(function() return HttpService:JSONDecode(readfile(ConfigFile)) end)
+        if ok and data then
+            spamCount = data.spamCount or 10
+            notifsEnabled = data.notifsEnabled ~= nil and data.notifsEnabled or true
+            notifSoundEnabled = data.notifSoundEnabled ~= nil and data.notifSoundEnabled or true
+        end
+    end
+    LoadAmountsConfig()
+end
+
+-- ==========================================
+-- TOP NOTIFICATION FUNCTION
+-- ==========================================
+local TopNotifContainer = Instance.new("Frame", CoreGui)
+TopNotifContainer.Name = TopNotifCtnName
+TopNotifContainer.Size = UDim2.new(0, 380, 1, 0)
+TopNotifContainer.Position = UDim2.new(0.5, -190, 0, 10)
+TopNotifContainer.BackgroundTransparency = 1
+TopNotifContainer.ClipsDescendants = false
+TopNotifContainer.ZIndex = 300
+
+local TopNotifLayout = Instance.new("UIListLayout", TopNotifContainer)
+TopNotifLayout.Padding = UDim.new(0, 6)
+TopNotifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+TopNotifLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+
+local function removeOldestTopNotif()
+    if #activeTopNotifs > 0 then
+        local oldest = table.remove(activeTopNotifs, 1)
+        if oldest and oldest.Parent then
+            TweenService:Create(oldest, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 0, 0, -50)
+            }):Play()
+            task.delay(0.2, function()
+                if oldest and oldest.Parent then oldest:Destroy() end
+            end)
+        end
+    end
+end
+
+local function showTopNotification(name, moneyStr)
+    if not notifsEnabled then return end
+    
+    for _, notif in ipairs(activeTopNotifs) do
+        if notif and notif.NameLabel and notif.NameLabel.Text == name then
+            return
+        end
+    end
+    
+    if #activeTopNotifs >= MAX_TOP_NOTIFS then
+        removeOldestTopNotif()
+    end
+    
+    local notif = Instance.new("Frame")
+    notif.Size = UDim2.new(0, 360, 0, 0)
+    notif.BackgroundColor3 = Color3.fromRGB(20, 25, 35)
+    notif.BorderSizePixel = 0
+    notif.ZIndex = 301
+    notif.LayoutOrder = #activeTopNotifs + 1
+    notif.Parent = TopNotifContainer
+    notif.BackgroundTransparency = 1
+    notif.Position = UDim2.new(0, 0, 0, -40)
+    table.insert(activeTopNotifs, notif)
+    
+    Instance.new("UICorner", notif).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke", notif)
+    stroke.Color = Color3.fromRGB(52, 199, 89)
+    stroke.Thickness = 1.5
+    
+    local content = Instance.new("Frame", notif)
+    content.Size = UDim2.new(1, -12, 1, 0)
+    content.Position = UDim2.new(0, 6, 0, 6)
+    content.BackgroundTransparency = 1
+    
+    local nameLabel = Instance.new("TextLabel", content)
+    nameLabel.Size = UDim2.new(1, -10, 0, 24)
+    nameLabel.Position = UDim2.new(0, 5, 0, 6)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Text = name
+    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    nameLabel.TextSize = 14
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    notif.NameLabel = nameLabel
+    
+    local moneyLabel = Instance.new("TextLabel", content)
+    moneyLabel.Size = UDim2.new(1, -10, 0, 20)
+    moneyLabel.Position = UDim2.new(0, 5, 0, 30)
+    moneyLabel.BackgroundTransparency = 1
+    moneyLabel.Font = Enum.Font.GothamBold
+    moneyLabel.Text = moneyStr
+    moneyLabel.TextColor3 = Color3.fromRGB(52, 199, 89)
+    moneyLabel.TextSize = 12
+    moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    notif:TweenSize(UDim2.new(0, 360, 0, 56), Enum.EasingDirection.Out, Enum.EasingStyle.Back, 0.25, true)
+    TweenService:Create(notif, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        BackgroundTransparency = 0,
+        Position = UDim2.new(0, 0, 0, 0)
+    }):Play()
+    
+    task.spawn(function()
+        task.wait(5)
+        for i, n in ipairs(activeTopNotifs) do
+            if n == notif then
+                table.remove(activeTopNotifs, i)
+                break
+            end
+        end
+        TweenService:Create(notif, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 0, 0, -40)
+        }):Play()
+        notif:TweenSize(UDim2.new(0, 360, 0, 0), Enum.EasingDirection.In, Enum.EasingStyle.Quad, 0.15, true)
+        task.delay(0.3, function()
+            if notif and notif.Parent then notif:Destroy() end
+        end)
+    end)
+end
+
+-- ==========================================
+-- SCREEN GUI
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = GuiName
+ScreenGui.Parent = CoreGui
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn = false
+
+local ClickSound = Instance.new("Sound", ScreenGui)
+ClickSound.SoundId = "rbxassetid://75311202481026"
+ClickSound.Volume = 0.3
+
+local function playClick()
+    pcall(function() ClickSound:Play() end)
+end
+
+local isMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+local TARGET_SCALE = isMobile and 0.7 or 0.85
+local HIDE_SCALE = TARGET_SCALE - 0.15
+
+-- ==========================================
+-- MAIN FRAME
+-- ==========================================
+local Frame = Instance.new("CanvasGroup", ScreenGui)
+Frame.BackgroundColor3 = Color3.fromRGB(14, 18, 24)
+Frame.BorderSizePixel = 0
+Frame.Position = UDim2.new(0.5, -310, 0.5, -225)
+Frame.Size = UDim2.new(0, 620, 0, 450)
+Frame.Active = true
+Frame.GroupTransparency = 0
+Frame.Visible = true
+Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 8)
+local UIScale = Instance.new("UIScale", Frame)
+UIScale.Scale = TARGET_SCALE
+local FStroke = Instance.new("UIStroke", Frame)
+FStroke.Color = Color3.fromRGB(32, 40, 52)
+FStroke.Thickness = 1
+
+-- ==========================================
+-- HEADER BAR
+-- ==========================================
+local HeaderBar = Instance.new("Frame", Frame)
+HeaderBar.BackgroundColor3 = Color3.fromRGB(14, 18, 24)
+HeaderBar.BorderSizePixel = 0
+HeaderBar.Size = UDim2.new(1, 0, 0, 38)
+HeaderBar.Position = UDim2.new(0, 0, 0, 0)
+
+local BulletDot = Instance.new("Frame", HeaderBar)
+BulletDot.Size = UDim2.new(0, 7, 0, 7)
+BulletDot.Position = UDim2.new(0, 12, 0.5, -3)
+BulletDot.BackgroundColor3 = Color3.fromRGB(90, 100, 115)
+BulletDot.BorderSizePixel = 0
+Instance.new("UICorner", BulletDot).CornerRadius = UDim.new(1, 0)
+
+local TitleLabel = Instance.new("TextLabel", HeaderBar)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Position = UDim2.new(0, 26, 0, 0)
+TitleLabel.Size = UDim2.new(0, 160, 1, 0)
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.Text = "LNZ NOTIFIER"
+TitleLabel.TextColor3 = Color3.fromRGB(215, 215, 215)
+TitleLabel.TextSize = 13
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local DcLabel = Instance.new("TextLabel", HeaderBar)
+DcLabel.BackgroundTransparency = 1
+DcLabel.Position = UDim2.new(0, 158, 0, 0)
+DcLabel.Size = UDim2.new(0, 150, 1, 0)
+DcLabel.Font = Enum.Font.GothamMedium
+DcLabel.Text = "- .gg/86JhgM5hn4"
+DcLabel.TextColor3 = Color3.fromRGB(70, 82, 100)
+DcLabel.TextSize = 11
+DcLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local OnlineDot = Instance.new("Frame", HeaderBar)
+OnlineDot.Size = UDim2.new(0, 7, 0, 7)
+OnlineDot.Position = UDim2.new(1, -82, 0.5, -3)
+OnlineDot.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
+OnlineDot.BorderSizePixel = 0
+Instance.new("UICorner", OnlineDot).CornerRadius = UDim.new(1, 0)
+
+local OnlineLabel = Instance.new("TextLabel", HeaderBar)
+OnlineLabel.BackgroundTransparency = 1
+OnlineLabel.Position = UDim2.new(1, -72, 0, 0)
+OnlineLabel.Size = UDim2.new(0, 62, 1, 0)
+OnlineLabel.Font = Enum.Font.GothamMedium
+OnlineLabel.Text = "Online"
+OnlineLabel.TextColor3 = Color3.fromRGB(52, 199, 89)
+OnlineLabel.TextSize = 11
+OnlineLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local CloseBtn = Instance.new("TextButton", HeaderBar)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Position = UDim2.new(1, -26, 0.5, -10)
+CloseBtn.Size = UDim2.new(0, 18, 0, 20)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.fromRGB(72, 84, 100)
+CloseBtn.TextSize = 13
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.MouseEnter:Connect(function() CloseBtn.TextColor3 = Color3.fromRGB(200,200,200) end)
+CloseBtn.MouseLeave:Connect(function() CloseBtn.TextColor3 = Color3.fromRGB(72,84,100) end)
+
+local HeaderLine = Instance.new("Frame", Frame)
+HeaderLine.BackgroundColor3 = Color3.fromRGB(28, 36, 46)
+HeaderLine.BorderSizePixel = 0
+HeaderLine.Size = UDim2.new(1, 0, 0, 1)
+HeaderLine.Position = UDim2.new(0, 0, 0, 38)
+
+-- ==========================================
+-- TAB BAR
+-- ==========================================
+local TabBar = Instance.new("Frame", Frame)
+TabBar.BackgroundTransparency = 1
+TabBar.Size = UDim2.new(1, 0, 0, 36)
+TabBar.Position = UDim2.new(0, 0, 0, 39)
+
+local TabLine = Instance.new("Frame", Frame)
+TabLine.BackgroundColor3 = Color3.fromRGB(28, 36, 46)
+TabLine.BorderSizePixel = 0
+TabLine.Size = UDim2.new(1, 0, 0, 1)
+TabLine.Position = UDim2.new(0, 0, 0, 75)
+
+local tabButtons = {}
+local ApplyFilter
+local WhitelistToggleBtn
+
+local function createTab(text, filter, xPos, width)
+    local tb = Instance.new("TextButton", TabBar)
+    tb.Size = UDim2.new(0, width, 1, 0)
+    tb.Position = UDim2.new(0, xPos, 0, 0)
+    tb.BackgroundTransparency = 1
+    tb.Font = Enum.Font.GothamBold
+    tb.Text = text
+    tb.TextColor3 = Color3.fromRGB(72, 84, 100)
+    tb.TextSize = 12
+    tb.BorderSizePixel = 0
+
+    local indicator = Instance.new("Frame", tb)
+    indicator.Size = UDim2.new(1, -16, 0, 2)
+    indicator.Position = UDim2.new(0, 8, 1, -2)
+    indicator.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
+    indicator.BorderSizePixel = 0
+    indicator.Visible = false
+    Instance.new("UICorner", indicator).CornerRadius = UDim.new(1, 0)
+
+    table.insert(tabButtons, {btn = tb, indicator = indicator, filter = filter})
+
+    tb.MouseButton1Click:Connect(function()
+        playClick()
+        CurrentFilter = filter
+        for _, t in ipairs(tabButtons) do
+            t.btn.TextColor3 = Color3.fromRGB(72, 84, 100)
+            t.indicator.Visible = false
+        end
+        tb.TextColor3 = Color3.fromRGB(215, 215, 215)
+        indicator.Visible = true
+        ApplyFilter()
+    end)
+
+    return tb, indicator
+end
+
+local allTab, allInd = createTab("All", "all", 12, 70)
+local t100Tab = createTab("100m+", "100m+", 86, 74)
+local t50Tab = createTab("50m+", "50m+", 164, 66)
+local wlTab, wlInd = createTab("Whitelist", "whitelist", 234, 88)
+
+allTab.TextColor3 = Color3.fromRGB(215, 215, 215)
+allInd.Visible = true
+CurrentFilter = "all"
+
+local WhitelistToggleFrame = Instance.new("Frame", TabBar)
+WhitelistToggleFrame.Size = UDim2.new(0, 90, 1, 0)
+WhitelistToggleFrame.Position = UDim2.new(0, 326, 0, 0)
+WhitelistToggleFrame.BackgroundTransparency = 1
+WhitelistToggleFrame.Visible = false
+
+WhitelistToggleBtn = Instance.new("TextButton", WhitelistToggleFrame)
+WhitelistToggleBtn.Size = UDim2.new(1, 0, 1, -4)
+WhitelistToggleBtn.Position = UDim2.new(0, 0, 0, 2)
+WhitelistToggleBtn.BackgroundColor3 = whitelistEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+WhitelistToggleBtn.BorderSizePixel = 0
+WhitelistToggleBtn.Font = Enum.Font.GothamBold
+WhitelistToggleBtn.Text = whitelistEnabled and "Filter: ON" or "Filter: OFF"
+WhitelistToggleBtn.TextColor3 = whitelistEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+WhitelistToggleBtn.TextSize = 11
+Instance.new("UICorner", WhitelistToggleBtn).CornerRadius = UDim.new(0, 5)
+local wts = Instance.new("UIStroke", WhitelistToggleBtn)
+wts.Color = whitelistEnabled and Color3.fromRGB(30, 60, 38) or Color3.fromRGB(36, 46, 58)
+
+WhitelistToggleBtn.MouseButton1Click:Connect(function()
+    playClick()
+    whitelistEnabled = not whitelistEnabled
+    if whitelistEnabled then
+        WhitelistToggleBtn.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
+        WhitelistToggleBtn.TextColor3 = Color3.fromRGB(52, 199, 89)
+        WhitelistToggleBtn.Text = "Filter: ON"
+        local strk = WhitelistToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(30, 60, 38) end
+    else
+        WhitelistToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+        WhitelistToggleBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        WhitelistToggleBtn.Text = "Filter: OFF"
+        local strk = WhitelistToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(36, 46, 58) end
+    end
+    SaveAmountsConfig()
+    ApplyFilter()
+end)
+
+local AntiErrorToggle = Instance.new("TextButton", TabBar)
+AntiErrorToggle.Size = UDim2.new(0, 100, 1, 0)
+AntiErrorToggle.Position = UDim2.new(0, 420, 0, 0)
+AntiErrorToggle.BackgroundTransparency = 1
+AntiErrorToggle.Font = Enum.Font.GothamBold
+AntiErrorToggle.Text = "Anti-Error: OFF"
+AntiErrorToggle.TextColor3 = Color3.fromRGB(199, 52, 52)
+AntiErrorToggle.TextSize = 12
+
+AntiErrorToggle.MouseButton1Click:Connect(function()
+    playClick()
+    manualAntiError = not manualAntiError
+    if manualAntiError then
+        AntiErrorToggle.Text = "Anti-Error: ON"
+        AntiErrorToggle.TextColor3 = Color3.fromRGB(52, 199, 89)
+    else
+        AntiErrorToggle.Text = "Anti-Error: OFF"
+        AntiErrorToggle.TextColor3 = Color3.fromRGB(199, 52, 52)
+    end
+end)
+
+-- ==========================================
+-- CONTROLS ROW
+-- ==========================================
+local ControlsRow = Instance.new("Frame", Frame)
+ControlsRow.BackgroundTransparency = 1
+ControlsRow.Position = UDim2.new(0, 12, 0, 83)
+ControlsRow.Size = UDim2.new(1, -24, 0, 36)
+
+local function makeCtrlBtn(text, xPos, w)
+    local b = Instance.new("TextButton", ControlsRow)
+    b.Size = UDim2.new(0, w, 0, 26)
+    b.Position = UDim2.new(0, xPos, 0.5, -13)
+    b.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+    b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBold
+    b.Text = text
+    b.TextColor3 = Color3.fromRGB(155, 165, 180)
+    b.TextSize = 11
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+    local s = Instance.new("UIStroke", b)
+    s.Color = Color3.fromRGB(36, 46, 58)
+    s.Thickness = 1
+    b.MouseEnter:Connect(function() b.TextColor3 = Color3.fromRGB(215,215,215) end)
+    b.MouseLeave:Connect(function() b.TextColor3 = Color3.fromRGB(155,165,180) end)
+    return b
+end
+
+local AutoJoinBtn = Instance.new("TextButton", ControlsRow)
+AutoJoinBtn.Size = UDim2.new(0, 105, 0, 26)
+AutoJoinBtn.Position = UDim2.new(0, 0, 0.5, -13)
+AutoJoinBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+AutoJoinBtn.BorderSizePixel = 0
+AutoJoinBtn.Font = Enum.Font.GothamBold
+AutoJoinBtn.Text = "Auto Join: OFF"
+AutoJoinBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+AutoJoinBtn.TextSize = 11
+Instance.new("UICorner", AutoJoinBtn).CornerRadius = UDim.new(0, 5)
+local ajs = Instance.new("UIStroke", AutoJoinBtn)
+ajs.Color = Color3.fromRGB(36, 46, 58)
+ajs.Thickness = 1
+
+local NotifToggleBtn = Instance.new("TextButton", ControlsRow)
+NotifToggleBtn.Size = UDim2.new(0, 105, 0, 26)
+NotifToggleBtn.Position = UDim2.new(0, 110, 0.5, -13)
+NotifToggleBtn.BackgroundColor3 = notifsEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+NotifToggleBtn.BorderSizePixel = 0
+NotifToggleBtn.Font = Enum.Font.GothamBold
+NotifToggleBtn.Text = notifsEnabled and "Notifs: ON" or "Notifs: OFF"
+NotifToggleBtn.TextColor3 = notifsEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+NotifToggleBtn.TextSize = 11
+Instance.new("UICorner", NotifToggleBtn).CornerRadius = UDim.new(0, 5)
+local nts = Instance.new("UIStroke", NotifToggleBtn)
+nts.Color = notifsEnabled and Color3.fromRGB(30, 60, 38) or Color3.fromRGB(36, 46, 58)
+nts.Thickness = 1
+
+NotifToggleBtn.MouseButton1Click:Connect(function()
+    playClick()
+    notifsEnabled = not notifsEnabled
+    if notifsEnabled then
+        NotifToggleBtn.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
+        NotifToggleBtn.TextColor3 = Color3.fromRGB(52, 199, 89)
+        NotifToggleBtn.Text = "Notifs: ON"
+        local strk = NotifToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(30, 60, 38) end
+    else
+        NotifToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+        NotifToggleBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        NotifToggleBtn.Text = "Notifs: OFF"
+        local strk = NotifToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(36, 46, 58) end
+    end
+    SaveConfig()
+end)
+
+local SoundToggleBtn = Instance.new("TextButton", ControlsRow)
+SoundToggleBtn.Size = UDim2.new(0, 105, 0, 26)
+SoundToggleBtn.Position = UDim2.new(0, 220, 0.5, -13)
+SoundToggleBtn.BackgroundColor3 = notifSoundEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+SoundToggleBtn.BorderSizePixel = 0
+SoundToggleBtn.Font = Enum.Font.GothamBold
+SoundToggleBtn.Text = notifSoundEnabled and "Sound: ON" or "Sound: OFF"
+SoundToggleBtn.TextColor3 = notifSoundEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+SoundToggleBtn.TextSize = 11
+Instance.new("UICorner", SoundToggleBtn).CornerRadius = UDim.new(0, 5)
+local sts = Instance.new("UIStroke", SoundToggleBtn)
+sts.Color = notifSoundEnabled and Color3.fromRGB(30, 60, 38) or Color3.fromRGB(36, 46, 58)
+sts.Thickness = 1
+
+SoundToggleBtn.MouseButton1Click:Connect(function()
+    playClick()
+    notifSoundEnabled = not notifSoundEnabled
+    if notifSoundEnabled then
+        SoundToggleBtn.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
+        SoundToggleBtn.TextColor3 = Color3.fromRGB(52, 199, 89)
+        SoundToggleBtn.Text = "Sound: ON"
+        local strk = SoundToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(30, 60, 38) end
+    else
+        SoundToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+        SoundToggleBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        SoundToggleBtn.Text = "Sound: OFF"
+        local strk = SoundToggleBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(36, 46, 58) end
+    end
+    SaveConfig()
+end)
+
+local RetriesLabel = Instance.new("TextLabel", ControlsRow)
+RetriesLabel.BackgroundTransparency = 1
+RetriesLabel.Position = UDim2.new(0, 330, 0.5, -10)
+RetriesLabel.Size = UDim2.new(0, 44, 0, 20)
+RetriesLabel.Font = Enum.Font.GothamMedium
+RetriesLabel.Text = "Retries"
+RetriesLabel.TextColor3 = Color3.fromRGB(70, 82, 100)
+RetriesLabel.TextSize = 11
+RetriesLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local SpamInput = Instance.new("TextBox", ControlsRow)
+SpamInput.Size = UDim2.new(0, 44, 0, 26)
+SpamInput.Position = UDim2.new(0, 378, 0.5, -13)
+SpamInput.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+SpamInput.BorderSizePixel = 0
+SpamInput.Text = tostring(spamCount)
+SpamInput.TextColor3 = Color3.fromRGB(200, 200, 200)
+SpamInput.Font = Enum.Font.GothamBold
+SpamInput.TextSize = 12
+SpamInput.TextXAlignment = Enum.TextXAlignment.Center
+Instance.new("UICorner", SpamInput).CornerRadius = UDim.new(0, 5)
+local sis = Instance.new("UIStroke", SpamInput)
+sis.Color = Color3.fromRGB(36,46,58)
+
+SpamInput.FocusLost:Connect(function()
+    local n = tonumber(SpamInput.Text)
+    if n and n > 0 then
+        spamCount = math.floor(n)
+        SpamInput.Text = tostring(spamCount)
+        SaveConfig()
+    else
+        SpamInput.Text = tostring(spamCount)
+    end
+end)
+
+local ClearBtn = makeCtrlBtn("Clear", 428, 56)
+local CancelBtn = makeCtrlBtn("Cancel", 490, 60)
+
+local CtrlLine = Instance.new("Frame", Frame)
+CtrlLine.BackgroundColor3 = Color3.fromRGB(28, 36, 46)
+CtrlLine.BorderSizePixel = 0
+CtrlLine.Size = UDim2.new(1, 0, 0, 1)
+CtrlLine.Position = UDim2.new(0, 0, 0, 126)
+
+-- ==========================================
+-- DYNAMIC CONTENT AREA
+-- ==========================================
+local ContentContainer = Instance.new("Frame", Frame)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Position = UDim2.new(0, 0, 0, 135)
+ContentContainer.Size = UDim2.new(1, 0, 1, -135)
+
+-- ==========================================
+-- LIVE FEED AREA
+-- ==========================================
+local LiveFeedArea = Instance.new("Frame", ContentContainer)
+LiveFeedArea.BackgroundTransparency = 1
+LiveFeedArea.Size = UDim2.new(1, 0, 1, 0)
+LiveFeedArea.Visible = true
+
+local DotsContainer = Instance.new("Frame", LiveFeedArea)
+DotsContainer.BackgroundTransparency = 1
+DotsContainer.Size = UDim2.new(2, 0, 1, 0)
+DotsContainer.Position = UDim2.new(0, 0, 0, 0)
+DotsContainer.ZIndex = 0
+DotsContainer.ClipsDescendants = true
+
+local DOT_COUNT = 60
+local dotObjects = {}
+
+for i = 1, DOT_COUNT do
+    local dot = Instance.new("Frame", DotsContainer)
+    dot.Size = UDim2.new(0, 2, 0, 2)
+    dot.BackgroundColor3 = Color3.fromRGB(80, 90, 110)
+    dot.BackgroundTransparency = 0.6
+    dot.BorderSizePixel = 0
+    dot.ZIndex = 0
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    
+    local yPos = math.random(5, 300)
+    dot.Position = UDim2.new(0, math.random(0, 1240), 0, yPos)
+    local speed = math.random(70, 140)
+    dotObjects[i] = {dot = dot, speed = speed, startX = math.random(0, 1240), currentX = math.random(0, 1240)}
+end
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    for _, dotObj in ipairs(dotObjects) do
+        if dotObj.dot and dotObj.dot.Parent then
+            dotObj.currentX = dotObj.currentX - (1240 / dotObj.speed) * deltaTime * 15
+            if dotObj.currentX < -10 then
+                dotObj.currentX = 1240
+                dotObj.dot.Position = UDim2.new(0, dotObj.currentX, 0, dotObj.dot.Position.Y.Offset)
+            else
+                dotObj.dot.Position = UDim2.new(0, dotObj.currentX, 0, dotObj.dot.Position.Y.Offset)
+            end
+        end
+    end
+end)
+
+local LogsArea = Instance.new("Frame", LiveFeedArea)
+LogsArea.BackgroundTransparency = 1
+LogsArea.Position = UDim2.new(0, 0, 0, 0)
+LogsArea.Size = UDim2.new(1, 0, 1, 0)
+LogsArea.ZIndex = 5
+
+local LiveLabel = Instance.new("TextLabel", LogsArea)
+LiveLabel.BackgroundTransparency = 1
+LiveLabel.Position = UDim2.new(0, 14, 0, -4)
+LiveLabel.Size = UDim2.new(0, 80, 0, 18)
+LiveLabel.Font = Enum.Font.GothamBold
+LiveLabel.Text = "LIVE FEED"
+LiveLabel.TextColor3 = Color3.fromRGB(55, 68, 84)
+LiveLabel.TextSize = 10
+LiveLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local LogScroll = Instance.new("ScrollingFrame", LogsArea)
+LogScroll.BackgroundTransparency = 1
+LogScroll.BorderSizePixel = 0
+LogScroll.Position = UDim2.new(0, 0, 0, 18)
+LogScroll.Size = UDim2.new(1, 0, 1, -18)
+LogScroll.ScrollBarThickness = 3
+LogScroll.ScrollBarImageColor3 = Color3.fromRGB(46, 58, 72)
+LogScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+LogScroll.CanvasSize = UDim2.new(0,0,0,0)
+LogScroll.ZIndex = 5
+
+local LogLayout = Instance.new("UIListLayout", LogScroll)
+LogLayout.SortOrder = Enum.SortOrder.LayoutOrder
+LogLayout.Padding = UDim.new(0, 0)
+
+local EmptyLabel = Instance.new("TextLabel", LogScroll)
+EmptyLabel.BackgroundTransparency = 1
+EmptyLabel.Size = UDim2.new(1, 0, 0, 40)
+EmptyLabel.Position = UDim2.new(0, 0, 0, 80)
+EmptyLabel.Font = Enum.Font.GothamMedium
+EmptyLabel.Text = "No Notifications Yet"
+EmptyLabel.TextColor3 = Color3.fromRGB(50, 62, 76)
+EmptyLabel.TextSize = 13
+EmptyLabel.TextXAlignment = Enum.TextXAlignment.Center
+EmptyLabel.ZIndex = 5
+
+-- ==========================================
+-- WHITELIST AREA (NEW TOGGLE UI)
+-- ==========================================
+local WhitelistArea = Instance.new("Frame", ContentContainer)
+WhitelistArea.BackgroundTransparency = 1
+WhitelistArea.Size = UDim2.new(1, 0, 1, 0)
+WhitelistArea.Visible = false
+
+local WhitelistHeader = Instance.new("Frame", WhitelistArea)
+WhitelistHeader.BackgroundTransparency = 1
+WhitelistHeader.Size = UDim2.new(1, 0, 0, 32)
+WhitelistHeader.Position = UDim2.new(0, 0, 0, 0)
+
+local WhitelistLabel = Instance.new("TextLabel", WhitelistHeader)
+WhitelistLabel.BackgroundTransparency = 1
+WhitelistLabel.Position = UDim2.new(0, 14, 0, 0)
+WhitelistLabel.Size = UDim2.new(0, 70, 1, 0)
+WhitelistLabel.Font = Enum.Font.GothamBold
+WhitelistLabel.Text = "WHITELIST"
+WhitelistLabel.TextColor3 = Color3.fromRGB(52, 199, 89)
+WhitelistLabel.TextSize = 10
+WhitelistLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+local WhitelistSearchBox = Instance.new("TextBox", WhitelistHeader)
+WhitelistSearchBox.Size = UDim2.new(0, 130, 0, 22)
+WhitelistSearchBox.Position = UDim2.new(0, 85, 0.5, -11)
+WhitelistSearchBox.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+WhitelistSearchBox.BorderSizePixel = 0
+WhitelistSearchBox.PlaceholderText = "Search"
+WhitelistSearchBox.PlaceholderColor3 = Color3.fromRGB(65, 78, 94)
+WhitelistSearchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+WhitelistSearchBox.Font = Enum.Font.GothamMedium
+WhitelistSearchBox.TextSize = 10
+Instance.new("UICorner", WhitelistSearchBox).CornerRadius = UDim.new(0, 4)
+local wsss = Instance.new("UIStroke", WhitelistSearchBox)
+wsss.Color = Color3.fromRGB(36,46,58)
+
+local ImportTextBox = Instance.new("TextBox", WhitelistHeader)
+ImportTextBox.Size = UDim2.new(0, 85, 0, 22)
+ImportTextBox.Position = UDim2.new(1, -205, 0.5, -11)
+ImportTextBox.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+ImportTextBox.BorderSizePixel = 0
+ImportTextBox.PlaceholderText = "Paste Code"
+ImportTextBox.PlaceholderColor3 = Color3.fromRGB(65, 78, 94)
+ImportTextBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+ImportTextBox.Font = Enum.Font.GothamMedium
+ImportTextBox.TextSize = 10
+ImportTextBox.ClearTextOnFocus = false
+ImportTextBox.TextTruncate = Enum.TextTruncate.AtEnd
+Instance.new("UICorner", ImportTextBox).CornerRadius = UDim.new(0, 4)
+local itbs = Instance.new("UIStroke", ImportTextBox)
+itbs.Color = Color3.fromRGB(36,46,58)
+
+local ExportBtn = Instance.new("TextButton", WhitelistHeader)
+ExportBtn.Size = UDim2.new(0, 50, 0, 22)
+ExportBtn.Position = UDim2.new(1, -110, 0.5, -11)
+ExportBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+ExportBtn.Text = "Export"
+ExportBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+ExportBtn.Font = Enum.Font.GothamBold
+ExportBtn.TextSize = 10
+Instance.new("UICorner", ExportBtn).CornerRadius = UDim.new(0, 4)
+local exs = Instance.new("UIStroke", ExportBtn)
+exs.Color = Color3.fromRGB(36,46,58)
+
+local ImportBtn = Instance.new("TextButton", WhitelistHeader)
+ImportBtn.Size = UDim2.new(0, 50, 0, 22)
+ImportBtn.Position = UDim2.new(1, -55, 0.5, -11)
+ImportBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+ImportBtn.Text = "Import"
+ImportBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+ImportBtn.Font = Enum.Font.GothamBold
+ImportBtn.TextSize = 10
+Instance.new("UICorner", ImportBtn).CornerRadius = UDim.new(0, 4)
+local ims = Instance.new("UIStroke", ImportBtn)
+ims.Color = Color3.fromRGB(36,46,58)
+
+local WhitelistScroll = Instance.new("ScrollingFrame", WhitelistArea)
+WhitelistScroll.BackgroundTransparency = 1
+WhitelistScroll.BorderSizePixel = 0
+WhitelistScroll.Position = UDim2.new(0, 0, 0, 32)
+WhitelistScroll.Size = UDim2.new(1, 0, 1, -32)
+WhitelistScroll.ScrollBarThickness = 3
+WhitelistScroll.ScrollBarImageColor3 = Color3.fromRGB(46, 58, 72)
+WhitelistScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+WhitelistScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+WhitelistScroll.ZIndex = 5
+
+local ScrollPad = Instance.new("UIPadding", WhitelistScroll)
+ScrollPad.PaddingBottom = UDim.new(0, 10)
+
+local WhitelistLayout = Instance.new("UIListLayout", WhitelistScroll)
+WhitelistLayout.SortOrder = Enum.SortOrder.LayoutOrder
+WhitelistLayout.Padding = UDim.new(0, 2)
+
+local whitelistItems = {}
+
+local function updateWhitelistDisplay()
+    for _, item in pairs(whitelistItems) do
+        if item.frame and item.frame.Parent then
+            item.frame:Destroy()
+        end
+    end
+    whitelistItems = {}
+    
+    local searchText = string.lower(WhitelistSearchBox.Text)
+    
+    for _, name in ipairs(ALL_BRAINROTS) do
+        if searchText == "" or string.find(string.lower(name), searchText, nil, true) then
+            local amount = brainrotAmounts[name] or 0
+            local isWhitelisted = amount ~= 0
+            
+            local itemFrame = Instance.new("Frame", WhitelistScroll)
+            itemFrame.Size = UDim2.new(1, -10, 0, 32)
+            itemFrame.BackgroundColor3 = Color3.fromRGB(16, 21, 28)
+            itemFrame.BorderSizePixel = 0
+            Instance.new("UICorner", itemFrame).CornerRadius = UDim.new(0, 4)
+            
+            local nameLabel = Instance.new("TextLabel", itemFrame)
+            nameLabel.Size = UDim2.new(0.5, -10, 1, 0)
+            nameLabel.Position = UDim2.new(0, 8, 0, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Font = Enum.Font.GothamMedium
+            nameLabel.Text = name
+            nameLabel.TextColor3 = isWhitelisted and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(150, 162, 178)
+            nameLabel.TextSize = 11
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            
+            local inputContainer = Instance.new("Frame", itemFrame)
+            inputContainer.Size = UDim2.new(0, 80, 1, -6)
+            inputContainer.Position = UDim2.new(0.5, 5, 0, 3)
+            inputContainer.BackgroundTransparency = 1
+            
+            local amountInput = Instance.new("TextBox", inputContainer)
+            amountInput.Text = "" -- Explicitly Clear default text to prevent "TextBox" showing up!
+            amountInput.Size = UDim2.new(0.6, -4, 1, 0)
+            amountInput.Position = UDim2.new(0, 0, 0, 0)
+            amountInput.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+            amountInput.BorderSizePixel = 0
+            amountInput.Font = Enum.Font.GothamBold
+            
+            -- Set logic for existing values
+            if amount > 0 then
+                amountInput.Text = string.format("%.1f", amount / 1000000)
+            elseif amount == -1 then
+                amountInput.Text = "ANY"
+            end
+            
+            amountInput.PlaceholderText = "Amt (M)"
+            amountInput.PlaceholderColor3 = Color3.fromRGB(65, 78, 94)
+            amountInput.TextColor3 = Color3.fromRGB(200, 200, 200)
+            amountInput.TextSize = 10
+            amountInput.TextXAlignment = Enum.TextXAlignment.Center
+            Instance.new("UICorner", amountInput).CornerRadius = UDim.new(0, 3)
+            local ais = Instance.new("UIStroke", amountInput)
+            ais.Color = isWhitelisted and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(36, 46, 58)
+            
+            local mLabel = Instance.new("TextLabel", inputContainer)
+            mLabel.Size = UDim2.new(0.2, 0, 1, 0)
+            mLabel.Position = UDim2.new(0.65, 4, 0, 0)
+            mLabel.BackgroundTransparency = 1
+            mLabel.Font = Enum.Font.GothamBold
+            mLabel.Text = "M"
+            mLabel.TextColor3 = Color3.fromRGB(70, 82, 100)
+            mLabel.TextSize = 10
+            mLabel.TextXAlignment = Enum.TextXAlignment.Left
+            
+            -- New ON/OFF Button method (foolproof)
+            local toggleBtn = Instance.new("TextButton", itemFrame)
+            toggleBtn.Size = UDim2.new(0, 44, 0, 22)
+            toggleBtn.Position = UDim2.new(1, -50, 0.5, -11)
+            toggleBtn.BackgroundColor3 = isWhitelisted and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(199, 52, 52)
+            toggleBtn.Text = isWhitelisted and "ON" or "OFF"
+            toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            toggleBtn.Font = Enum.Font.GothamBold
+            toggleBtn.TextSize = 11
+            toggleBtn.BorderSizePixel = 0
+            Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 3)
+            
+            local function updateItemState()
+                local txt = amountInput.Text:gsub(",", ".")
+                local num = tonumber(txt)
+                
+                if isWhitelisted then
+                    if num and num > 0 then
+                        brainrotAmounts[name] = math.floor(num * 1000000)
+                        amountInput.Text = string.format("%.1f", num)
+                    else
+                        brainrotAmounts[name] = -1
+                        amountInput.Text = "ANY"
+                    end
+                    toggleBtn.Text = "ON"
+                    toggleBtn.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
+                    nameLabel.TextColor3 = Color3.fromRGB(52, 199, 89)
+                    ais.Color = Color3.fromRGB(52, 199, 89)
+                else
+                    brainrotAmounts[name] = 0
+                    toggleBtn.Text = "OFF"
+                    toggleBtn.BackgroundColor3 = Color3.fromRGB(199, 52, 52)
+                    nameLabel.TextColor3 = Color3.fromRGB(150, 162, 178)
+                    ais.Color = Color3.fromRGB(36, 46, 58)
+                end
+                SaveAmountsConfig()
+            end
+
+            toggleBtn.MouseButton1Click:Connect(function()
+                playClick()
+                isWhitelisted = not isWhitelisted
+                updateItemState()
+            end)
+            
+            amountInput.FocusLost:Connect(function()
+                if isWhitelisted then
+                    updateItemState()
+                end
+            end)
+            
+            whitelistItems[name] = {
+                frame = itemFrame
+            }
+        end
+    end
+end
+
+WhitelistSearchBox:GetPropertyChangedSignal("Text"):Connect(updateWhitelistDisplay)
+
+ExportBtn.MouseButton1Click:Connect(function()
+    playClick()
+    local arr = {}
+    for name, amount in pairs(brainrotAmounts) do
+        if amount ~= 0 then
+            table.insert(arr, {name = name, amount = amount})
+        end
+    end
+    local config = {amounts = arr, whitelistEnabled = whitelistEnabled}
+    local json = HttpService:JSONEncode(config)
+    
+    -- ONLY copy to clipboard now!
+    copyToClipboard(json)
+    
+    local oldText = ExportBtn.Text
+    ExportBtn.Text = "Copied!"
+    ExportBtn.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
+    ExportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    task.wait(1)
+    ExportBtn.Text = oldText
+    ExportBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+    ExportBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+end)
+
+ImportBtn.MouseButton1Click:Connect(function()
+    playClick()
+    local codeToImport = ImportTextBox.Text
+    
+    -- Fallback to clipboard if box is empty
+    if codeToImport == "" then
+        pcall(function() codeToImport = game:GetService("Clipboard"):get() end)
+    end
+    
+    if codeToImport and codeToImport ~= "" then
+        local success, data = pcall(function() return HttpService:JSONDecode(codeToImport) end)
+        if success and data then
+            for _, name in ipairs(ALL_BRAINROTS) do
+                brainrotAmounts[name] = 0
+            end
+            
+            if data.amounts then
+                for _, entry in ipairs(data.amounts) do
+                    if entry.name and entry.amount then
+                        brainrotAmounts[entry.name] = entry.amount
+                    end
+                end
+            end
+            if data.whitelistEnabled ~= nil then
+                whitelistEnabled = data.whitelistEnabled
+                WhitelistToggleBtn.BackgroundColor3 = whitelistEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+                WhitelistToggleBtn.TextColor3 = whitelistEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+                WhitelistToggleBtn.Text = whitelistEnabled and "Filter: ON" or "Filter: OFF"
+                local strk = WhitelistToggleBtn:FindFirstChildOfClass("UIStroke")
+                if strk then strk.Color = whitelistEnabled and Color3.fromRGB(30, 60, 38) or Color3.fromRGB(36, 46, 58) end
+            end
+            SaveAmountsConfig()
+            updateWhitelistDisplay()
+            ApplyFilter()
+            
+            local oldText = ImportBtn.Text
+            ImportBtn.Text = "Done!"
+            ImportBtn.BackgroundColor3 = Color3.fromRGB(52, 199, 89)
+            ImportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            task.wait(1)
+            ImportBtn.Text = oldText
+            ImportBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+            ImportBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        else
+            local oldText = ImportBtn.Text
+            ImportBtn.Text = "Invalid!"
+            ImportBtn.BackgroundColor3 = Color3.fromRGB(160, 20, 20)
+            ImportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            task.wait(1)
+            ImportBtn.Text = oldText
+            ImportBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+            ImportBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        end
+    end
+end)
+
+-- Joining status frame
+local JoiningStatusFrame = Instance.new("Frame", Frame)
+JoiningStatusFrame.BackgroundColor3 = Color3.fromRGB(16, 23, 32)
+JoiningStatusFrame.Position = UDim2.new(0, 100, 0, 132)
+JoiningStatusFrame.Size = UDim2.new(0, 390, 0, 18)
+JoiningStatusFrame.Visible = false
+Instance.new("UICorner", JoiningStatusFrame).CornerRadius = UDim.new(0, 4)
+
+local JoiningStatusText = Instance.new("TextLabel", JoiningStatusFrame)
+JoiningStatusText.BackgroundTransparency = 1
+JoiningStatusText.Size = UDim2.new(1, -8, 1, 0)
+JoiningStatusText.Position = UDim2.new(0, 5, 0, 0)
+JoiningStatusText.Font = Enum.Font.GothamMedium
+JoiningStatusText.Text = ""
+JoiningStatusText.TextColor3 = Color3.fromRGB(52, 199, 89)
+JoiningStatusText.TextSize = 10
+JoiningStatusText.TextXAlignment = Enum.TextXAlignment.Left
+
+local function updateJoiningStatus(displayName, value)
+    if displayName and value then
+        JoiningStatusFrame.Visible = true
+        JoiningStatusText.Text = "Joining: " .. displayName .. " | " .. formatValue(value)
+    else
+        JoiningStatusFrame.Visible = false
+        JoiningStatusText.Text = ""
+    end
+end
+
+-- ==========================================
+-- CREATE LOG ENTRY
+-- ==========================================
+local function CreateUnifiedLog(brainrotName, moneyValue, jobId)
+    local moneyStr = formatValue(moneyValue)
+    local displayName = brainrotName
+    
+    local shouldNotify = shouldNotifyForBrainrot(displayName, moneyValue)
+    
+    if CurrentFilter == "50m+" and moneyValue < 50000000 then shouldNotify = false end
+    if CurrentFilter == "100m+" and moneyValue < 100000000 then shouldNotify = false end
+
+    if notifsEnabled and shouldNotify then
+        local baseName = getBaseBrainrotName(displayName)
+        local isListed = (brainrotAmounts[displayName] and brainrotAmounts[displayName] ~= 0) or (brainrotAmounts[baseName] and brainrotAmounts[baseName] ~= 0)
+        
+        if isListed then
+            playWhitelistSound()
+        else
+            playNotifySound()
+        end
+        
+        task.spawn(function()
+            showTopNotification(displayName, moneyStr)
+        end)
+    end
+    
+    logOrderCounter = logOrderCounter + 1
+    
+    local LogItem = Instance.new("Frame")
+    LogItem.Parent = LogScroll
+    LogItem.LayoutOrder = -logOrderCounter
+    LogItem.BackgroundTransparency = 1
+    LogItem.Size = UDim2.new(1, -8, 0, 46)
+    LogItem.ZIndex = 6
+    
+    local sep = Instance.new("Frame", LogItem)
+    sep.BackgroundColor3 = Color3.fromRGB(22, 30, 40)
+    sep.BorderSizePixel = 0
+    sep.Size = UDim2.new(1, 0, 0, 1)
+    sep.Position = UDim2.new(0, 0, 1, -1)
+    sep.ZIndex = 6
+    
+    local Left = Instance.new("Frame", LogItem)
+    Left.BackgroundTransparency = 1
+    Left.Size = UDim2.new(0.55, 0, 1, 0)
+    Left.Position = UDim2.new(0, 12, 0, 0)
+    Left.ZIndex = 6
+    
+    local LeftLayout = Instance.new("UIListLayout", Left)
+    LeftLayout.FillDirection = Enum.FillDirection.Horizontal
+    LeftLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    LeftLayout.Padding = UDim.new(0, 8)
+    
+    local NameLabel = Instance.new("TextLabel", Left)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.AutomaticSize = Enum.AutomaticSize.X
+    NameLabel.Font = Enum.Font.GothamMedium
+    NameLabel.Text = displayName
+    NameLabel.TextColor3 = Color3.fromRGB(175, 185, 195)
+    NameLabel.TextSize = 12
+    NameLabel.ZIndex = 6
+    
+    local MoneyLabel = Instance.new("TextLabel", Left)
+    MoneyLabel.BackgroundTransparency = 1
+    MoneyLabel.AutomaticSize = Enum.AutomaticSize.X
+    MoneyLabel.Font = Enum.Font.GothamBold
+    MoneyLabel.Text = moneyStr
+    MoneyLabel.TextColor3 = Color3.fromRGB(52, 199, 89)
+    MoneyLabel.TextSize = 13
+    MoneyLabel.ZIndex = 6
+    
+    local Right = Instance.new("Frame", LogItem)
+    Right.BackgroundTransparency = 1
+    Right.Size = UDim2.new(0.45, 0, 1, 0)
+    Right.Position = UDim2.new(0.55, 0, 0, 0)
+    Right.ZIndex = 6
+    
+    local RightLayout = Instance.new("UIListLayout", Right)
+    RightLayout.FillDirection = Enum.FillDirection.Horizontal
+    RightLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    RightLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    RightLayout.Padding = UDim.new(0, 6)
+    
+    local RightPad = Instance.new("UIPadding", Right)
+    RightPad.PaddingRight = UDim.new(0, 10)
+    
+    local function makeLogBtn(text, w)
+        local b = Instance.new("TextButton", Right)
+        b.Size = UDim2.new(0, w, 0, 28)
+        b.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+        b.BorderSizePixel = 0
+        b.Font = Enum.Font.GothamBold
+        b.Text = text
+        b.TextColor3 = Color3.fromRGB(175, 185, 195)
+        b.TextSize = 11
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+        local st = Instance.new("UIStroke", b)
+        st.Color = Color3.fromRGB(36,46,58)
+        st.Thickness = 1
+        b.MouseEnter:Connect(function() b.TextColor3 = Color3.fromRGB(255,255,255) end)
+        b.MouseLeave:Connect(function() b.TextColor3 = Color3.fromRGB(175,185,195) end)
+        return b
+    end
+    
+    local jBtn = makeLogBtn("JOIN", 52)
+    local sBtn = makeLogBtn("SPAM", 60)
+    
+    jBtn.MouseButton1Click:Connect(function()
+        playClick()
+        if jobId then pcall(function() TeleportService:TeleportToPlaceInstance(tonumber(PLACE_ID), jobId, Player) end) end
+    end)
+    
+    local isSpamming = false
+    local spamThread = nil
+    local spamEntryId = tostring(jobId) .. "_" .. tostring(os.time())
+    
+    sBtn.MouseButton1Click:Connect(function()
+        playClick()
+        isSpamming = not isSpamming
+        
+        if isSpamming then
+            if spamThreads[spamEntryId] then
+                pcall(function() task.cancel(spamThreads[spamEntryId]) end)
+                spamThreads[spamEntryId] = nil
+            end
+            
+            sBtn.BackgroundColor3 = Color3.fromRGB(140, 20, 20)
+            sBtn.Text = "STOP"
+            sBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            
+            spamThreads[spamEntryId] = task.spawn(function()
+                updateJoiningStatus(displayName, moneyValue)
+                while isSpamming do
+                    pcall(function() 
+                        TeleportService:TeleportToPlaceInstance(tonumber(PLACE_ID), jobId, Player) 
+                    end)
+                    task.wait(0.05)
+                end
+                updateJoiningStatus()
+                spamThreads[spamEntryId] = nil
+            end)
+        else
+            if spamThreads[spamEntryId] then
+                pcall(function() task.cancel(spamThreads[spamEntryId]) end)
+                spamThreads[spamEntryId] = nil
+            end
+            updateJoiningStatus()
+            sBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+            sBtn.Text = "SPAM"
+            sBtn.TextColor3 = Color3.fromRGB(175, 185, 195)
+        end
+    end)
+    
+    local newEntry = {
+        NumericValue = moneyValue,
+        UI = LogItem,
+        PlaceId = PLACE_ID,
+        JobId = jobId,
+        Name = displayName,
+        Timestamp = os.time()
+    }
+    
+    table.insert(LogEntries, 1, newEntry)
+    ApplyFilter()
+    
+    if autoJoinEnabled and jobId then
+        task.spawn(function() 
+            while autoJoinEnabled do
+                pcall(function() TeleportService:TeleportToPlaceInstance(tonumber(PLACE_ID), jobId, Player) end)
+                task.wait(0.05)
+            end
+        end)
+    end
+end
+
+-- ==========================================
+-- APPLY FILTER (switches between views)
+-- ==========================================
+ApplyFilter = function()
+    if CurrentFilter == "whitelist" then
+        LiveFeedArea.Visible = false
+        WhitelistArea.Visible = true
+        WhitelistToggleFrame.Visible = true
+        updateWhitelistDisplay()
+    else
+        LiveFeedArea.Visible = true
+        WhitelistArea.Visible = false
+        WhitelistToggleFrame.Visible = false
+        
+        local hasAny = false
+        for _, entry in ipairs(LogEntries) do
+            local shouldShow = true
+            if CurrentFilter == "all" then
+                shouldShow = true
+            elseif CurrentFilter == "50m+" then
+                shouldShow = (entry.NumericValue >= 50000000)
+            elseif CurrentFilter == "100m+" then
+                shouldShow = (entry.NumericValue >= 100000000)
+            end
+            
+            if entry.UI then
+                entry.UI.Visible = shouldShow
+                if shouldShow then hasAny = true end
+            end
+        end
+        EmptyLabel.Visible = not hasAny
+    end
+end
+
+-- ==========================================
+-- REOPEN BUTTON
+-- ==========================================
+local ReopenButton = Instance.new("TextButton", ScreenGui)
+ReopenButton.Name = ReopenBtnName
+ReopenButton.Size = UDim2.new(0, 130, 0, 32)
+ReopenButton.Position = UDim2.new(0.5, -65, 0, 20)
+ReopenButton.BackgroundColor3 = Color3.fromRGB(14, 18, 24)
+ReopenButton.Text = "LNZ NOTIFIER"
+ReopenButton.TextColor3 = Color3.fromRGB(200, 200, 200)
+ReopenButton.Font = Enum.Font.GothamBold
+ReopenButton.TextSize = 12
+ReopenButton.Visible = false
+Instance.new("UICorner", ReopenButton).CornerRadius = UDim.new(0, 6)
+local rs = Instance.new("UIStroke", ReopenButton)
+rs.Color = Color3.fromRGB(36,46,58)
+
+-- ==========================================
+-- MAIN BUTTON LOGIC
+-- ==========================================
+AutoJoinBtn.MouseButton1Click:Connect(function()
+    playClick()
+    autoJoinEnabled = not autoJoinEnabled
+    if autoJoinEnabled then
+        AutoJoinBtn.BackgroundColor3 = Color3.fromRGB(18, 34, 24)
+        AutoJoinBtn.TextColor3 = Color3.fromRGB(52, 199, 89)
+        AutoJoinBtn.Text = "Auto Join: ON"
+        local strk = AutoJoinBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(30, 60, 38) end
+    else
+        AutoJoinBtn.BackgroundColor3 = Color3.fromRGB(20, 27, 36)
+        AutoJoinBtn.TextColor3 = Color3.fromRGB(155, 165, 180)
+        AutoJoinBtn.Text = "Auto Join: OFF"
+        local strk = AutoJoinBtn:FindFirstChildOfClass("UIStroke")
+        if strk then strk.Color = Color3.fromRGB(36, 46, 58) end
+    end
+end)
+
+ClearBtn.MouseButton1Click:Connect(function()
+    playClick()
+    for _, thread in pairs(spamThreads) do
+        pcall(function() task.cancel(thread) end)
+    end
+    spamThreads = {}
+    
+    for _, entry in ipairs(LogEntries) do
+        if entry.UI and entry.UI.Parent then entry.UI:Destroy() end
+    end
+    LogEntries = {}
+    EmptyLabel.Visible = true
+    ApplyFilter()
+end)
+
+CancelBtn.MouseButton1Click:Connect(function()
+    playClick()
+    updateJoiningStatus()
+end)
+
+-- ==========================================
+-- CLOSE / REOPEN
+-- ==========================================
+local dragTweenInfo = TweenInfo.new(0.08, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    playClick()
+    TweenService:Create(UIScale, TweenInfo.new(0.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In), {Scale=HIDE_SCALE}):Play()
+    TweenService:Create(Frame, TweenInfo.new(0.3,Enum.EasingStyle.Quint,Enum.EasingDirection.In), {GroupTransparency=1}):Play()
+    task.wait(0.3)
+    Frame.Visible = false
+    ReopenButton.Visible = true
+    ReopenButton.Position = UDim2.new(0.5,-65,-0.1,0)
+    TweenService:Create(ReopenButton, TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out), {Position=UDim2.new(0.5,-65,0,0)}):Play()
+end)
+
+ReopenButton.MouseButton1Click:Connect(function()
+    playClick()
+    TweenService:Create(ReopenButton, TweenInfo.new(0.2,Enum.EasingStyle.Quint,Enum.EasingDirection.In), {Position=UDim2.new(0.5,-65,-0.1,0)}):Play()
+    task.wait(0.2)
+    ReopenButton.Visible = false
+    Frame.Visible = true
+    TweenService:Create(UIScale, TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out), {Scale=TARGET_SCALE}):Play()
+    TweenService:Create(Frame, TweenInfo.new(0.4,Enum.EasingStyle.Quint,Enum.EasingDirection.Out), {GroupTransparency=0}):Play()
+end)
+
+-- ==========================================
+-- DRAG (MAIN FRAME)
+-- ==========================================
+local dragging = false
+local dragStart = nil
+local startPos = nil
+local dragInput = nil
+
+local function updateDrag(input)
+    if not dragging or not dragStart or not startPos then return end
+    local delta = input.Position - dragStart
+    Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+Frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Frame.Position
+        TweenService:Create(UIScale, TweenInfo.new(0.15,Enum.EasingStyle.Quint), {Scale=TARGET_SCALE*0.98}):Play()
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                TweenService:Create(UIScale, TweenInfo.new(0.2,Enum.EasingStyle.Quint,Enum.EasingDirection.Out), {Scale=TARGET_SCALE}):Play()
+            end
+        end)
+    end
+end)
+
+Frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput then updateDrag(input) end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+        TweenService:Create(UIScale, TweenInfo.new(0.2,Enum.EasingStyle.Quint,Enum.EasingDirection.Out), {Scale=TARGET_SCALE}):Play()
+    end
+end)
+
+-- ==========================================
+-- ZLXCH WEBSOCKET
+-- ==========================================
+local function connectZlxchWebSocket()
+    if not WebSocket then
+        print("WebSocket not available")
+        return
+    end
+    
+    local success, socket = pcall(function()
+        return WebSocket.connect(ZLXCH_WS_URL)
+    end)
+    
+    if not success or not socket then
+        task.wait(5)
+        connectZlxchWebSocket()
+        return
+    end
+    
+    zlxchWs = socket
+    
+    zlxchWs.OnMessage:Connect(function(message)
+        local success, data = pcall(function()
+            return HttpService:JSONDecode(message)
+        end)
+        
+        if success and data then
+            if data.type == "new" and data.data then
+                local brainrot = data.data
+                local name = brainrot.name or "Unknown"
+                local value = brainrot.value or 0
+                local jobId = brainrot.jobid
+                CreateUnifiedLog(name, value, jobId)
+            elseif data.type == "init" and data.data then
+                for _, brainrot in ipairs(data.data) do
+                    local name = brainrot.name or "Unknown"
+                    local value = brainrot.value or 0
+                    local jobId = brainrot.jobid
+                    CreateUnifiedLog(name, value, jobId)
+                end
+            end
+        end
+    end)
+    
+    zlxchWs.OnClose:Connect(function()
+        zlxchWs = nil
+        task.wait(5)
+        connectZlxchWebSocket()
+    end)
+    
+    zlxchWs.OnError:Connect(function(err)
+        print("WebSocket error:", err)
+    end)
+end
+
+-- ==========================================
+-- VANISH NOTIFIER API HANDLER
+-- ==========================================
+local function fetchJson(url)
+    if not secure_request then return nil end
+    local success, response = pcall(function()
+        return secure_request({Url = url, Method = 'GET', Headers = {['Content-Type'] = 'application/json'}})
+    end)
+    if not success or not response then return nil end
+    local decoded, err = pcall(function() return HttpService:JSONDecode(response.Body) end)
+    if not decoded then return nil end
+    return err
+end
+
+local function getNewFindings(data)
+    if not data or not data.findings then return {} end
+    local new = {}
+    for _, item in ipairs(data.findings) do
+        local fid = item.id
+        if fid and not seenFindingIds[fid] then
+            seenFindingIds[fid] = true
+            table.insert(new, item)
+        end
+    end
+    return new
+end
+
+local function getNewBots(data)
+    if not data or not data.bots then return {} end
+    local new = {}
+    for _, item in ipairs(data.bots) do
+        local jid = item.job_id
+        if jid and not seenJobIds[jid] then
+            seenJobIds[jid] = true
+            table.insert(new, item)
+        end
+    end
+    return new
+end
+
+local function combineAndCreateLogs(newFindings, newBots)
+    if #newFindings == 0 or #newBots == 0 then return end
+    
+    if #newBots == 1 then
+        local bot = newBots[1]
+        for _, finding in ipairs(newFindings) do
+            local name = finding.base_name or finding.name or "Unknown"
+            local value = finding.value or 0
+            local jobId = bot.job_id
+            if finding.mutation and finding.mutation ~= "" then
+                name = finding.mutation .. " " .. name
+            end
+            CreateUnifiedLog(name, value, jobId)
+        end
+    else
+        for i, finding in ipairs(newFindings) do
+            local bot = newBots[math.min(i, #newBots)] or newBots[#newBots]
+            local name = finding.base_name or finding.name or "Unknown"
+            local value = finding.value or 0
+            local jobId = bot.job_id
+            if finding.mutation and finding.mutation ~= "" then
+                name = finding.mutation .. " " .. name
+            end
+            CreateUnifiedLog(name, value, jobId)
+        end
+    end
+end
+
+local function seedInitialData()
+    local recentData = fetchJson(VANISH_RECENT_URL)
+    local botsData = fetchJson(VANISH_BOTS_URL)
+    
+    if recentData and recentData.findings then
+        for _, item in ipairs(recentData.findings) do
+            if item.id then seenFindingIds[item.id] = true end
+        end
+    end
+    
+    if botsData and botsData.bots then
+        for _, item in ipairs(botsData.bots) do
+            if item.job_id then seenJobIds[item.job_id] = true end
+        end
+    end
+    
+    vanishInitialized = true
+end
+
+local function pollVanishAPI()
+    if not vanishInitialized then seedInitialData() end
+    
+    local recentData = fetchJson(VANISH_RECENT_URL)
+    local botsData = fetchJson(VANISH_BOTS_URL)
+    
+    if not recentData or not botsData then return end
+    
+    local newFindings = getNewFindings(recentData)
+    local newBots = getNewBots(botsData)
+    
+    if #newFindings > 0 and #newBots > 0 then
+        combineAndCreateLogs(newFindings, newBots)
+    end
+end
+
+-- ==========================================
+-- START EVERYTHING
+-- ==========================================
+LoadConfig()
+SpamInput.Text = tostring(spamCount)
+
+NotifToggleBtn.BackgroundColor3 = notifsEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+NotifToggleBtn.TextColor3 = notifsEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+NotifToggleBtn.Text = notifsEnabled and "Notifs: ON" or "Notifs: OFF"
+
+SoundToggleBtn.BackgroundColor3 = notifSoundEnabled and Color3.fromRGB(18, 34, 24) or Color3.fromRGB(20, 27, 36)
+SoundToggleBtn.TextColor3 = notifSoundEnabled and Color3.fromRGB(52, 199, 89) or Color3.fromRGB(155, 165, 180)
+SoundToggleBtn.Text = notifSoundEnabled and "Sound: ON" or "Sound: OFF"
+
+-- Start WebSocket
+if WebSocket then
+    task.spawn(function() connectZlxchWebSocket() end)
+end
+
+-- Start VanishNotifier polling
+task.spawn(function()
+    seedInitialData()
+    while true do
+        task.wait(2)
+        pcall(pollVanishAPI)
+    end
+end)
+
+-- Set initial view to ALL
+CurrentFilter = "all"
+ApplyFilter()
+
+Frame.Visible = true
+Frame.GroupTransparency = 0
+UIScale.Scale = TARGET_SCALE

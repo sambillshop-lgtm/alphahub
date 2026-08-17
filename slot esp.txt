@@ -1,0 +1,213 @@
+if _G.__PodiumESPCleanup then pcall(_G.__PodiumESPCleanup) end
+
+local RunService = game:GetService("RunService")
+local hui = (gethui and gethui()) or game:GetService("CoreGui")
+local Plots = workspace:WaitForChild("Plots")
+
+local PALETTE = {
+	RED    = Color3.fromRGB(255, 60, 60),
+	ORANGE = Color3.fromRGB(255, 150, 40),
+	YELLOW = Color3.fromRGB(255, 225, 60),
+	GREEN  = Color3.fromRGB(70, 235, 110),
+	CYAN   = Color3.fromRGB(55, 225, 235),
+	BLUE   = Color3.fromRGB(55, 185, 255),
+	PURPLE = Color3.fromRGB(175, 95, 255),
+	PINK   = Color3.fromRGB(255, 95, 190),
+	WHITE  = Color3.fromRGB(255, 255, 255),
+	BLACK  = Color3.fromRGB(20, 20, 20),
+}
+
+local CFG = {
+	FLOOR_COLOR = { PALETTE.RED, PALETTE.RED, PALETTE.RED },
+	COLLIDE     = true,
+}
+
+local FILL_T, INNER_T, MISS_T, THICK = 0.55, 0.42, 0.10, 0.05
+local PULSE_SPEED, PULSE_AMOUNT = 2, 0.12
+
+local TEMPLATE = {
+	{ 18.500,  1.531, -14.476,  90}, { 18.500,  1.531,  -6.976,  90}, { 18.500,  1.531,   0.524,  90},
+	{ 18.500,  1.531,   8.024,  90}, { 18.500,  1.531,  15.524,  90},
+	{-18.536,  1.531,  15.524, -90}, {-18.536,  1.531,   8.024, -90}, {-18.536,  1.531,   0.524, -90},
+	{-18.536,  1.531,  -6.976, -90}, {-18.536,  1.531, -14.476, -90},
+	{ 18.500, 19.531, -14.476,  90}, { 18.500, 19.531,  -6.976,  90}, { 18.500, 19.531,   0.524,  90},
+	{ 18.500, 19.531,   8.024,  90}, { 18.500, 19.531,  15.524,  90},
+	{-18.380, 19.531, -14.452, -90}, {-18.380, 19.531,  -6.952, -90}, {-18.380, 19.531,   0.548, -90},
+	{ 18.500, 36.531, -12.476,  90}, { 18.500, 36.531,  -4.976,  90}, { 18.500, 36.531,   2.524,  90},
+	{ 18.500, 36.531,  10.024,  90}, { 18.500, 36.531,  17.524,  90},
+	{-18.472, 36.531, -12.501, -90}, {-18.471, 36.531,  -5.001, -90}, {-18.471, 36.531,   2.499, -90},
+	{-18.471, 36.531,   9.999, -90}, {-18.471, 36.531,  17.499, -90},
+}
+
+local OUTER, INNER_SZ, INNER_UP = Vector3.new(6, 0.25, 6), Vector3.new(4, 0.25, 4), 0.25
+
+for _, where in ipairs({workspace, game:GetService("CoreGui"), hui}) do
+	for _, n in ipairs({"__PodiumMarkers", "__PodiumTest", "__PodiumCollide"}) do
+		local o = where:FindFirstChild(n)
+		if o then o:Destroy() end
+	end
+end
+
+local markers, fills, conns = {}, {}, {}
+local alive = true
+local solids
+
+local function keep(x) markers[#markers + 1] = x x.Parent = hui return x end
+
+local function clear()
+	for _, m in ipairs(markers) do pcall(function() m:Destroy() end) end
+	table.clear(markers)
+	table.clear(fills)
+	if solids then solids:ClearAllChildren() end
+end
+
+local function box(adornee, cf, size, color, trans, isFill)
+	local a = Instance.new("BoxHandleAdornment")
+	a.Adornee = adornee
+	a.Size = size
+	a.CFrame = cf
+	a.Color3 = color
+	a.Transparency = trans
+	a.AlwaysOnTop = false
+	a.ZIndex = 0
+	keep(a)
+	if isFill then fills[#fills + 1] = { a = a, base = trans } end
+	return a
+end
+
+local function outline(part, color)
+	local b = Instance.new("SelectionBox")
+	b.Adornee = part
+	b.Color3 = color
+	b.SurfaceColor3 = color
+	b.LineThickness = THICK
+	b.Transparency = 0
+	b.SurfaceTransparency = 1
+	return keep(b)
+end
+
+local function edges(root, cf, size, color)
+	local t = THICK * 1.6
+	local hx, hz, y = size.X * 0.5, size.Z * 0.5, size.Y * 0.5
+	box(root, cf * CFrame.new(0, y,  hz), Vector3.new(size.X, t, t), color, 0)
+	box(root, cf * CFrame.new(0, y, -hz), Vector3.new(size.X, t, t), color, 0)
+	box(root, cf * CFrame.new( hx, y, 0), Vector3.new(t, t, size.Z), color, 0)
+	box(root, cf * CFrame.new(-hx, y, 0), Vector3.new(t, t, size.Z), color, 0)
+end
+
+local function solid(worldCF)
+	if not CFG.COLLIDE then return end
+	if not solids then
+		solids = Instance.new("Folder")
+		solids.Name = "__PodiumCollide"
+		solids.Parent = workspace
+	end
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.CanCollide = true
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Transparency = 1
+	p.Size = OUTER
+	p.CFrame = worldCF
+	p.Parent = solids
+end
+
+local function colorFor(i)
+	if i <= 10 then return CFG.FLOOR_COLOR[1] elseif i <= 18 then return CFG.FLOOR_COLOR[2] end
+	return CFG.FLOOR_COLOR[3]
+end
+
+local function slabsOf(slot)
+	local base = slot:FindFirstChild("Base") or slot
+	local decos = base:FindFirstChild("Decorations")
+	local parts = {}
+	if decos then
+		for _, c in ipairs(decos:GetChildren()) do
+			if c:IsA("BasePart") and c.Transparency < 1 then parts[#parts + 1] = c end
+		end
+	end
+	table.sort(parts, function(a, b) return a.Size.X * a.Size.Z > b.Size.X * b.Size.Z end)
+	return parts
+end
+
+local function drawReal(parts, color)
+	local anchor = parts[1]
+	for i, p in ipairs(parts) do
+		local rel = anchor.CFrame:Inverse() * p.CFrame
+		box(anchor, rel, p.Size + Vector3.new(0.03, 0.03, 0.03), color, i == 1 and FILL_T or INNER_T, true)
+		outline(p, color)
+	end
+end
+
+local function drawGhost(root, e, color)
+	local cf = CFrame.new(e[1], e[2], e[3]) * CFrame.Angles(0, math.rad(e[4]), 0)
+	box(root, cf, OUTER, color, FILL_T + MISS_T, true)
+	box(root, cf * CFrame.new(0, INNER_UP, 0), INNER_SZ, color, INNER_T + MISS_T, true)
+	edges(root, cf, OUTER, color)
+	solid(root.CFrame * cf)
+end
+
+local function build()
+	if not alive then return end
+	clear()
+	for _, plot in ipairs(Plots:GetChildren()) do
+		local root = plot:FindFirstChild("MainRoot")
+		local pods = plot:FindFirstChild("AnimalPodiums")
+		if root and pods then
+			for i = 1, #TEMPLATE do
+				local sl = pods:FindFirstChild(tostring(i))
+				local parts = sl and slabsOf(sl)
+				local c = colorFor(i)
+				if parts and parts[1] then
+					drawReal(parts, c)
+				else
+					drawGhost(root, TEMPLATE[i], c)
+				end
+			end
+		end
+	end
+end
+
+build()
+
+local pending = false
+local function rebuild()
+	if pending or not alive then return end
+	pending = true
+	task.delay(0.4, function() pending = false build() end)
+end
+local function watch(plot)
+	local pods = plot:WaitForChild("AnimalPodiums", 20)
+	if pods and alive then
+		conns[#conns + 1] = pods.ChildAdded:Connect(rebuild)
+		conns[#conns + 1] = pods.ChildRemoved:Connect(rebuild)
+	end
+end
+for _, plot in ipairs(Plots:GetChildren()) do task.spawn(watch, plot) end
+conns[#conns + 1] = Plots.ChildAdded:Connect(function(plot)
+	task.spawn(watch, plot)
+	rebuild()
+end)
+
+do
+	local acc = 0
+	conns[#conns + 1] = RunService.Heartbeat:Connect(function(dt)
+		acc = acc + dt
+		if acc < 0.05 then return end
+		acc = 0
+		local w = math.sin(os.clock() * PULSE_SPEED) * PULSE_AMOUNT
+		for _, f in ipairs(fills) do
+			if f.a.Parent then f.a.Transparency = math.clamp(f.base + w, 0, 1) end
+		end
+	end)
+end
+
+_G.__PodiumESPCleanup = function()
+	alive = false
+	for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+	table.clear(conns)
+	clear()
+	if solids then solids:Destroy() solids = nil end
+	_G.__PodiumESPCleanup = nil
+end
